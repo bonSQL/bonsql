@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc.
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -34,6 +35,7 @@
 #include "AutoCompleteInterface.h"	
 #include "ConnectionTab.h"
 #include "Announcements.h"
+#include "ngsa/NgsaCaps.h"      // NGSA: per-connection capabilities
 
 #ifndef COMMUNITY
 #include "ProfilerAdvisors.h"
@@ -868,6 +870,9 @@ public:
     */
     wyInt32             FlushSpecific(HWND hwnd, HWND hwndtext, wyInt32 writetobin);
 
+    /// NGSA: UNLOCK TABLES after a read-lock flush
+    wyBool              FlushUnlockTables(HWND hwnd, HWND hwndtext);
+
     /// Command handler for template
     /**
     @param hwnd     : Window HANDLE
@@ -1146,6 +1151,8 @@ public:
 	/// Executing flag
 	wyBool				m_executing;
 	wyBool				m_isthreadbusy;
+	wyInt64				m_ngsarunstart;		// NGSA (#2135): GetHighPrecisionTickCount() when execution started, 0 when idle
+	void				NgsaRunTimer(wyBool start);	// NGSA (#2135): start/stop the status-bar running-time timer
 	wyBool				m_pingexecuting;
 
 	/// Execute options
@@ -1174,6 +1181,10 @@ public:
 
 	///Flag used for Cheking MySQL version whether it is lesser or greater than Ver. 4.1
 	 wyBool				m_ismysql41;
+
+	// NGSA: engine, version and feature flags of this connection (include/ngsa/NgsaCaps.h),
+	// filled at WM_CREATE next to m_ismysql41. New engine checks read this.
+	NgsaCaps			m_ngsacaps;
 
         ///flag for Dragging table
 	wyBool				m_dragged;

@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc.
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -27,21 +28,7 @@
 //.CSS Classes
 //#define CSS_WARNING ".tabcaptionstyle{font: 14px \"Trebuchet MS\", Verdana, Arial, Helvetica; text-align:left; color:grey;}"
 
-#define QA_ULTIMATE _("Query Profiler is available only in Ultimate version of SQLyog.\
-<br>&nbsp;<br>\
-Click <a href=\"http://www.webyog.com/product/sqlyogpricing/?ref=community.queryprofiler\" target=\"_blank\">here</a> to buy SQLyog Ultimate\
-			   <br>&nbsp;<br>\
-			   Query Profiler Features:\
-<UL>\
-			   <LI>helps you identify problem SQL\
-			   <LI>helps you fine-tune SQL\
-			   <LI>helps you create the right indexes\
-			   <LI>analyzes queries and helps you optimize them\
-			   <LI>reports the exact time spent in each step of query execution\
-			   <LI>helps you write better SQL\
-			   <LI>identifies whether indexes are being used effectively\
-			   <LI>helps you improve overall response time of your application\
-</UL>")
+#define QA_ULTIMATE _("")	// bonSQL: was an Ultimate upsell with a webyog.com buy link (docs/ngsa/UPSELLS.md)
 
 
 class QueryAnalyzerBase : public TabQueryTypes 

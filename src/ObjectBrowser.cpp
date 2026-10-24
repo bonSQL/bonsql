@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -17,6 +18,7 @@
 */
 
 #include "scintilla.h"
+#include "ngsa/NgsaDark.h"   // NGSA (#2158)
 #include "MDIWindow.h"
 #include "Global.h"
 #include "ObjectBrowser.h"
@@ -49,14 +51,19 @@
 //#include "htmlrender.h"
 #endif
 
+// bonSQL: no Ultimate-only menu items in Community (docs/ngsa/UPSELLS.md)
+#ifdef COMMUNITY
+#define NGSA_ULTIMATE_MENU 0
+#else
+#define NGSA_ULTIMATE_MENU 1
+#endif
+
 extern	PGLOBALS		pGlobals;
 
 #define     DEF_NODE_BUFF_SIZE  64
 
 #define		DROPDBMESSAGE(a,b)		{ a.Sprintf(_("Dropping database %s"), b); pGlobals->m_pcmainwin->AddTextInStatusBar(a.GetAsWideChar()); }
-#define		CSVTUNNELIMPORTERROR	_(L"This option cannot be used in HTTP Tunneling mode. \
-\n\nIf you directly want to upload a local CSV file to a Remote Server, you can use SQLyog's Migration Toolkit. \
-\nThe ODBC driver that you could use is Microsoft Text Driver (*.txt, *.csv) ODBC driver that ships with the OS.")
+#define		CSVTUNNELIMPORTERROR	_(L"This option cannot be used in HTTP Tunneling mode.")	// bonSQL: the rest advertised an Ultimate tool
 #define    LOADXMLERROR    _(L"This option is not supported by your server. Minimum supported server is MySQL 5.5.0")
 #define		HTTPNOTWORKINGOPTIONS	_(L"This option cannot be used in HTTP Tunneling mode.")
 #define     TT_REMOVE_DB_FILTER     _(L"Remove database level filter")
@@ -248,6 +255,8 @@ CQueryObject::CreateObjectBrowser(HWND hwndparent)
 
     // Apply theme colors to filter edit box
     SendMessage(m_hwndFilter, EM_SETBKGNDCOLOR, 0, m_filterbackcolor);
+    NgsaDark::ThemeControl(m_hwnd, wyFalse, wyTrue);   // NGSA (#2158): dark tree glyphs and scroll bars; the colours stay the connection's/theme's
+    NgsaDark::ThemeControl(m_hwndFilter, wyTrue);   // NGSA (#2158): dark field border
 
 	//..Setting font
     SetFont();
@@ -275,6 +284,8 @@ CQueryObject::PaintFilterWindow(HWND hwnd)
     hdc = GetWindowDC(hwnd);
     
     hbr = IsWindowEnabled(hwnd)? GetSysColorBrush(COLOR_WINDOW): GetSysColorBrush(COLOR_BTNFACE);            
+    if(NgsaDark::IsOn() && IsWindowEnabled(hwnd))   // NGSA (#2158): the clear-button strip in the field colour
+        hbr = NgsaDark::FieldColors(hdc);
     
     rect.right -= rect.left;
     rect.bottom -= (rect.top + 2);
@@ -443,6 +454,11 @@ CQueryObject::FilterProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
                 hdc = GetDC(hwnd);
                 SetTextColor(hdc, GetSysColor(COLOR_GRAYTEXT));
                 SetBkColor(hdc, IsWindowEnabled(hwnd)? GetSysColor(COLOR_WINDOW): GetSysColor(COLOR_BTNFACE));
+                if(NgsaDark::IsOn() && IsWindowEnabled(hwnd))   // NGSA (#2158): cue text on the dark field
+                {
+                    NgsaDark::FieldColors(hdc);
+                    SetTextColor(hdc, RGB(0x9D, 0x9D, 0x9D));
+                }
                 if(pcqueryobject->m_hfont)
                     SelectObject(hdc, (HGDIOBJ)pcqueryobject->m_hfont);
                 DrawText(hdc, CUEBANNERTEXT, -1, &rectWnd, DT_SINGLELINE | DT_END_ELLIPSIS | DT_LEFT);
@@ -497,6 +513,7 @@ CQueryObject::FilterProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
                 case NSP:
                 case NFUNC:
                 case NEVENTS:
+                case NSEQUENCES:
                 case NTRIGGER:
                 case NVIEWS:
                     hti_child = TreeView_GetChild(pcqueryobject->m_hwnd, hti);
@@ -542,6 +559,7 @@ CQueryObject::FilterProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
                 case NSP:
                 case NFUNC:
                 case NEVENTS:
+                case NSEQUENCES:
                 case NTRIGGER:
                 case NVIEWS:
                 case NSERVER:
@@ -666,6 +684,14 @@ CQueryObject::StCtrlProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
     switch(message)
 	{
+    case WM_CTLCOLOREDIT:   // NGSA (#2158): the filter box in the Dark theme
+        {
+            HBRUSH hbr = NgsaDark::FieldColors((HDC)wParam);
+            if(hbr)
+                return (LRESULT)hbr;
+        }
+        break;
+
     case WM_COMMAND:
         switch(LOWORD(wParam))
         {
@@ -772,7 +798,7 @@ CQueryObject::SetFont()
     // get the font name from the .ini file.
 	// now search the font given in the .ini.
 	// Get the complete path.
-	ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	if(ret == 0)
 		return wyFalse;
 	
@@ -1007,7 +1033,7 @@ CQueryObject::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
 			break;
 		
 		case WM_HELP:
-			ShowHelp("http://sqlyogkb.webyog.com/article/39-object-browser");
+			ShowHelp("help:object-browser");
 			return 1;
 
 		case WM_KEYDOWN:
@@ -1212,7 +1238,7 @@ CQueryObject::CreateImageList()
 	HICON		icon;
     wyInt32     imgres[] = { IDI_SERVER, IDI_DATABASE, IDI_COLUMN, IDI_TABLE, IDI_COLUMN, 
 		                     IDI_INDEX, IDI_PROCEDURE,IDI_PROCEDURE, IDI_FUNCTION, IDI_FUNCTION, 
-							 IDI_VIEW, IDI_VIEW, IDI_TRIGGER, IDI_TRIGGER, IDI_TABLE, IDI_EVENT, IDI_EVENT, IDI_PRIMARYKEY, IDI_PRIMARYKEY, IDI_OVERLAYFILTER};
+							 IDI_VIEW, IDI_VIEW, IDI_TRIGGER, IDI_TRIGGER, IDI_TABLE, IDI_EVENT, IDI_EVENT, IDI_PRIMARYKEY, IDI_PRIMARYKEY, IDI_OVERLAYFILTER, IDI_SEQUENCE, IDI_SEQUENCE};	// NGSA: 20 = sequence, 21 = Sequences folder
 
 	VERIFY(m_himl = ImageList_Create(16, 16, ILC_COLOR32 | ILC_MASK , 6, 0));
     
@@ -1638,14 +1664,14 @@ CQueryObject::ShowContextMenu(MDIWindow *wnd, wyInt32 image, POINT *pnt, wyInt32
         LocalizeMenu(hmenu);
 		VERIFY(htrackmenu =	GetSubMenu(hmenu, 0));
 
-		if(pGlobals->m_pcmainwin->m_connection->m_enttype == ENT_PRO)
+		if(!NGSA_ULTIMATE_MENU || pGlobals->m_pcmainwin->m_connection->m_enttype == ENT_PRO)
 		{
 			RemoveMenu(htrackmenu, ID_IMPORT_EXTERNAL_DATA, MF_BYCOMMAND);
 			RemoveMenu(htrackmenu, ID_POWERTOOLS_SCHEDULEEXPORT2, MF_BYCOMMAND);
 			DrawMenuBar(m_hwnd);
 		}
 
-		if(pGlobals->m_pcmainwin->m_connection->m_enttype == ENT_PRO 
+		if(!NGSA_ULTIMATE_MENU || pGlobals->m_pcmainwin->m_connection->m_enttype == ENT_PRO
 			|| pGlobals->m_pcmainwin->m_connection->m_enttype == ENT_NORMAL)
 		{
 			RemoveMenu(htrackmenu, ID_DATASEARCH, MF_BYCOMMAND);
@@ -1654,7 +1680,7 @@ CQueryObject::ShowContextMenu(MDIWindow *wnd, wyInt32 image, POINT *pnt, wyInt32
 
 		ChangeMenuItemOnPref(hmenu, MNU_OTHEROPT_INDEX); //setting objectbrowser refresh menu on  switch F5 and F9 functionalitiesmenu based on 
 
-		if(wyTheme::IsDarkThemeActive() || pGlobals->m_conncount == 0)
+		if(pGlobals->m_conncount == 0)   // NGSA (#2158): per-connection colours are allowed in the Dark theme too
 		{
 			EnableMenuItem(htrackmenu, IDM_OBCOLOR, MF_GRAYED | MF_BYCOMMAND);
 		}
@@ -1678,7 +1704,7 @@ CQueryObject::ShowContextMenu(MDIWindow *wnd, wyInt32 image, POINT *pnt, wyInt32
 
 		//RemoveMenu(htrackmenu,ID_DATASEARCH, MF_BYCOMMAND);
 		
-		if(pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_PRO 
+		if(NGSA_ULTIMATE_MENU && pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_PRO
 			&& pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_NORMAL
 			&& GetMenuItemID(htrackmenu, 3) != ID_DB_DATASEARCH)
 		{
@@ -1716,7 +1742,7 @@ CQueryObject::ShowContextMenu(MDIWindow *wnd, wyInt32 image, POINT *pnt, wyInt32
 		EnableColumnItems(htrackmenu1);
 
 		
-		if(pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_PRO 
+		if(NGSA_ULTIMATE_MENU && pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_PRO
 			&& pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_NORMAL
 			&& GetMenuItemID(htrackmenu1, 1) != ID_DATASEARCH)
 		{
@@ -1764,6 +1790,16 @@ CQueryObject::ShowContextMenu(MDIWindow *wnd, wyInt32 image, POINT *pnt, wyInt32
 		VERIFY(TrackPopupMenu(htrackmenu1, TPM_LEFTALIGN | TPM_RIGHTBUTTON, pnt->x, pnt->y, 0, pGlobals->m_pcmainwin->m_hwndmain, NULL));
 		break;
 
+	case NSEQUENCEITEM:	// NGSA: Others > Sequences popup (index 8)
+	case NSEQUENCES:
+		VERIFY(hmenu = GetMenu(pGlobals->m_pcmainwin->m_hwndmain));
+		VERIFY(htrackmenu =	GetSubMenu(hmenu, MNUOBJ_INDEX - 1 + incr));
+		VERIFY(htrackmenu1 = GetSubMenu(htrackmenu, 8));
+		EnableColumnItems(htrackmenu1);
+        wyTheme::SetMenuItemOwnerDraw(htrackmenu1);
+		VERIFY(TrackPopupMenu(htrackmenu1, TPM_LEFTALIGN | TPM_RIGHTBUTTON, pnt->x, pnt->y, 0, pGlobals->m_pcmainwin->m_hwndmain, NULL));
+		break;
+
 	case NEVENTITEM:
 	case NEVENTS:	
 		VERIFY(hmenu = GetMenu(pGlobals->m_pcmainwin->m_hwndmain));
@@ -1806,7 +1842,7 @@ CQueryObject::ShowContextMenu(MDIWindow *wnd, wyInt32 image, POINT *pnt, wyInt32
 			/*FreeMenuOwnerDrawItem(htrackmenu1, 1);
 			RemoveMenu(htrackmenu1,ID_DATASEARCH, MF_BYCOMMAND);*/
 			
-			if(pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_PRO 
+			if(NGSA_ULTIMATE_MENU && pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_PRO
 			&& pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_NORMAL
 			&& GetMenuItemID(htrackmenu1, 1) != ID_DATASEARCH)
 			{
@@ -1846,11 +1882,13 @@ CQueryObject::LoadTablesMenu(POINT *pnt)
     VERIFY(hmenu      =	LoadMenu(pGlobals->m_hinstance, MAKEINTRESOURCE(IDR_TABLESMENU)));
     LocalizeMenu(hmenu);
 	VERIFY(htrackmenu = GetSubMenu(hmenu, 0));
-	if(pGlobals->m_pcmainwin->m_connection->m_enttype == ENT_PRO 
+	if(!NGSA_ULTIMATE_MENU || pGlobals->m_pcmainwin->m_connection->m_enttype == ENT_PRO
 			|| pGlobals->m_pcmainwin->m_connection->m_enttype == ENT_NORMAL)
 	{
 			RemoveMenu(htrackmenu,ID_DATASEARCH, MF_BYCOMMAND);
 	}
+	if(!NGSA_ULTIMATE_MENU)
+		RemoveMenu(htrackmenu, ID_POWERTOOLS_SCHEDULEEXPORT2, MF_BYCOMMAND);	// bonSQL: Ultimate-only
 	
 	// Set menu draw property for drawing icon
 	wyTheme::SetMenuItemOwnerDraw(htrackmenu);
@@ -1884,7 +1922,7 @@ CQueryObject::LoadTableMenu(POINT *pnt, wyInt32 incr)
 		RemoveMenu(htrackmenu,ID_DATASEARCH, MF_BYCOMMAND);
 	}*/
 
-	if(pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_PRO 
+	if(NGSA_ULTIMATE_MENU && pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_PRO
 		&& pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_NORMAL
 		&& GetMenuItemID(htrackmenu, 2) != ID_DATASEARCH)
 	{
@@ -2308,7 +2346,7 @@ CQueryObject::DropIndex(Tunnel * tunnel, PMYSQL mysql)
 			break;
 	}
 
-	message.Sprintf(_("Do you really want to drop the index (%s)?)"), indexstr.GetString());
+	message.Sprintf(_("Do you really want to drop the index %s?"), indexstr.GetString());
 
 	ret = yog_message(m_hwnd, message.GetAsWideChar(), pGlobals->m_appname.GetAsWideChar(), MB_ICONQUESTION | MB_YESNO | MB_DEFBUTTON2);
 
@@ -3071,7 +3109,7 @@ CQueryObject::CreateSelectStmt()
 	compquery.Add(query.GetString());
 	compquery.Add(" \r\n\tlimit 0, ");
 
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 
 	dirstr.SetAs(directory);
     
@@ -3269,6 +3307,7 @@ CQueryObject::CreateTableMaker()
 	case NVIEWS:
 	case NFUNC:
 	case NEVENTS:
+	case NSEQUENCES:
 		VERIFY(hselected = TreeView_GetParent(m_hwnd, hselected));
 		break;
 		
@@ -3427,6 +3466,7 @@ CQueryObject::OnSelChanged(HTREEITEM hitem, LPNMTREEVIEW pnmtv)
         case NFUNCITEM:
         case NTRIGGERITEM:
         case NEVENTITEM:
+        case NSEQUENCEITEM:
             hitemtemp = TreeView_GetParent(m_hwnd, pnmtv->itemNew.hItem);
             TreeView_SelectItem(m_hwnd, hitemtemp);
             break;
@@ -3666,7 +3706,7 @@ CQueryObject::OnSelChanged(HTREEITEM hitem, LPNMTREEVIEW pnmtv)
             ptabmgmt->m_pqueryobj->Refresh();
         }
 	}
-	else if(image == NEVENTITEM)
+	else if(image == NEVENTITEM || image == NSEQUENCEITEM)	// NGSA
     {
 		GetTableDatabaseName(hitem);
 		VERIFY(hitem = TreeView_GetParent(m_hwnd, hitem));
@@ -3777,7 +3817,7 @@ CQueryObject::OnSelChanged(HTREEITEM hitem, LPNMTREEVIEW pnmtv)
             ptabmgmt->m_pqueryobj->Refresh();
         }
 	}
-	else if(image == NEVENTS)
+	else if(image == NEVENTS || image == NSEQUENCES)	// NGSA
 	{
 		VERIFY(hitem = TreeView_GetParent(m_hwnd, hitem));
 		GetDatabaseName(hitem);
@@ -4519,6 +4559,7 @@ CQueryObject::RefreshParentNode(HTREEITEM hselitem)
         break;
     case NSPITEM:
     case NEVENTITEM:
+    case NSEQUENCEITEM:
     case NFUNCITEM:
     case NTRIGGERITEM:
     case NVIEWSITEM:
@@ -4539,6 +4580,7 @@ CQueryObject::RefreshParentNode(HTREEITEM hselitem)
         break;        
     case NSP:
     case NEVENTS:
+    case NSEQUENCES:
     case NFUNC:
     case NTRIGGER:
     case NVIEWS:
@@ -4682,6 +4724,7 @@ CQueryObject::RenameObject()
 		GetTableDatabaseName(hitem);
 		break;
 	case NEVENTITEM:
+	case NSEQUENCEITEM:
 	case NVIEWSITEM:
 	case NSPITEM:
 	case NFUNCITEM:
@@ -4754,6 +4797,9 @@ CQueryObject::EndRename(LPNMTVDISPINFO ptvdi)
 	case NEVENTITEM:
 		ret = EndRenameEvent(ptvdi);
 		break;	
+	case NSEQUENCEITEM:	// NGSA
+		ret = EndRenameSequence(ptvdi);
+		break;
 	case NTRIGGERITEM:
 		ret = EndRenameTrigger(ptvdi);
 		break;
@@ -4891,6 +4937,7 @@ CQueryObject::ExportData(Tunnel * tunnel, PMYSQL mysql, TUNNELAUTH * auth, wyInt
 	case NFUNC:
 	case NTRIGGER:
 	case NEVENTS:
+	case NSEQUENCES:
 	case NSP:
 		{
 			VERIFY(hitem = TreeView_GetParent(m_hwnd, hitem));
@@ -4928,6 +4975,7 @@ CQueryObject::ExportData(Tunnel * tunnel, PMYSQL mysql, TUNNELAUTH * auth, wyInt
 
 	case NVIEWSITEM:
 	case NEVENTITEM:
+	case NSEQUENCEITEM:
 	case NTRIGGERITEM:
 	case NSPITEM:
     case NFUNCITEM:
@@ -5182,6 +5230,7 @@ CQueryObject::GetSelectionOnFilter(HWND hwnd)
         case NTRIGGER:
         case NFUNC:
         case NEVENTS:
+        case NSEQUENCES:
             SetCursor(LoadCursor(NULL, IDC_WAIT));
             TreeView_Expand(hwnd, hti, TVE_EXPAND);
             SetCursor(LoadCursor(NULL, IDC_ARROW));
@@ -5213,6 +5262,7 @@ CQueryObject::GetSelectionOnFilter(HWND hwnd)
         case NTRIGGERITEM:
         case NFUNCITEM:
         case NEVENTITEM:
+        case NSEQUENCEITEM:
         case NSPITEM:
             hti = TreeView_GetParent(m_hwnd, hti);
             break;
@@ -5302,6 +5352,9 @@ CQueryObject::ProcessDelete(wyBool isshiftpressed)
 		case NEVENTITEM:
 			DropDatabaseObject(wnd->m_tunnel, &wnd->m_mysql, "event");
 			break;
+		case NSEQUENCEITEM:	// NGSA
+			DropDatabaseObject(wnd->m_tunnel, &wnd->m_mysql, "sequence");
+			break;
 		case NTRIGGERITEM:
 			DropTrigger(wnd->m_tunnel, &wnd->m_mysql);
 			break;
@@ -5325,6 +5378,7 @@ CQueryObject::ProcessF2()
 	case NTABLE:
 	case NVIEWSITEM:
 	case NEVENTITEM:
+	case NSEQUENCEITEM:
 	case NTRIGGERITEM:
 		this->RenameObject();
 		break;
@@ -5393,6 +5447,9 @@ CQueryObject::ProcessF6()
 	case NEVENTITEM:
 		pGlobals->m_pcmainwin->OnAlterEvent(wnd);
 		break;
+	case NSEQUENCEITEM:	// NGSA
+		pGlobals->m_pcmainwin->OnAlterSequence(wnd);
+		break;
 	case NINDEX:
 	case NPRIMARYINDEX:
 		wnd->m_pctabmodule->CreateTableTabInterface(wnd, wyTrue, TABINDEXES);
@@ -5448,7 +5505,22 @@ CQueryObject::ProcessF4()
         //        wnd->m_pctabmodule->CreateTableTabInterface(wnd, wyTrue, 0);
         //}
 		//break;
-		wnd->m_pctabmodule->CreateTableTabInterface(wnd);
+		// bonSQL: F4 on a table's Columns or Indexes folder opens that table's designer on that tab; it opened a
+		// new-table designer, although the Indexes folder's menu offers Create Index with F4 (HELP-FINDINGS B13)
+		{
+			wyWChar     item[SIZE_512] = {0};
+			wyString    itemstr;
+
+			if(GetNodeText(m_hwnd, TreeView_GetSelection(m_hwnd), item, SIZE_512 - 1))
+				itemstr.SetAs(item);
+
+			if(itemstr.CompareI(_("Indexes")) == 0)
+				wnd->m_pctabmodule->CreateTableTabInterface(wnd, wyTrue, TABINDEXES);
+			else if(itemstr.CompareI(_("Columns")) == 0)
+				wnd->m_pctabmodule->CreateTableTabInterface(wnd, wyTrue, TABCOLUMNS);
+			else
+				wnd->m_pctabmodule->CreateTableTabInterface(wnd);
+		}
 		break;
 	case NVIEWS:
 	case NVIEWSITEM:
@@ -5469,6 +5541,10 @@ CQueryObject::ProcessF4()
 	case NEVENTS:
 	case NEVENTITEM:
 		pGlobals->m_pcmainwin->OnCreateEvent(wnd->m_hwnd, wnd);
+		break;
+	case NSEQUENCES:	// NGSA
+	case NSEQUENCEITEM:
+		pGlobals->m_pcmainwin->OnCreateSequence(wnd->m_hwnd, wnd);
 		break;
 	case NINDEX:
 	case NPRIMARYINDEX:
@@ -5505,6 +5581,7 @@ CQueryObject::ProcessReturn(wyBool isshiftpressed)
     case NFUNC:
     case NTRIGGER:
     case NEVENTS:
+    case NSEQUENCES:
         {
             if(hti)
             {
@@ -5621,6 +5698,7 @@ CQueryObject::CreateSchema()
 	case NSPITEM:
 	case NVIEWSITEM:
 	case NEVENTITEM:
+	case NSEQUENCEITEM:
 	case NTABLE:			// now we see which of the item was sent as id.
 		VERIFY(hitem = TreeView_GetParent(m_hwnd, hitem));
 		VERIFY(hitem = TreeView_GetParent(m_hwnd, hitem));
@@ -5634,6 +5712,7 @@ CQueryObject::CreateSchema()
 	case NSP:
 	case NFUNC:
 	case NEVENTS:
+	case NSEQUENCES:
 		VERIFY(hitem = TreeView_GetParent(m_hwnd, hitem));
 		GetDatabaseName(hitem);
 		cs.Build(this, wnd->m_tunnel, &wnd->m_mysql, hitem);
@@ -5776,6 +5855,7 @@ CQueryObject::CopyDB()
 	case NSP:
 	case NFUNC:
 	case NEVENTS:
+	case NSEQUENCES:
 	case NTRIGGER:
 		VERIFY(hitem = TreeView_GetParent(m_hwnd, hitem ));
 		break;
@@ -5795,6 +5875,7 @@ CQueryObject::CopyDB()
 	case NFUNCITEM:
 	case NSPITEM:
 	case NEVENTITEM:
+	case NSEQUENCEITEM:
 		VERIFY(hitem = TreeView_GetParent(m_hwnd, hitem));
 		VERIFY(hitem = TreeView_GetParent(m_hwnd, hitem));
 		break;
@@ -6291,6 +6372,48 @@ CQueryObject::DropEvents(HWND hwnd, Tunnel * tunnel, PMYSQL mysql, const wyChar 
 	
 	//Post 8.01
 	//RepaintTabModule();
+	return count;
+}
+
+// NGSA: drop every sequence of a database (Empty Database); DropTables only sees BASE TABLE rows
+wyInt32
+CQueryObject::DropSequences(HWND hwnd, Tunnel * tunnel, PMYSQL mysql, const wyChar *db)
+{
+	wyInt32     count = 0, isintransaction = 1;
+	MYSQL_RES   *myres, *res;
+	MYSQL_ROW   myrow;
+	wyBool		ismysql41 = IsMySQL41(tunnel, mysql);
+	wyString    query, myrowstr;
+    MDIWindow   *wnd = GetActiveWin(); 
+
+	GetSelectSequenceStmt(db, query);
+    myres = ExecuteAndGetResult(wnd, tunnel, mysql, query);
+	if(!myres)
+	{
+		ShowMySQLError(hwnd, tunnel, mysql, query.GetString());
+		SetCursor(LoadCursor(NULL, IDC_ARROW));
+		return count;
+	}
+
+	while(myrow = tunnel->mysql_fetch_row(myres))
+	{
+		myrowstr.SetAs(myrow[0], ismysql41);
+		query.Sprintf("drop sequence `%s`.`%s`", db, myrowstr.GetString());
+        res = ExecuteAndGetResult(wnd, tunnel, mysql, query, wyTrue, wyFalse, wyTrue, false, false, wyFalse, 0, wyFalse, &isintransaction);
+
+		if(isintransaction == 1)
+			return count;
+
+		if(!res && tunnel->mysql_affected_rows(*mysql)== -1)
+		{
+			ShowMySQLError(m_hwnd, tunnel, mysql, query.GetString());
+			return count;
+		}
+
+		tunnel->mysql_free_result(res);
+	}
+	tunnel->mysql_free_result(myres);
+
 	return count;
 }
 
@@ -6959,9 +7082,9 @@ CQueryObject::EndRenameView(LPNMTVDISPINFO ptvdi)
 
     if(myrowsecstr.GetLength() == 0)
     {
-        yog_message(m_hwnd, _(L"No View defination found.\n\n\
-Probably this view was created like \n\"CREATE VIEW...SQL SECURITY DEFINER...\"\n\
-and you are not the DEFINER"), pGlobals->m_appname.GetAsWideChar(), MB_ICONERROR);
+        yog_message(m_hwnd, _(L"No view definition found.\n\n\
+The view was probably created with\n\"CREATE VIEW ... SQL SECURITY DEFINER ...\"\n\
+and you are not its definer."), pGlobals->m_appname.GetAsWideChar(), MB_ICONERROR);
         return wyTrue;
     }
 
@@ -7028,7 +7151,7 @@ CQueryObject::EndRenameEvent(LPNMTVDISPINFO ptvdi)
 
   if(wnd->m_tunnel->mysql_num_rows(res) > 0)
    {
-	   msg.Sprintf("Event '%s' allready exists!", renameevent.GetString());
+	   msg.Sprintf("Event '%s' already exists!", renameevent.GetString());
 		yog_message(m_hwnd, msg.GetAsWideChar(), pGlobals->m_appname.GetAsWideChar(), MB_ICONERROR | MB_OK);
 		wnd->m_tunnel->mysql_free_result(res);
 		return wyFalse;
@@ -7053,6 +7176,54 @@ CQueryObject::EndRenameEvent(LPNMTVDISPINFO ptvdi)
 	wnd->m_tunnel->mysql_free_result(res);
 	return wyTrue;
 
+}
+
+// NGSA: sequences share the table namespace; MariaDB renames them with RENAME TABLE
+wyBool
+CQueryObject::EndRenameSequence(LPNMTVDISPINFO ptvdi)
+{
+	wyString    newname, query, msg;
+	MYSQL_RES   *res;
+	MYSQL_ROW   row;
+	MDIWindow*	wnd = (MDIWindow*)GetWindowLongPtr(m_hwndparent, GWLP_USERDATA);
+	wyInt32 isintransaction = 1;
+
+	_ASSERT(wnd);
+	newname.SetAs(ptvdi->item.pszText);
+
+	query.Sprintf("select count(*) from `information_schema`.`TABLES` where `TABLE_SCHEMA` = '%s' and `TABLE_NAME` = '%s'",
+				  m_seldatabase.GetString(), newname.GetString());
+	res = ExecuteAndGetResult(wnd, wnd->m_tunnel, &wnd->m_mysql, query);
+	if(!res && wnd->m_tunnel->mysql_affected_rows(wnd->m_mysql)== -1)
+	{
+		ShowMySQLError(m_hwnd, wnd->m_tunnel, &wnd->m_mysql, query.GetString());
+		return wyFalse;
+	}
+	row = wnd->m_tunnel->mysql_fetch_row(res);
+	if(row && row[0] && atoi(row[0]) > 0)
+	{
+		msg.Sprintf(_("A table or sequence named '%s' already exists!"), newname.GetString());
+		yog_message(m_hwnd, msg.GetAsWideChar(), pGlobals->m_appname.GetAsWideChar(), MB_ICONERROR | MB_OK);
+		wnd->m_tunnel->mysql_free_result(res);
+		return wyFalse;
+	}
+	wnd->m_tunnel->mysql_free_result(res);
+
+	query.Sprintf("rename table `%s`.`%s` to `%s`.`%s`", m_seldatabase.GetString(), m_seltable.GetString(),
+				  m_seldatabase.GetString(), newname.GetString());
+	res = ExecuteAndGetResult(wnd, wnd->m_tunnel, &wnd->m_mysql, query, wyTrue, wyFalse, wyTrue, false, false, wyFalse, 0, wyFalse, &isintransaction);
+
+	if(isintransaction == 1)
+		return wyFalse;
+
+	if(!res && wnd->m_tunnel->mysql_affected_rows(wnd->m_mysql)== -1)
+	{
+		ShowMySQLError(m_hwnd, wnd->m_tunnel, &wnd->m_mysql, query.GetString());
+		return wyFalse;
+	}
+
+	wnd->m_tunnel->mysql_free_result(res);
+	return wyTrue;
 }
 
 wyBool
@@ -7248,6 +7419,7 @@ CQueryObject::GetDatabaseNode()
 	case NTABLE:
 	case NVIEWSITEM:
 	case NEVENTITEM:
+	case NSEQUENCEITEM:
 	case NSPITEM:
 	case NFUNCITEM:
 	case NTRIGGERITEM:
@@ -7271,6 +7443,7 @@ CQueryObject::GetDatabaseNode()
 			hselitem  = TreeView_GetParent(m_hwnd, hselitem);
 			break;
 	case NEVENTS:
+	case NSEQUENCES:
 	case NVIEWS:
 	case NSP:
 	case NFUNC:
@@ -7452,6 +7625,7 @@ CQueryObject::HandlerToGetDatabaseName(wyInt32 item, HTREEITEM hitem)
 	case NTRIGGER:
 	case NFUNC:
 	case NEVENTS:
+	case NSEQUENCES:
 	case NSP:
 		VERIFY(hitem = TreeView_GetParent(m_hwnd, hitem ));
 		break;
@@ -7476,6 +7650,7 @@ CQueryObject::HandlerToGetDatabaseName(wyInt32 item, HTREEITEM hitem)
 	case NSPITEM:
 	case NFUNCITEM:
 	case NEVENTITEM:
+	case NSEQUENCEITEM:
 	case NTRIGGERITEM:
 	case NTABLE:
 		VERIFY(hitem = TreeView_GetParent(m_hwnd, hitem));
@@ -7852,9 +8027,7 @@ CQueryObject::OnWmCommand(WPARAM wparam)
 
 		case IDM_OBCOLOR:
 			{
-				// Block color change when dark theme is active
-				if(wyTheme::IsDarkThemeActive())
-					break;
+				// NGSA (#2158): was blocked in the Dark theme; a chosen colour now wins over the theme
 					
 				//object browser color dialog
 				conbase->m_rgbobbkcolor = TreeView_GetBkColor(m_hwnd);
@@ -7877,7 +8050,7 @@ CQueryObject::OnWmCommand(WPARAM wparam)
 					//clrforground = conbase->m_rgbobbkcolor ^ 0xFFFFFF;
 					TreeView_SetTextColor(m_hwnd, conbase->m_rgbobfgcolor);
 
-					SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+					SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 					dirstr.SetAs(directory);
 					conbase->SaveAdvancedTabDetails(NULL, wnd->m_currentconn.GetString(), dirstr.GetString());
 
@@ -8673,6 +8846,7 @@ CQueryObject::OnItemSelectionChanging(LPNMTREEVIEW lpnmtv)
     case NSPITEM:
     case NFUNCITEM:
     case NEVENTITEM:
+    case NSEQUENCEITEM:
     case NTRIGGERITEM:
     case NVIEWSITEM:
         hti = TreeView_GetParent(m_hwnd, fromParent);
@@ -8699,6 +8873,7 @@ CQueryObject::OnItemSelectionChanging(LPNMTREEVIEW lpnmtv)
     case NSP:
     case NVIEWS:
     case NEVENTS:
+    case NSEQUENCES:
     case NTRIGGER:
     case NFUNC:
         lp1 = (OBDltElementParam *)TV_GetLParam(m_hwnd, lpnmtv->itemOld.hItem);
@@ -8715,6 +8890,7 @@ CQueryObject::OnItemSelectionChanging(LPNMTREEVIEW lpnmtv)
     case NSPITEM:
     case NFUNCITEM:
     case NEVENTITEM:
+    case NSEQUENCEITEM:
     case NTRIGGERITEM:
     case NVIEWSITEM:
         hti = TreeView_GetParent(m_hwnd, toParent);
@@ -8746,6 +8922,7 @@ CQueryObject::OnItemSelectionChanging(LPNMTREEVIEW lpnmtv)
     case NSP:
     case NVIEWS:
     case NEVENTS:
+    case NSEQUENCES:
     case NTRIGGER:
     case NFUNC:
         lp2 = (OBDltElementParam *)TV_GetLParam(m_hwnd, lpnmtv->itemNew.hItem);
@@ -8767,6 +8944,7 @@ CQueryObject::OnItemSelectionChanging(LPNMTREEVIEW lpnmtv)
         case NTRIGGERITEM:
         case NFUNCITEM:
         case NEVENTITEM:
+        case NSEQUENCEITEM:
         case NSPITEM:
             hti = toParent;
             break;
@@ -8860,6 +9038,7 @@ CQueryObject::DeAllocateLParam(HTREEITEM hti, wyInt32 image)
     case NSP:
     case NFUNC:
     case NEVENTS:
+    case NSEQUENCES:
     case NTRIGGER:
     case NVIEWS:
     //case NFOLDER:
@@ -8910,6 +9089,10 @@ CQueryObject::PrepareMessageText(wyInt32 toImage, HTREEITEM hti, wyWChar msg[], 
     case NEVENTITEM:
         wcscat(msg, _(L"Filter events in "));
         break;
+    case NSEQUENCES:	// NGSA
+    case NSEQUENCEITEM:
+        wcscat(msg, _(L"Filter sequences in "));
+        break;
     case NTRIGGER:
     case NTRIGGERITEM:
         wcscat(msg, _(L"Filter triggers in "));
@@ -8944,12 +9127,8 @@ CQueryObject::UpdateColors()
 
 	wyBool shouldApplyThemeColors = wyFalse;
 	
-	if (wyTheme::IsDarkThemeActive())
 	{
-		shouldApplyThemeColors = wyTrue;
-	}
-	else
-	{
+		// NGSA (#2158): 13.3.1 forced the theme colours in the Dark theme; a connection's own colours win in both themes
 		wyBool hasCustomColors = (pmdi && 
 			(pmdi->m_conninfo.m_rgbconn != COLOR_WHITE || pmdi->m_conninfo.m_rgbfgconn != RGB(0,0,0))) ? wyTrue : wyFalse;
 		shouldApplyThemeColors = hasCustomColors ? wyFalse : wyTrue;
@@ -8972,8 +9151,10 @@ CQueryObject::UpdateColors()
 		m_filterbackcolor = backcolor;
 		m_filterforecolor = forecolor;
 		SendMessage(m_hwndFilter, EM_SETBKGNDCOLOR, 0, m_filterbackcolor);
+		NgsaDark::ThemeControl(m_hwndFilter, wyTrue);	// NGSA (#2158)
 		InvalidateRect(m_hwndFilter, NULL, TRUE);
 	}
+	NgsaDark::ThemeControl(m_hwnd, wyFalse, wyTrue);	// NGSA (#2158): glyphs and scroll bars only; the colours set above stay
 
 	InvalidateRect(m_hwnd, NULL, TRUE);
 	UpdateWindow(m_hwnd);

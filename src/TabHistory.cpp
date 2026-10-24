@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -189,7 +190,7 @@ TabHistory::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 	        break;
 
         case WM_HELP:
-	        ShowHelp("http://sqlyogkb.webyog.com/article/79-history-tab");
+	        ShowHelp("help:history-tab");
 	        return 1;
 
         case WM_SETFOCUS:
@@ -364,7 +365,7 @@ TabHistory::Show(wyBool setfocus)
     wyWChar		*lpfileport = 0;
 	wyWChar		directory[MAX_PATH+1] = {0};
 
-    if(SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport) == wyTrue)
+    if(SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport) == wyTrue)
     {
         EditorFont::SetColor(m_hwnd,wyTrue);
         EditorFont::SetCase(m_hwnd);

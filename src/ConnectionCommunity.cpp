@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -25,20 +26,28 @@
 #include "GUIHelper.h"
 #include "MySQLVersionHelper.h"
 #include "CCustomComboBox.h"
+#ifdef NGSA_SSH_SSL
+#include "ngsa/NgsaConnectionExt.h"   // NGSA: SSH/SSL tab support (docs/ngsa/SSH-SSL-FEASIBILITY.md)
+#define NGSA_CONNECT_HOST(ci)    NgsaConn::EffectiveHost(ci)      // NGSA: loopback end of the SSH tunnel when active
+#define NGSA_CONNECT_PORT(ci)    NgsaConn::EffectivePort(ci)
+#else
+#define NGSA_CONNECT_HOST(ci)    ((ci)->m_host.GetString())
+#define NGSA_CONNECT_PORT(ci)    ((ci)->m_port)
+#endif
 
-#define GPL_MSG _(L"This software is released under the GNU General Public Licence(GPL), \
-which is probably the best known Open Source licence. The formal terms of GPL licence \
-can be found at http://www.fsf.org/licence/.")
+#include "ngsa/NgsaBrand.h"   // bonSQL: name, copyright, addresses
 
-#define STATUS_LINK _("Upgrade to SQLyog Ultimate")
+// bonSQL: GPL v3 notice and the trade-mark disclaimer (About box)
+#define GPL_MSG L"bonSQL is free software: you can redistribute it and/or modify it under the terms of the GNU General \
+Public License, version 3 or later. It comes with ABSOLUTELY NO WARRANTY. " BRAND_DISCLAIMER_W
 
 ConnectionCommunity::ConnectionCommunity()
 {
     m_isent			= wyFalse;
 	m_isapclose		= wyFalse;
 	m_powertoolsID  = 0;
-	pGlobals->m_appname.SetAs("SQLyog Community");
-    m_statuslink.SetAs(STATUS_LINK);
+	pGlobals->m_appname.SetAs(BRAND_NAME_A);
+    m_statuslink.SetAs("");	// NGSA: no upgrade link in the status bar
 
 	m_rgbconnection		= RGB(255,255,255);
 	m_rgbconnectionfg	= RGB(0,0,0);
@@ -69,7 +78,7 @@ ConnectionCommunity::OnTestConnection(HWND hwnd)
 wyBool 
 ConnectionCommunity::AboutRegInfo(HWND hwnd)
 {
-    SetWindowText(GetDlgItem(hwnd, IDC_REGINFO), L"");
+    SetWindowText(GetDlgItem(hwnd, IDC_REGINFO), BRAND_ORIGIN_W);
     SetWindowText(GetDlgItem(hwnd, IDC_WARNING), GPL_MSG);
     return wyTrue;
 }
@@ -87,7 +96,7 @@ ConnectionCommunity::OnAboutWmCommand(HWND hwnd, WPARAM wparam)
 
    	//If click on url
 	if((HIWORD(wparam) == STN_CLICKED)&&(LOWORD(wparam) == IDC_LINK))
-		ShellExecute(NULL, L"open", TEXT(HOMEURL_ABOUTUS), NULL, NULL, SW_SHOWNORMAL);
+		ShellExecute(NULL, L"open", TEXT(BRAND_LICENCE_URL_A), NULL, NULL, SW_SHOWNORMAL);   // bonSQL: the licence
     
     return;
 }
@@ -95,8 +104,7 @@ ConnectionCommunity::OnAboutWmCommand(HWND hwnd, WPARAM wparam)
 void 
 ConnectionCommunity::OnStatusBarWmCommand(HWND hwnd, WPARAM wparam)
 {
-    if((HIWORD(wparam) == STN_CLICKED)&&(LOWORD(wparam) == IDC_LINK))
-		ShellExecute(NULL, L"open", TEXT(BUYURL_STATUSBAR), NULL, NULL, SW_SHOWNORMAL);
+    // bonSQL: the status bar link opened Webyog's pricing page; nothing to open now (docs/ngsa/UPSELLS.md)
     
     return;
 }
@@ -105,7 +113,7 @@ wyBool
 ConnectionCommunity::CreateTabs(HWND hwnd, wyUInt32 id, wyBool ispowertools)
 {
 	HWND        hwndtab;
-	wyWChar*     titles[]  = {L"MySQL", L"HTTP", L"SSH", L"SSL", _(L"Advanced")};
+	wyWChar*     titles[]  = {_(L"Server"), L"HTTP", L"SSH", L"SSL", _(L"Advanced")};	// bonSQL: was "MySQL"
 	wyInt32     numtabs, count;
 	TCITEM		tci = {0};
 
@@ -120,8 +128,13 @@ ConnectionCommunity::CreateTabs(HWND hwnd, wyUInt32 id, wyBool ispowertools)
 
 	for(count = 0; count < numtabs; count++)
 	{
-		tci.mask	= TCIF_TEXT ;//| TCIF_IMAGE;
+		// bonSQL: no HTTP tab (no HTTP tunnelling); each tab keeps its *_TAB id in lParam (NgsaConnTabId)
+		if(count == HTTP_TAB)
+			continue;
+
+		tci.mask	= TCIF_TEXT | TCIF_PARAM;//| TCIF_IMAGE;
 		tci.pszText = titles[count];
+		tci.lParam	= count;
 
 		VERIFY(TabCtrl_InsertItem(hwndtab, 2000, &tci)!= -1);
 	}
@@ -156,7 +169,7 @@ ConnectionCommunity::DeleteConnDetail(HWND hdlg)
 		return FALSE;
 
 	// Get the complete path.
-	ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	if(ret == 0)
 		return 0;
 
@@ -230,7 +243,7 @@ ConnectionCommunity::SaveConnection(HWND hdlg)
 	RECT rect	= { 0 };
 
 		
-	ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	if(ret == 0)
 		return wyFalse;
 
@@ -335,13 +348,16 @@ ConnectionCommunity::TestConnection(HWND hwnd, wyBool showmsg /*=wyTrue*/)
 	row = tunnel->mysql_fetch_row(res);
 	
 	myrowstr.SetAs(row[0], IsMySQL41(dbname.m_tunnel, &mysql));
-	version.Sprintf(_("Connection successful!\nMySQL version: %s"), myrowstr.GetString());
+	version.Sprintf(_("Connection successful!\nServer version: %s"), myrowstr.GetString());
 
 	if(showmsg)
 		yog_message(hwnd, version.GetAsWideChar(), _(L"Connection Info"), MB_OK | MB_ICONINFORMATION);
 
 	tunnel->mysql_free_result(res);
 	tunnel->mysql_close(mysql);
+#ifdef NGSA_SSH_SSL
+	NgsaConn::StopTunnel(&dbname);	// NGSA: test done, drop the tunnel
+#endif
 
 	delete	tunnel;
 
@@ -352,6 +368,9 @@ cleanup:
 		ShowMySQLError(hwnd, tunnel, &mysql, query.GetString());
 	else
 		ShowMySQLError(hwnd, tunnel, &mysql, NULL, wyTrue);
+#ifdef NGSA_SSH_SSL
+	NgsaConn::StopTunnel(&dbname);	// NGSA: test failed, drop the tunnel
+#endif
     delete tunnel;
 	return wyFalse;
 }
@@ -363,6 +382,9 @@ ConnectionCommunity::ConnectToMySQL(ConnectionInfo *conn, Tunnel *tunnel, MYSQL 
     wyUInt32		client=0;
     	
 	SetMySQLOptions(conn, tunnel, &mysql);
+#ifdef NGSA_SSH_SSL
+	NgsaConn::ApplyTlsOptions(conn, tunnel, mysql);	// NGSA: same TLS rule as the main connection
+#endif
 
 	/// Now connect to the mysql server if there is any error then it is shown in the calling function..
 		mysql	= tunnel->mysql_real_connect(mysql, conn->m_host.GetString(), conn->m_user.GetString(), 
@@ -411,10 +433,16 @@ ConnectionCommunity::ConnectToMySQL(HWND hdlg, ConnectionInfo *coninfo)
 	coninfo->m_pwd.SetAs(pwd); 
 	coninfo->m_port = portno;
 	coninfo->m_ishttp = wyFalse;
+#ifdef NGSA_SSH_SSL
+	NgsaConn::ReadFromDialog(hdlg, coninfo);	// NGSA: SSL (and later SSH) fields from the dialog
+#else
 	coninfo->m_issslchecked = wyFalse;
+#endif
 
 	coninfo->m_hprocess      = INVALID_HANDLE_VALUE;
+#ifndef NGSA_SSH_SSL		// NGSA: m_isssh comes from the dialog (ReadFromDialog above)
 	coninfo->m_isssh         = wyFalse;
+#endif
 	coninfo->m_origmysqlport = 0;
 
 #ifndef COMMUNITY	
@@ -463,13 +491,29 @@ ConnectionCommunity::ConnectToMySQL(HWND hdlg, ConnectionInfo *coninfo)
 
     GetKeepAliveInterval(hdlg, coninfo);
 
+#ifdef NGSA_SSH_SSL
+	{	// NGSA: SSL options / SSH tunnel must be in place before mysql_real_connect
+		wyString ngsaerr;
+		if(NgsaConn::PrepareConnection(coninfo, tunnel, mysql, ngsaerr) == wyFalse)
+		{
+			yog_message(hdlg, ngsaerr.GetAsWideChar(), pGlobals->m_appname.GetAsWideChar(), MB_OK | MB_ICONERROR);
+			tunnel->mysql_close(temp);
+			SetCursor(LoadCursor(NULL, IDC_ARROW));
+			return NULL;
+		}
+	}
+#endif
+
 	SetMySQLOptions(coninfo, tunnel, &mysql);
 
-	mysql	= tunnel->mysql_real_connect(mysql, coninfo->m_host.GetString(), coninfo->m_user.GetString(), coninfo->m_pwd.GetString(), NULL, coninfo->m_port, NULL, client | CLIENT_MULTI_RESULTS | CLIENT_REMEMBER_OPTIONS, coninfo->m_url.GetString());
+	mysql	= tunnel->mysql_real_connect(mysql, NGSA_CONNECT_HOST(coninfo), coninfo->m_user.GetString(), coninfo->m_pwd.GetString(), NULL, NGSA_CONNECT_PORT(coninfo), NULL, client | CLIENT_MULTI_RESULTS | CLIENT_REMEMBER_OPTIONS, coninfo->m_url.GetString());	// NGSA: host/port via macro
 
 	if(!mysql)
     {
 		ShowMySQLError(hdlg, tunnel, &temp, NULL, wyTrue);
+#ifdef NGSA_SSH_SSL
+		NgsaConn::StopTunnel(coninfo);	// NGSA: don't leave a plink behind
+#endif
 		tunnel->mysql_close(temp);
 		SetCursor(LoadCursor(NULL, IDC_WAIT));
 		return NULL;
@@ -520,7 +564,7 @@ ConnectionCommunity::OnConnect(HWND hwnd, ConnectionInfo * dbname)
 
 		WriteConnDetails(hwnd);
 
-		ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+		ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 		if(ret == 0)
         {
 		    yog_enddialog(hwnd, (wyInt64)1);
@@ -688,6 +732,22 @@ ConnectionCommunity::OnWmCommandConnDialog(HWND hwnd, WPARAM wparam, LPARAM lpar
 		return;
 	}
 
+#ifdef NGSA_SSH_SSL
+	{	// NGSA: SSH/SSL tab checkboxes and browse buttons
+		wyBool ngsadirty = wyFalse;
+		if(NgsaConn::OnCommand(hwnd, wparam, lparam, &ngsadirty) == wyTrue)
+		{
+			if(ngsadirty == wyTrue)
+			{
+				EnableWindow(GetDlgItem(hwnd, IDC_SAVE), TRUE);
+				EnableWindow(GetDlgItem(hwnd, IDC_CLONECONN), FALSE);
+				m_conndetaildirty = wyTrue;
+			}
+			return;
+		}
+	}
+#endif
+
 	//Handles the common option in 'MySQL' tab
 	HandleCommonConnectOptions(hwnd, dbname, LOWORD(wparam));
 	
@@ -730,30 +790,30 @@ ConnectionCommunity::OnWmCommandConnDialog(HWND hwnd, WPARAM wparam, LPARAM lpar
 		break;
 
 	case IDC_TUNNELHELP:
-		ShowHelp("http://sqlyogkb.webyog.com/article/31-connecting-using-http-tunneling");
+		ShowHelp("help:connecting-using-http-tunneling");
 		break;
 
     case IDC_INITCOMMANDHELP:
-       ShowHelp("http://sqlyogkb.webyog.com/article/33-advanced-connection-settings");
+       ShowHelp("help:advanced-connection-settings");
         break;
 
 	case IDC_SSHHELP:
-		ShowHelp("http://sqlyogkb.webyog.com/article/30-connecting-using-ssh-tunneling");
+		ShowHelp("help:connecting-using-ssh-tunneling");
 		break;
 
     case IDC_SSLHELP:
-        ShowHelp("http://sqlyogkb.webyog.com/article/32-connecting-using-ssl-encryption");
+        ShowHelp("help:connecting-using-ssl-encryption");
 		break;
 
 	case IDC_TIMEOUTHELP:
 	case IDC_COMPRESSHELP:
-		 ShowHelp("http://sqlyogkb.webyog.com/article/28-direct-connection-using-mysql-c-api");
+		 ShowHelp("help:direct-connection");
 		 break;
 	}
 	if((HIWORD(wparam)== STN_CLICKED))
     {
 	    if(LOWORD(wparam)== IDC_LINK)
-			ShowHelp("http://sqlyogkb.webyog.com/article/28-direct-connection-using-mysql-c-api");
+			ShowHelp("help:direct-connection");
 	}
 }
 
@@ -794,15 +854,31 @@ ConnectionCommunity::OnNewSameConnection(HWND hwndactive, MDIWindow *pcquerywnd,
         if(conninfo.m_initcommand.GetLength())
             ExecuteInitCommands(mysqlnew, newtunnel, conninfo.m_initcommand);
 
+#ifdef NGSA_SSH_SSL
+		{	// NGSA: same SSL options (and later SSH tunnel) as the original window
+			wyString ngsaerr;
+			if(NgsaConn::PrepareConnection(&conninfo, newtunnel, mysqlnew, ngsaerr) == wyFalse)
+			{
+				yog_message(pGlobals->m_pcmainwin->m_hwndmain, ngsaerr.GetAsWideChar(), pGlobals->m_appname.GetAsWideChar(), MB_ICONERROR | MB_OK);
+				newtunnel->mysql_close(mysqlnew);
+				delete newtunnel;
+				SetCursor(LoadCursor(NULL, IDC_ARROW));
+				return wyFalse;
+			}
+		}
+#endif
 		SetMySQLOptions(&pcquerywnd->m_conninfo, newtunnel, &mysqlnew);
-		
-        mysqltemp = newtunnel->mysql_real_connect(mysqlnew, mysqlold->host, mysqlold->user, 
-                    mysqlold->passwd, NULL, mysqlold->port, NULL, 
+
+        mysqltemp = newtunnel->mysql_real_connect(mysqlnew, NGSA_CONNECT_HOST(&conninfo), mysqlold->user,	// NGSA: own tunnel for the new window
+                    mysqlold->passwd, NULL, NGSA_CONNECT_PORT(&conninfo), NULL,
 					client | CLIENT_MULTI_RESULTS | CLIENT_REMEMBER_OPTIONS, NULL);
 		
 		if(!mysqltemp)
         {
 			ShowMySQLError(pGlobals->m_pcmainwin->m_hwndmain, oldtunnel, &mysqlnew, NULL, wyTrue);
+#ifdef NGSA_SSH_SSL
+			NgsaConn::StopTunnel(&conninfo);	// NGSA: don't leave a plink behind
+#endif
 			newtunnel->mysql_close(mysqlnew);
 			delete	newtunnel;
 			return wyFalse;
@@ -1057,6 +1133,9 @@ ConnectionCommunity::CreateIconList(HWND hwndmain, wyUInt32 *numicons)
 		ID_DB_TABLE_MAKER,				ID_DB_CREATEVIEW,
 		ID_DB_CREATESTOREDPROCEDURE,	ID_DB_CREATEFUNCTION,
 		ID_DB_CREATETRIGGER,			ID_DB_CREATEEVENT,
+		ID_DB_CREATESEQUENCE,			ID_OBJECT_CREATESEQUENCE,	// NGSA
+		ID_OBJECT_ALTERSEQUENCE,		ID_OBJECT_DROPSEQUENCE,
+		ID_OBJECT_RENAMESEQUENCE,
 		IDM_FILE_SAVEAS,				IDM_HELP_ABOUT,
         IDM_OBCOLOR,					ID_DATASEARCH,
 		ID_DB_DATASEARCH,				ID_HISTORY,									
@@ -1143,6 +1222,9 @@ ConnectionCommunity::CreateIconList(HWND hwndmain, wyUInt32 *numicons)
 		IDI_CREATETABLE,	IDI_CREATEVIEW,
 		IDI_CREATEPROCEDURE, IDI_CREATEFUNCTION,
 		IDI_CREATETRIGGER,	IDI_CREATEEVENT,
+		IDI_CREATESEQUENCE,	IDI_CREATESEQUENCE,	// NGSA
+		IDI_ALTERSEQUENCE,	IDI_SEQUENCE,
+		IDI_RENAME,
 		IDI_SAVEAS,			IDI_MAIN,
         IDI_CONNCOLOR,		IDI_ENTMENU,
 		IDI_ENTMENU,		IDI_HISTORY,			
@@ -1235,6 +1317,9 @@ ConnectionCommunity::CreateSourceInstance(CopyDatabase *copydb)
 		ExecuteInitCommands(tempmysql, copydb->m_newsrctunnel, copydb->m_srcinfo->m_initcommand);
 		
 	SetMySQLOptions(copydb->m_srcinfo, copydb->m_newsrctunnel, &tempmysql, wyTrue);
+#ifdef NGSA_SSH_SSL
+	NgsaConn::ApplyTlsOptions(copydb->m_srcinfo, copydb->m_newsrctunnel, tempmysql);	// NGSA: same TLS rule as the source window
+#endif
 
 	newsrcmysql = copydb->m_newsrctunnel->mysql_real_connect(tempmysql, 
                              (*copydb->m_srcmysql)->host, (*copydb->m_srcmysql)->user, 
@@ -1277,6 +1362,9 @@ ConnectionCommunity::CreateTargetInstance(CopyDatabase *copydb)
 		ExecuteInitCommands(tempmysql, copydb->m_newtargettunnel, copydb->m_tgtinfo->m_initcommand);
 		
 	SetMySQLOptions(copydb->m_tgtinfo, copydb->m_newtargettunnel, &tempmysql);
+#ifdef NGSA_SSH_SSL
+	NgsaConn::ApplyTlsOptions(copydb->m_tgtinfo, copydb->m_newtargettunnel, tempmysql);	// NGSA: same TLS rule as the target window
+#endif
 
 	newtargetmysql = copydb->m_newtargettunnel->mysql_real_connect(tempmysql, 
                              (*copydb->m_targetmysql)->host, (*copydb->m_targetmysql)->user, 
@@ -1346,8 +1434,7 @@ ConnectionCommunity::OnWmCommand(HWND hwndactive, MDIWindow *wnd, WPARAM wparam)
     case ACCEL_VDDTOOL:
     case ID_VDDTOOL:
 		{
-			m_powertoolsID = LOWORD(wparam);
-			GetSQLyogUltimateDialog();
+			// NGSA: Ultimate-only commands; menu entries are removed, remaining shortcuts are no-ops (no upsell dialog)
 			m_powertoolsID = 0;
 		}
 	    break;
@@ -1375,7 +1462,7 @@ ConnectionCommunity::OnWmCommand(HWND hwndactive, MDIWindow *wnd, WPARAM wparam)
 	case ID_SAVEPOINT_CREATESAVEPOINT:	
 	case ID_SAVEPOINT_RELEASESAVEPOINT:
 		{
-			GetSQLyogUltimateDialog();
+			// NGSA: Transactions menu is Ultimate-only and removed; no upsell dialog
 			break;
 		}
 		
@@ -1422,10 +1509,10 @@ ConnectionCommunity::OnClose()
  {
     wyInt32 ret;
 
-    ret = DialogBoxParam(pGlobals->m_hinstance, MAKEINTRESOURCE(IDD_STARTDLG), 
-						   hwndparent , DlgProc, (LPARAM)this);
+   /* ret = DialogBoxParam(pGlobals->m_hinstance, MAKEINTRESOURCE(IDD_STARTDLG), 
+						   hwndparent , DlgProc, (LPARAM)this);*/
 
-	return	ret;
+	return	-1;
  }
 
 INT_PTR CALLBACK
@@ -1584,24 +1671,24 @@ ConnectionCommunity::CloseThreads(MDIWindow *wnd)
 void 
 ConnectionCommunity::OnWmConnectionHelp(HWND hwnd)
 {
-	int tab = TabCtrl_GetCurSel(GetDlgItem(hwnd, IDC_CONNTAB));
+	int tab = NgsaConnTabId(GetDlgItem(hwnd, IDC_CONNTAB));	// bonSQL: tab id, not position
 
 	switch(tab)
 	{
 	case 0:
-		ShowHelp("https://sqlyogkb.webyog.com/article/28-direct-connection-using-mysql-c-api");
+		ShowHelp("help:direct-connection");
 		break;
 	case 1:
-		ShowHelp("http://sqlyogkb.webyog.com/article/31-connecting-using-http-tunneling");
+		ShowHelp("help:connecting-using-http-tunneling");
 		break;
 	case 2:	
-		ShowHelp("http://sqlyogkb.webyog.com/article/30-connecting-using-ssh-tunneling");
+		ShowHelp("help:connecting-using-ssh-tunneling");
 		break;
 	case 3:
-		ShowHelp("http://sqlyogkb.webyog.com/article/32-connecting-using-ssl-encryption");
+		ShowHelp("help:connecting-using-ssl-encryption");
 		break;
 	case 4:
-		ShowHelp("http://sqlyogkb.webyog.com/article/96-advanced-tab");
+		ShowHelp("help:advanced-connection-settings");	// bonSQL: was advanced-tab, the table designer's page
 		break;
 	}
     return;
@@ -1627,14 +1714,14 @@ ConnectionCommunity::RepaintTabs(WPARAM wparam)
 void 
 ConnectionCommunity::OnSchdOdbcImport()
 {
-	GetSQLyogUltimateDialog();
+	// NGSA: Ultimate-only; menu entry removed, shortcut is a no-op (no upsell dialog)
 	return;
 }
 
-void 
+void
 ConnectionCommunity::OnScheduleExport()
 {
-	GetSQLyogUltimateDialog();
+	// NGSA: Ultimate-only; menu entry removed, shortcut is a no-op (no upsell dialog)
 	return;
 }
 
@@ -1709,7 +1796,9 @@ ConnectionCommunity::ConnectToMySQL(ConnectionInfo * coninfo)
 	temp = mysql;
 
 	coninfo->m_hprocess      = INVALID_HANDLE_VALUE;
+#ifndef NGSA_SSH_SSL		// NGSA: m_isssh comes from the session store
 	coninfo->m_isssh         = wyFalse;
+#endif
 	coninfo->m_origmysqlport = 0;
 
 
@@ -1731,13 +1820,29 @@ ConnectionCommunity::ConnectToMySQL(ConnectionInfo * coninfo)
 		}
 	}
 
+#ifdef NGSA_SSH_SSL
+	{	// NGSA: SSL options / SSH tunnel (session restore path; fields come from the session store)
+		wyString ngsaerr;
+		if(NgsaConn::PrepareConnection(coninfo, tunnel, mysql, ngsaerr) == wyFalse)
+		{
+			yog_message(pGlobals->m_pcmainwin->m_hwndmain, ngsaerr.GetAsWideChar(), pGlobals->m_appname.GetAsWideChar(), MB_OK | MB_ICONERROR);
+			tunnel->mysql_close(temp);
+			SetCursor(LoadCursor(NULL, IDC_ARROW));
+			return NULL;
+		}
+	}
+#endif
+
     SetMySQLOptions(coninfo, tunnel, &mysql);
 
-	mysql	= tunnel->mysql_real_connect(mysql, coninfo->m_host.GetString(), coninfo->m_user.GetString(), coninfo->m_pwd.GetString(), NULL, coninfo->m_port, NULL, client | CLIENT_MULTI_RESULTS | CLIENT_REMEMBER_OPTIONS, coninfo->m_url.GetString());
+	mysql	= tunnel->mysql_real_connect(mysql, NGSA_CONNECT_HOST(coninfo), coninfo->m_user.GetString(), coninfo->m_pwd.GetString(), NULL, NGSA_CONNECT_PORT(coninfo), NULL, client | CLIENT_MULTI_RESULTS | CLIENT_REMEMBER_OPTIONS, coninfo->m_url.GetString());	// NGSA: host/port via macro
 
 	if(!mysql)
     {
 		ShowMySQLError(NULL, tunnel, &temp, NULL, wyTrue);
+#ifdef NGSA_SSH_SSL
+		NgsaConn::StopTunnel(coninfo);	// NGSA: don't leave a plink behind
+#endif
 		tunnel->mysql_close(temp);
 		SetCursor(LoadCursor(NULL, IDC_ARROW));
 		return NULL;

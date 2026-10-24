@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc.
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -21,6 +22,7 @@
 #define _FILE_INCLUSION_
 
 #include <windows.h>
+#include "ngsa/NgsaBrand.h"
 #include <windowsx.h>
 #include <commctrl.h>
 #include <crtdbg.h>
@@ -213,9 +215,9 @@
 #define		CONNECTION_FILE								"connection.ini"
 #define		KEYSHORT_FILE								"keyshort.txt"
 #define		VERSIONHIST_FILE							"version.txt"
-#define		SQLYOGINI_FILE								"\\sqlyog.ini"
-#define		INI_FILE									"sqlyog.ini"
-#define		SECTION_NAME								"SQLYOG"
+#define		SQLYOGINI_FILE								"\\" BRAND_CFG_STEM_A ".ini"
+#define		INI_FILE									BRAND_CFG_STEM_A ".ini"
+#define		SECTION_NAME								BRAND_INI_SECTION_A
 #define		VSPLITTER_SECTION_NAME						"VSplitter"
 #define		HSPLITTER_SECTION_NAME						"HSplitter"
 #define		SCHEMASYNC_SECTION							"SchemaSync"
@@ -309,6 +311,8 @@
 #define     NEVENTITEM                                  15
 #define     NPRIMARYKEY									17
 #define		NPRIMARYINDEX								18
+#define     NSEQUENCEITEM                               20	// NGSA: MariaDB sequences; 19 is the filter overlay slot
+#define     NSEQUENCES                                  21
 
 #define		WIDTHBETBUTTON								10
 #define		RIBBONHIGHT									25
@@ -363,11 +367,11 @@
 #define		ACCESSFILE									L"Access Files(*.mdb, *.accdb)\0*.mdb;*.accdb\0All Files(*.*)\0*.*\0"
 #define		EXCELFILE									L"Excel Files(*.xls, *.xlsx, *.xlsm, *.xlsb)\0*.xls;*.xlsx;*.xlsm;*.xlsb\0All Files(*.*)\0*.*\0"
 //#define     QUERYXML                                    L"XML Files(*.queryxml)\0*.queryxml\0All Files(*.*)\0*.*\0"
-//#define     SQLYOG_FILES								L"SQLyog Files(*.sql; *.queryxml; *.schemaxml)\0*.sql;*.queryxml;*.schemaxml\0All Files(*.*)\0*.*\0"  
+//#define     SQLYOG_FILES								L"SQL Files(*.sql; *.queryxml; *.schemaxml)\0*.sql;*.queryxml;*.schemaxml\0All Files(*.*)\0*.*\0"  
 #define		PPKFILE									    L"PuTTY Private Key Files(*.ppk)\0*.ppk\0All Files(*.*)\0*.*\0"
-#define     CONMANFILE                                  L"SQLyog Connection Settings(*.sycs)\0*.sycs;"
-#define		SESSIONFILE									L"SQLyog Session Savepoints(*.ysav)\0*.ysav;"
-#define     SQLYOG_FILES		L"SQLyog Files(*.sql; *.queryxml; *.schemaxml)\0*.sql;*.queryxml;*.schemaxml\0\
+#define     CONMANFILE                                  L"bonSQL Connection Settings(*.sycs)\0*.sycs;"
+#define		SESSIONFILE									L"bonSQL Session Savepoints(*.ysav)\0*.ysav;"
+#define     SQLYOG_FILES		L"SQL Files(*.sql; *.queryxml; *.schemaxml)\0*.sql;*.queryxml;*.schemaxml\0\
 SQL Files(*.sql)\0*.sql\0\
 QueryXML Files(*.queryxml)\0*.queryxml\0\
 SchemaXML Files(*.schemaxml)\0*.schemaxml\0\
@@ -376,19 +380,19 @@ All Files(*.*)\0*.*\0"
 #define		SQL					L"SQL Files(*.sql)\0*.sql\0\
 QueryXML Files(*.queryxml)\0*.queryxml\0\
 SchemaXML Files(*.schemaxml)\0*.schemaxml\0\
-SQLyog Files(*.sql; *.queryxml; *.schemaxml)\0*.sql;*.queryxml;*.schemaxml\0\
+SQL Files(*.sql; *.queryxml; *.schemaxml)\0*.sql;*.queryxml;*.schemaxml\0\
 All Files(*.*)\0*.*\0"
 
 #define     QUERYXML            L"QueryXML Files(*.queryxml)\0*.queryxml\0\
 SchemaXML Files(*.schemaxml)\0*.schemaxml\0\
 SQL Files(*.sql)\0*.sql\0\
-SQLyog Files(*.sql; *.queryxml; *.schemaxml)\0*.sql;*.queryxml;*.schemaxml\0\
+SQL Files(*.sql; *.queryxml; *.schemaxml)\0*.sql;*.queryxml;*.schemaxml\0\
 All Files(*.*)\0*.*\0"
 
 #define		SCHEMAXML	  		L"SchemaXML Files(*.schemaxml)\0*.schemaxml\0\
 QueryXML Files(*.queryxml)\0*.queryxml\0\
 SQL Files(*.sql)\0*.sql\0\
-SQLyog Files(*.sql; *.queryxml; *.schemaxml)\0*.sql;*.queryxml;*.schemaxml\0\
+SQL Files(*.sql; *.queryxml; *.schemaxml)\0*.sql;*.queryxml;*.schemaxml\0\
 All Files(*.*)\0*.*\0"
 
 
@@ -398,29 +402,29 @@ All Files(*.*)\0*.*\0"
 #define		DEFAULT_READONLY_RESULT						_(L"Read-only result")
 #define		BUYLABEL									"click here"
 #if			IS_FROM_WINDOWS_STORE == 1
-#define		BUYURL										"https://www.webyog.com/product/sqlyog/?utm_source=sqlyogapp&utm_medium=referral&utm_campaign=windowsstore"
+#define		BUYURL										""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
 #else
-#define		BUYURL										"http://www.webyog.com/product/sqlyogpricing"
+#define		BUYURL										""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
 #endif
-#define		BUYURL_POWERTOOLS							"http://www.webyog.com/product/sqlyogpricing/?ref=community.powertools"
+#define		BUYURL_POWERTOOLS							""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
 ////#define		BUYURL_NAGBEGIN								"http://www.webyog.com/product/sqlyogpricing/?ref=community.nagbegin"
-#define		BUYURL_TOOLBARRIBBON						"http://www.webyog.com/product/sqlyogpricing/?ref=community.toolbarribbon"
-#define		BUYURL_NAGEND								"http://www.webyog.com/product/sqlyogpricing/?ref=community.nagend"
-#define     HOMEURL_ABOUTUS								"http://www.webyog.com/?ref=community.aboutus"
-#define     BUYURL_STATUSBAR							"http://www.webyog.com/product/sqlyogpricing/?ref=community.statusbar"
-#define     HOMEURL_UPGRADECHECK						"http://www.webyog.com/?ref=community.upgradecheck"
+#define		BUYURL_TOOLBARRIBBON						""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
+#define		BUYURL_NAGEND								""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
+#define     HOMEURL_ABOUTUS								""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
+#define     BUYURL_STATUSBAR							""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
+#define     HOMEURL_UPGRADECHECK						""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
 ////#define		BUYURL_BUYNAGBEGIN							"http://www.webyog.com/product/sqlyogpricing/?ref=community.buynagbegin"
-#define		BUYURL_BUYNAGEND							"http://www.webyog.com/product/sqlyogpricing/?ref=community.buynagend"
-#define		SUPPORTURL									"https://www.webyog.com/customer?ref=sqlyog"
+#define		BUYURL_BUYNAGEND							""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
+#define		SUPPORTURL									""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
 
 #if			IS_FROM_WINDOWS_STORE == 1
-#define     BUYENT										"https://www.webyog.com/product/sqlyog/?utm_source=sqlyogapp&utm_medium=referral&utm_campaign=windowsstore"
+#define     BUYENT										""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
 #else
-#define     BUYENT										"http://www.webyog.com/product/sqlyogpricing"
+#define     BUYENT										""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
 #endif
-#define		IMAGEURL									"http://www.webyog.com"
-#define     PRODUCTURL                                  "https://www.webyog.com/product/sqlyog"
-#define     COMMUNITYURL                                "https://www.webyog.com/community" 
+#define		IMAGEURL									""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
+#define     PRODUCTURL                                  ""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
+#define     COMMUNITYURL                                ""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
 
 // prototypes for some magic numbers
 #define		SIZE_64										64
@@ -1176,6 +1180,7 @@ void SetFocusToEditor(MDIWindow *wnd, HWND hwnd);
 @returns wyTrue if we need to refresh automatically else wyFalse
 */
 wyBool IsRefreshTableData();
+wyBool NgsaIsTableDataDescending();	// NGSA (#2369): Preferences > Others, Table Data opens newest first
 
 /// Setting the size of the tool bar icons
 /**

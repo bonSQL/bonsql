@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -15,6 +16,9 @@
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307, USA
 
 */
+#include "ngsa/NgsaBuildInfo.h"   // NGSA: NGSA_COMMIT (generated at build time)
+#include "ngsa/NgsaDark.h"   // NGSA (#2158)
+#include "ngsa/NgsaBrand.h"   // bonSQL: name, copyright
 #include <ocidl.h>
 #include <unknwn.h>
 #include <olectl.h>
@@ -31,14 +35,14 @@
 #include <CommCtrl.h>
 #include "CCustomComboBox.h"
 #include "wyTheme.h"
+#ifdef NGSA_SSH_SSL
+#include "ngsa/NgsaConnectionExt.h"   // NGSA: SSH/SSL tab support (docs/ngsa/SSH-SSL-FEASIBILITY.md)
+#endif
 
 #include <iomanip>
-#include "modes.h"
-#include "aes.h"
-#include "filters.h"
 
 
-#define COMUNITY_HTTP	_(L"HTTP Tunneling (Ultimate only)")
+#define COMUNITY_HTTP	_(L"HTTP tunnelling is not available")	// bonSQL: was "(Ultimate only)"
 #define COMUNITY_SSH	_(L"SSH Tunneling (Ultimate only)")
 #define COMUNITY_SSL	_(L"SSL Encryption (Ultimate only)")
 
@@ -184,8 +188,8 @@ ConnectionBase::OnAboutInitDialog(HWND hwnd)
 		appname.Sprintf(_("SQLyog %s - MySQL GUI"), pGlobals->m_entlicense.GetString());//Set app name.
 	
 #elif COMMUNITY 
-	SendMessage(hwnd, WM_SETTEXT, 0,(LPARAM)_(L"About SQLyog Community"));
-    appname.SetAs(_("SQLyog Community - MySQL GUI"));
+	SendMessage(hwnd, WM_SETTEXT, 0,(LPARAM)L"About " BRAND_NAME_W);
+    appname.SetAs(BRAND_NAME_A);
 #else
 	SendMessage(hwnd, WM_SETTEXT, 0,(LPARAM)L"About SQLyog Trial");
     appname.SetAs(_("SQLyog Trial - MySQL GUI"));
@@ -199,8 +203,14 @@ ConnectionBase::OnAboutInitDialog(HWND hwnd)
 
 	SetWindowLongPtr(hwndstatic, GWLP_USERDATA,(LONG_PTR)origWndProc);
 
-	msg.Sprintf("%s %s\n%s", appname.GetString(), APPVERSION, COMPANY_COPYRIGHT);
-	SetWindowText(GetDlgItem(hwnd, IDC_APPINFO), msg.GetAsWideChar());
+	// bonSQL: version and build and the copyright holder (no agent line: Andre, 13/10/2026); the SQLyog origin is on the line below
+	// (IDC_REGINFO, ConnectionCommunity::AboutRegInfo)
+	msg.Sprintf("%s %s, build %s", appname.GetString(), APPVERSION, NGSA_COMMIT);
+	{
+		wchar_t info[512];
+		swprintf(info, 512, L"%s\r\n%s", msg.GetAsWideChar(), BRAND_COPYRIGHT_W);
+		SetWindowText(GetDlgItem(hwnd, IDC_APPINFO), info);
+	}
 
 	AboutRegInfo(hwnd);
 
@@ -404,7 +414,7 @@ ConnectionBase::InitConnDialog(HWND hdlg, HWND combo, wyBool toadd, wyBool selec
     rct.right   = 0;
 
 	// Get the complete path.
-	ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	if(ret == 0)
 		return;
 	
@@ -717,7 +727,7 @@ ConnectionBase::NewConnection(HWND hdlg)
 	
 
 	// Get the complete path.
-	ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	if(ret == 0)
 		return 0;
 	
@@ -750,7 +760,10 @@ ConnectionBase::NewConnection(HWND hdlg)
 	conn.Sprintf("Connection %u", concount + 1);
 
     WriteDefValues(hdlg);
-	
+#ifdef NGSA_SSH_SSL
+	NgsaConn::ClearDialog(hdlg);	// NGSA: reset SSH/SSL tab fields for the new connection
+#endif
+
 	index = SendMessage(hwndcombo, CB_ADDSTRING, -1,(LPARAM)pconn.m_connname);
 	wyInt32 width = SetComboWidth(hwndcombo);
 	SendMessage(hwndcombo, CB_SETDROPPEDWIDTH, width + COMBOWIDTHMARGIN, 0);
@@ -797,7 +810,7 @@ ConnectionBase::CloneConnection(HWND hdlg)
 
 	
 	// Get the complete path.
-	ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	if(ret == 0)
 		return 0;
 	
@@ -925,7 +938,7 @@ ConnectionBase::ChangeConnName(HWND hdlg)
 		return wyFalse;
 
 	// Get the complete path.
-	ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	if(ret == 0)
 		return wyFalse;
 
@@ -1041,7 +1054,7 @@ ConnectionBase::CheckConnectionName(wyWChar *connectionname, wyString * currname
 	
 	connectionnamestr.SetAs(connectionname);
 
-	ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	
 	if(ret == 0)
 		return 0;
@@ -1108,7 +1121,7 @@ ConnectionBase::OnConnDialogTabSelChange(HWND hwnd, HWND hwndtab)
 {
 	wyInt32 index;
 		
-    index = TabCtrl_GetCurSel(hwndtab);
+    index = NgsaConnTabId(hwndtab);	// bonSQL: tab id, not position (no HTTP tab)
 	VERIFY(index != -1);
 
 	// whenever the tab changes we loop and hide all the corresponding windows for the other tab and show all of this tab 
@@ -1239,7 +1252,7 @@ ConnectionBase::ShowSshTabOptions(HWND hwnd, wyBool enable)
 
     ShowOrHide(hwnd, sshids, count, enable);
 
-#ifdef COMMUNITY   
+#if defined(COMMUNITY) && !defined(NGSA_SSH_SSL)	// NGSA: SSH tab is live in the NGSA build
 
 	HWND	hwndssh = NULL, hwndsshbutton = NULL;
 
@@ -1281,7 +1294,7 @@ ConnectionBase::ShowSslTabOptions(HWND hwnd, wyBool enable)
 
     ShowOrHide(hwnd, sslids, count, enable);
 
-#ifdef COMMUNITY	
+#if defined(COMMUNITY) && !defined(NGSA_SSH_SSL)	// NGSA: SSL tab is live in the NGSA build
 
 	HWND		hwndssl = NULL, hwndsslbutton = NULL;
 
@@ -1497,6 +1510,8 @@ ConnectionBase::OnComboEraseBkGnd(HWND hwnd, WPARAM wparam, LPARAM lparam)
     rc.top += 2;
     rc.bottom -= 1;
     hbr = GetSysColorBrush(COLOR_WINDOW);
+    if(NgsaDark::IsOn())   // NGSA (#2158): the field colour, like every other combo
+        hbr = NgsaDark::FieldColors(dc);
     FillRect(dc, &rc, hbr);
     //DeleteObject(hbr);
 
@@ -1518,7 +1533,7 @@ ConnectionBase::OnComboEraseBkGnd(HWND hwnd, WPARAM wparam, LPARAM lparam)
         }
         else
         {
-            clrref = RGB(255,255,255);
+            clrref = NgsaDark::IsOn() ? NgsaDark::kInput : RGB(255,255,255);   // NGSA (#2158)
         }
 
         hbr = CreateSolidBrush(clrref);
@@ -1574,7 +1589,7 @@ ConnectionBase::GetInitialDetails(HWND hdlg)
 	value.AddSprintf("%d", versionum);
 
 	// Get the complete path.
-	ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 
     if(ret == 0)
 		return wyFalse;
@@ -1602,8 +1617,8 @@ ConnectionBase::GetInitialDetails(HWND hdlg)
 	//	inipath.SetAs(dirstr.GetString());
 	//	backupfilepath.SetAs(dirstr.GetString());
 
-	//	backupfilepath.Strip(strlen("sqlyog.ini") + 1);
-	//	backupfilepath.AddSprintf("\\sqlyog_backup.ini");
+	//	backupfilepath.Strip(strlen(BRAND_CFG_STEM_A ".ini") + 1);
+	//	backupfilepath.AddSprintf("\\" BRAND_CFG_STEM_A "_backup.ini");
 	//	CopyAndRename(dirstr, inipath, backupfilepath);
 	//	
 	//}
@@ -1746,7 +1761,7 @@ ConnectionBase::GetInitialDetails(HWND hdlg)
 	/* now if somebody has modified the ini to set both of them to be true then we make both of them
 		false */
 	
-	// having read it from the sqlyog.ini file we not put in the textbox.
+	// having read it from the bonsql.ini file we not put in the textbox.
     tempstr.SetAs(hoststr.GetString());
 	VERIFY(ret = SendMessage(GetDlgItem(hdlg, IDC_DLGCONNECT_HOST), WM_SETTEXT, 0, (LPARAM)tempstr.GetAsWideChar()));
 	
@@ -1766,6 +1781,9 @@ ConnectionBase::GetInitialDetails(HWND hdlg)
 	//Get advanced tab details
 	GetAdvancedTabDetailsFromFile(&conninfo, (wyChar *)conn.GetString(), dirstr.GetString());
 	FillAdvancedTab(hdlg, &conninfo);
+#ifdef NGSA_SSH_SSL
+	NgsaConn::LoadFromIni(hdlg, conn.GetString(), dirstr.GetString());	// NGSA: SSH/SSL tab fields
+#endif
 
 	m_currentconn.SetAs(conn.GetString());
 
@@ -1832,34 +1850,19 @@ ConnectionBase::CreateOtherToolButtons(HWND hwndsecondtool, HIMAGELIST hsecondim
 	wyInt32 command[] = {
 						 IDM_TOOL_ADDUSER, ID_IMPORTEXPORT_DBEXPORTTABLES, 
                          ID_IMEX_TEXTFILE, ID_OPEN_COPYDATABASE, 
-                         ID_EXPORT_AS, ID_OBJECT_MAINMANINDEX, ACCEL_MANREL, IDM_SEPARATOR, 
-						 ID_FORMATCURRENTQUERY, 
-						 IDM_DATASYNC, IDC_DIFFTOOL,  
-                         ID_IMPORT_EXTERNAL_DATA, IDC_TOOLS_NOTIFY, 
-                         ID_POWERTOOLS_SCHEDULEEXPORT, ID_QUERYBUILDER,
-						 ID_SCHEMADESIGNER , IDM_SEPARATOR, ID_STARTTRANSACTION_WITHNOMODIFIER,
-						 ID_COMMIT_WITHNOMODIFIER, ID_ROLLBACK_TRANSACTION,
+                         ID_EXPORT_AS, ID_OBJECT_MAINMANINDEX, ACCEL_MANREL,
                          };
 
 	wyUInt32 states[][2] = { 
 		                    {TBSTATE_ENABLED, /*BTNS_WHOLEDROPDOWN*/TBSTYLE_BUTTON}, {TBSTATE_ENABLED, TBSTYLE_BUTTON}, 
 							{TBSTATE_ENABLED, TBSTYLE_BUTTON}, {TBSTATE_ENABLED, TBSTYLE_BUTTON}, 
 		                    {TBSTATE_ENABLED, TBSTYLE_BUTTON}, {TBSTATE_ENABLED, TBSTYLE_BUTTON}, 
-							{TBSTATE_ENABLED, TBSTYLE_BUTTON}, {TBSTATE_ENABLED, BTNS_SEP},
-							{TBSTATE_ENABLED, TBSTYLE_BUTTON}, {TBSTATE_ENABLED, TBSTYLE_BUTTON},
-							{TBSTATE_ENABLED, TBSTYLE_BUTTON}, {TBSTATE_ENABLED, TBSTYLE_BUTTON}, 
-                            {TBSTATE_ENABLED, TBSTYLE_BUTTON}, {TBSTATE_ENABLED, TBSTYLE_BUTTON},  
-                            {TBSTATE_ENABLED, TBSTYLE_BUTTON}, {TBSTATE_ENABLED, TBSTYLE_BUTTON},
-							{TBSTATE_ENABLED, BTNS_SEP}, {TBSTATE_ENABLED, TBSTYLE_BUTTON},
-							{TBSTATE_ENABLED, TBSTYLE_BUTTON}, {TBSTATE_ENABLED, TBSTYLE_BUTTON}}; 
+							{TBSTATE_ENABLED, TBSTYLE_BUTTON}}; 
 
 	
 	wyInt32 imgres[] = {   
 						 IDI_USERMANAGER, IDI_EXPORTDATA, IDI_EXECBATCH, 
-						 IDI_COPYDATABASE, IDI_XMLHTML, IDI_MANINDEX, IDI_MANREL, IDI_USERS,   
-						 IDI_FORMATQUERY, IDI_DBSYNC, IDI_DIFFTOOL, IDI_ODBC,  
-                         IDI_NOTIFICATION, IDI_SCHDEXPORT, IDI_QUERYBUILDER, IDI_SCHEMADESIGNER, 
-						 IDI_USERS, IDI_START_TRANSACTION, IDI_COMMIT, IDI_ROLLBACK 
+						 IDI_COPYDATABASE, IDI_XMLHTML, IDI_MANINDEX, IDI_MANREL, IDI_USERS
 					 };   
    
 
@@ -1994,7 +1997,7 @@ ConnectionBase::SetStatusParts(HWND hwndstatus)
     hdc = GetDC(hwndstatus);
     hfont = (HFONT)SelectObject(hdc, (HGDIOBJ)m_hstatusfont);
 
-    DrawText(hdc, m_statuslink.GetAsWideChar(), -1, &rctext, DT_CALCRECT);
+    //DrawText(hdc, m_statuslink.GetAsWideChar(), -1, &rctext, DT_CALCRECT);
     rctext.left = rctext.right;
     DrawText(hdc, L"WW", -1, &rctext, DT_CALCRECT);
     SelectObject(hdc, (HGDIOBJ)hfont);
@@ -2150,7 +2153,7 @@ ConnectionBase::StatusBarStaticDlgProc(HWND hwnd, UINT message, WPARAM wParam, L
 	case WM_MOUSEMOVE:
         {
 		    SetCursor(LoadCursor(NULL, MAKEINTRESOURCE(32649)));
-            pGlobals->m_pcmainwin->AddTextInStatusBar(L"http://www.webyog.com");
+            pGlobals->m_pcmainwin->AddTextInStatusBar(L"");	// bonSQL: was "http://www.webyog.com"
         }
 		return 0;
 	}
@@ -2495,7 +2498,7 @@ ConnectionBase::GetAdvancedTabDetailsFromFile(ConnectionInfo *conn, wyChar *conn
 
 	if(!path)
 	{
-		if(SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
+		if(SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
 		{
 			return;
 		}
@@ -2537,7 +2540,7 @@ void
 ConnectionBase::FillAdvancedTab(HWND hwnd, ConnectionInfo *conninfo)
 {
     // Disable Object Browser color options when dark theme is active
-	if(wyTheme::IsDarkThemeActive())
+	if(wyFalse)   // NGSA (#2158): the colour options stay enabled in the Dark theme (13.3.1 disabled them)
 	{
 		EnableWindow(GetDlgItem(hwnd, IDC_COLORTXT2) , FALSE);
 		EnableWindow(GetDlgItem(hwnd, IDC_COLORTXT1) , FALSE);
@@ -2741,6 +2744,10 @@ ConnectionBase::SaveServerDetails(HWND hwnd, const wyChar *conn, const wyChar *d
 		wyIni::IniWriteString(conn, "keep_alive", tempstr.GetString(), directory);
 
 	//if the flag is already updated, then skip this section, only for clone connnection, use this block
+#ifdef NGSA_SSH_SSL
+	NgsaConn::SaveToIni(hwnd, conn, directory);	// NGSA: SSH/SSL tab fields
+#endif
+
 	ret = wyIni::IniGetString(conn, "Isencrypted", "0", &isencrypted, directory);
 	if (isencrypted.Compare("0") == 0)
 	{
@@ -2957,7 +2964,7 @@ ConnectionBase::DeleteNewConnectionDetails(HWND hwnd)
 	wyWChar     directory[MAX_PATH + 1]={0}, *lpfileport = 0;
     wyString    conn, dirstr;
 
-	ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	if(ret == 0)
 		return;
 
@@ -3072,14 +3079,14 @@ ConnectionBase::GetKeepAliveInterval(HWND hdlg, ConnectionInfo *coninfo)
 wyBool
 ConnectionBase::CopyAndRename(wyString& directorystr, wyString& fullpathstr, wyString& newpath)
 {
-	fullpathstr.Strip(strlen("sqlyog.ini") + 1);
+	fullpathstr.Strip(strlen(BRAND_CFG_STEM_A ".ini") + 1);
 	if (!CreateDirectory(fullpathstr.GetAsWideChar(), NULL))
 	{
 		/* If the folder is there , then we will continue the process, otherwise we will return wyFalse */
 		if (GetLastError() != ERROR_ALREADY_EXISTS)
 			return wyFalse;
 	}
-	fullpathstr.AddSprintf("\\sqlyog_backup.ini");
+	fullpathstr.AddSprintf("\\" BRAND_CFG_STEM_A "_backup.ini");
 	if (CopyFile(directorystr.GetAsWideChar(), fullpathstr.GetAsWideChar(), TRUE))
 	{
 		if (_wrename(directorystr.GetAsWideChar(), newpath.GetAsWideChar()) == 0)

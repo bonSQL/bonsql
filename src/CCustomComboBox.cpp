@@ -313,7 +313,7 @@ CCustomComboBox::CreateConnectionList(){
     wyChar	    seps[] = ";";
 
 	// Get the complete path.
-	ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	if(ret == 0)
 		return;
 	
@@ -374,7 +374,7 @@ CCustomComboBox::OnHandleEditChange(){
 	wyWChar     directory[MAX_PATH + 1], *lpfileport=0;
     wyString	dirstr;
 	
-	ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	if(ret == 0)
 		return wyFalse;
 	dirstr.SetAs(directory);

@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -17,6 +18,7 @@
 */
 
 #include "TableTabInterface.h"
+#include "ngsa/NgsaDark.h"   // NGSA (#2158)
 #include "TableTabInterfaceTabMgmt.h"
 #include "TabEditorSplitter.h"
 #include "TabFields.h"
@@ -39,6 +41,7 @@
 #define VK_KEY_3        0x33
 #define VK_KEY_4        0x34
 #define VK_KEY_5        0x35
+#define VK_KEY_6        0x36
 #define VK_KEY_9        0x39
 
 extern	PGLOBALS		pGlobals;
@@ -46,11 +49,11 @@ extern	PGLOBALS		pGlobals;
 #define IDC_TABMGMT		1234
 
 /*
-#define EDITRELERROR _(L"There in no direct way to ALTER a Foreign Key in MySQL.\n"\
-L"SQLyog will drop the existing one and create a new one using the existing name for the key.\n"\
-L"If necessary preconditions for a Foreign Key (matching data types, appropriate indexes etc.) are not met, the create process will fail."\
-L"The result will be that existing FK is dropped and no new one is created.\n"\
-L"You can avoid this by specifying a new name for the key.\n\n"\
+#define EDITRELERROR _(L"There is no direct way to alter a foreign key in MySQL or MariaDB.\n"\
+L"bonSQL will drop the existing key and create a new one with the same name.\n"\
+L"If the preconditions for a foreign key (matching data types, suitable indexes and so on) are not met, creating it will fail: "\
+L"the existing key will then have been dropped and no new one created.\n"\
+L"You can avoid this by giving the key a new name.\n\n"\
 L"Do you want to continue?")
 */
 TableTabInterface::TableTabInterface(HWND hwnd, wyBool open_in_dialog, wyBool isaltertable, wyInt32 setfocustotab):TabTypes(hwnd)
@@ -66,6 +69,7 @@ TableTabInterface::TableTabInterface(HWND hwnd, wyBool open_in_dialog, wyBool is
 	m_isfkforndbcluster		=	wyFalse;
 
     m_dirtytab              =   wyFalse;
+    m_ngsasaving            =   wyFalse;   // NGSA (B17)
     m_disableenchange       =   wyFalse;
 
     m_hstattblname          =   NULL;
@@ -105,7 +109,7 @@ TableTabInterface::TableTabInterface(HWND hwnd, wyBool open_in_dialog, wyBool is
 	if(open_in_dialog == wyFalse)
 		m_objbkcolor            =    CreateSolidBrush(BK_COLOR);
 	else
-		m_objbkcolor            =    CreateSolidBrush(GetSysColor(COLOR_3DFACE));
+		m_objbkcolor            =    CreateSolidBrush(NgsaDark::Panel(GetSysColor(COLOR_3DFACE)));
 
 	m_mdiwnd					= GetActiveWin();
 }
@@ -420,7 +424,7 @@ TableTabInterface::SaveTable(wyBool &queryexecuted)
 
             tblname.FindAndReplace("`", "``");
 
-            tempstr.Sprintf("Alter table `%s`.`%s` %s", m_dbname.GetString(), tblname.GetString(), dropcreate[0]->GetString());
+            tempstr.Sprintf("%sAlter table `%s`.`%s` %s", NgsaAlterPrefix(), m_dbname.GetString(), tblname.GetString(), dropcreate[0]->GetString());	// NGSA (M8)
             
             if(!ExecuteQuery(tempstr))
             {
@@ -470,7 +474,7 @@ TableTabInterface::SaveTable(wyBool &queryexecuted)
 
             if(dropcreate[1]->GetLength())
             {
-                tempstr.Sprintf("Alter table `%s`.`%s` %s", m_dbname.GetString(), tblname.GetString(), dropcreate[1]->GetString());
+                tempstr.Sprintf("%sAlter table `%s`.`%s` %s", NgsaAlterPrefix(), m_dbname.GetString(), tblname.GetString(), dropcreate[1]->GetString());	// NGSA (M8)
 
                 if(!ExecuteQuery(tempstr))
                 {
@@ -899,6 +903,14 @@ TableTabInterface::OnWmCommand(HWND hwnd, WPARAM wParam, LPARAM lParam)
 wyBool
 TableTabInterface::OnClickSave(wyBool onclosetab, wyBool showsuccessmsg)
 {
+    /* NGSA (B17): the save pumps messages while the ALTER runs; OnTabClosing refuses to close the tab
+       while this flag is set, so the object cannot be deleted under us. Cleared on every return. */
+    struct NgsaSavingGuard
+    {
+        wyBool &flag, old;
+        NgsaSavingGuard(wyBool &f) : flag(f), old(f) { flag = wyTrue; }
+        ~NgsaSavingGuard() { flag = old; }
+    } ngsasaving(m_ngsasaving);
     wyBool      queryexecuted = wyFalse, newtabopened = wyFalse, error = wyFalse;
     wyInt32     prevtabind = -1;
     HCURSOR		hCursor;
@@ -1153,16 +1165,24 @@ TableTabInterface::OnWMSysKeyDown(wyUInt32 currenttab, WPARAM wParam, LPARAM lPa
         PostMessage(m_hwnd, UM_SETFOCUS, (WPARAM)m_ptabintmgmt->m_tabfk->m_hgridfk, 0);
         return 0;
 
+    // bonSQL: the tabs are 1 Columns, 2 Indexes, 3 Foreign Keys, 4 Check Constraint, 5 Advanced, 6 SQL Preview;
+    // the keys below used the order from before the Check Constraint tab existed (HELP-FINDINGS B10)
     case VK_KEY_4:
-        if(m_ptabintmgmt->GetActiveTabImage() != IDI_TABLEOPTIONS)
+        if(m_ptabintmgmt->GetActiveTabImage() != IDI_CHECKCONSTRAINT)
             m_ptabintmgmt->SelectTab(3);
-        PostMessage(m_hwnd, UM_SETFOCUS, (WPARAM)m_ptabintmgmt->m_tabadvprop->m_heditcomment, 0);
+        PostMessage(m_hwnd, UM_SETFOCUS, (WPARAM)m_ptabintmgmt->m_tabcheck->m_hgridtblcheckconst, 0);
         return 0;
 
     case VK_KEY_5:
+        if(m_ptabintmgmt->GetActiveTabImage() != IDI_TABLEOPTIONS)
+            m_ptabintmgmt->SelectTab(4);
+        PostMessage(m_hwnd, UM_SETFOCUS, (WPARAM)m_ptabintmgmt->m_tabadvprop->m_heditcomment, 0);
+        return 0;
+
+    case VK_KEY_6:
     case VK_KEY_9:
         if(m_ptabintmgmt->GetActiveTabImage() != IDI_TABPREVIEW)
-            m_ptabintmgmt->SelectTab(4);
+            m_ptabintmgmt->SelectTab(5);
         PostMessage(m_hwnd, UM_SETFOCUS, (WPARAM)m_ptabintmgmt->m_tabpreview->m_hwndpreview, 0);
         return 0;
     }
@@ -1195,6 +1215,17 @@ TableTabInterface::GetComboboxValue(HWND hcombobox, wyString& value)
     return wyTrue;
 }
 
+// NGSA (M8): MariaDB refuses ALTER TABLE on a system-versioned table unless the session allows history
+// changes (error 4119, measured 09/10/2026 on 11.8). KEEP keeps the history rows; SET STATEMENT scopes it
+// to this one statement, so the user's session setting is untouched.
+const wyChar*
+TableTabInterface::NgsaAlterPrefix()
+{
+    if(m_isaltertable && m_ptabintmgmt && m_ptabintmgmt->m_tabfields && m_ptabintmgmt->m_tabfields->m_ngsaversioned)
+        return "SET STATEMENT system_versioning_alter_history=KEEP FOR ";
+    return "";
+}
+
 wyBool
 TableTabInterface::GenerateQuery(wyString &query, wyBool showmsg)
 {
@@ -1217,7 +1248,7 @@ TableTabInterface::GenerateQuery(wyString &query, wyBool showmsg)
     dbname.FindAndReplace("`", "``");	
 
     if(m_isaltertable)
-        tempquery.AddSprintf("Alter table %s%s%s.%s%s%s ", backtick, dbname.GetString(), backtick,
+        tempquery.AddSprintf("%sAlter table %s%s%s.%s%s%s ", NgsaAlterPrefix(), backtick, dbname.GetString(), backtick,	// NGSA (M8)
 			backtick, tblnameold.GetString(), backtick);
     else
     {
@@ -1636,6 +1667,8 @@ TableTabInterface::TableTabInterfaceWndProc(HWND hwnd, UINT message, WPARAM wPar
         break;
 
     case WM_CTLCOLORSTATIC:
+        if(tabint && NgsaDark::IsOn())   // NGSA (#2158): labels on the dark panel
+            return (INT_PTR)NgsaDark::LabelColors((HDC)wParam);
         if(tabint->m_hstattblname == (HWND) lParam  || tabint->m_hstatdbname == (HWND) lParam  || 
             tabint->m_hstattabletype == (HWND) lParam   || tabint->m_hstatcharset == (HWND) lParam   || 
 			tabint->m_hstatcollation == (HWND) lParam)
@@ -1648,6 +1681,8 @@ TableTabInterface::TableTabInterfaceWndProc(HWND hwnd, UINT message, WPARAM wPar
         break;
 
 	case WM_CTLCOLORBTN:
+		if(tabint && NgsaDark::IsOn())   // NGSA (#2158)
+			return (INT_PTR)NgsaDark::LabelColors((HDC)wParam);
 		if(tabint->m_hbtnsave == (HWND) lParam || tabint->m_hbtncancelchanges == (HWND) lParam || tabint->m_hbtncancel == (HWND) lParam )
         {
             SetBkMode((HDC)wParam, TRANSPARENT);
@@ -1667,11 +1702,11 @@ TableTabInterface::TableTabInterfaceWndProc(HWND hwnd, UINT message, WPARAM wPar
             {
                 /*DoubleBuffer db(hwnd, hdc);
                 db.EraseBackground(GetSysColor(COLOR_3DFACE));*/
-                DoubleBuffer::EraseBackground(hwnd, hdc, NULL, GetSysColor(COLOR_3DFACE));
+                DoubleBuffer::EraseBackground(hwnd, hdc, NULL, NgsaDark::Panel(GetSysColor(COLOR_3DFACE)));
                 GetClientRect(hwnd, &temp);
                 temp.left = temp.right - 14;
                 temp.top = temp.bottom - 14;
-                DrawFrameControl(hdc, &temp, DFC_SCROLL, DFCS_SCROLLSIZEGRIP);                
+                NgsaDark::FrameControl(hdc, &temp, DFC_SCROLL, DFCS_SCROLLSIZEGRIP, NgsaDark::IsOn());                
                 //db.PaintWindow();
             }
             else
@@ -1679,12 +1714,12 @@ TableTabInterface::TableTabInterfaceWndProc(HWND hwnd, UINT message, WPARAM wPar
                 if(tabint->m_isbuffereddraw == wyTrue)
                 {
                     DoubleBuffer db(hwnd, hdc);
-                    db.EraseBackground(BK_COLOR);
+                    db.EraseBackground(NgsaDark::Panel(BK_COLOR));
                     db.PaintWindow();
                 }
                 else
                 {
-                    DoubleBuffer::EraseBackground(hwnd, hdc, NULL, BK_COLOR);
+                    DoubleBuffer::EraseBackground(hwnd, hdc, NULL, NgsaDark::Panel(BK_COLOR));
                 }
             }
 
@@ -1723,9 +1758,9 @@ TableTabInterface::TableTabInterfaceWndProc(HWND hwnd, UINT message, WPARAM wPar
     case WM_HELP:
         {
             if(tabint->m_isaltertable)
-                ShowHelp("http://sqlyogkb.webyog.com/article/88-alter-table-in-database");
+                ShowHelp("help:alter-table-in-database");
             else
-                ShowHelp("http://sqlyogkb.webyog.com/article/85-create-table");
+                ShowHelp("help:create-table");
             return 1;
         }
         break;
@@ -1802,7 +1837,7 @@ TableTabInterface::SetFont(HWND hgrid)
 	height = GetDeviceCaps( hdc, LOGPIXELSY );
 
 	// Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	
 	dirstr.SetAs(directory);
 	// fill with default data.
@@ -2222,6 +2257,14 @@ TableTabInterface::OnTabClosing(wyBool ismanual)
     wyInt32			    ret;
     TableTabInterface   *tabint;
     wyBool              retvalue = wyFalse;
+
+    // NGSA (B17): the table is still being saved; deleting the tab now would free this object under OnClickSave
+    if(m_ngsasaving == wyTrue)
+    {
+        MessageBox(m_hwnd, _(L"This table is still being saved.\nClose the tab when the save has finished."),
+                   pGlobals->m_appname.GetAsWideChar(), MB_OK | MB_ICONINFORMATION);
+        return wyFalse;
+    }
 
     m_ptabintmgmt->m_tabpreview->GenerateQuery(query);
     GetRenameQuery(renamequery);
@@ -2833,7 +2876,7 @@ TableTabInterface::OnDlgWMPaint(HWND hwnd)
 	PAINTSTRUCT ps;
 	
 	VERIFY(hdc = BeginPaint(hwnd, &ps));
-    DoubleBuffer::EraseBackground(hwnd, hdc, NULL, GetSysColor(COLOR_3DFACE));
+    DoubleBuffer::EraseBackground(hwnd, hdc, NULL, NgsaDark::Panel(GetSysColor(COLOR_3DFACE)));
 	EndPaint(hwnd, &ps);
 }
 

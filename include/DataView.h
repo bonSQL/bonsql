@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc.
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1293,6 +1294,15 @@ class DataView
         @returns wyTrue on success else wyFalse
         */
         wyBool                  GenerateDuplicatesQuery(wyInt32 row, wyString &query);
+
+        /// NGSA (B11): first unique index usable as a row identity (Non_unique = 0, not PRIMARY, every
+        /// column NOT NULL, in the result set, from this table, not virtual); fills keycols with the
+        /// result-set column indexes and returns their count, 0 when there is none
+        wyInt32                 NgsaUniqueKeyColumns(wyInt32* keycols, wyInt32 maxcols);
+
+        /// NGSA (B11): WHERE terms identifying one row when there is no usable primary key: the unique
+        /// index columns if any, else every column; *isunique tells which
+        wyBool                  NgsaAddRowIdentity(MYSQL_ROW data, wyString& where, wyBool* isunique);
 
         ///Function check whether the column is of binary type
         /**

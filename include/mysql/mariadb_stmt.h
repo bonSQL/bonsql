@@ -1,19 +1,19 @@
 /************************************************************************
-  
+
    This library is free software; you can redistribute it and/or
    modify it under the terms of the GNU Library General Public
    License as published by the Free Software Foundation; either
    version 2 of the License, or (at your option) any later version.
-   
+
    This library is distributed in the hope that it will be useful,
    but WITHOUT ANY WARRANTY; without even the implied warranty of
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
    Library General Public License for more details.
-   
+
    You should have received a copy of the GNU Library General Public
    License along with this library; if not, write to the Free
    Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
-   MA 02111-1301, USA 
+   MA 02111-1301, USA
 
    Part of this code includes code from PHP's mysqlnd extension
    (written by Andrey Hristov, Georg Richter and Ulf Wendel), freely
@@ -23,6 +23,8 @@
 
 #define MYSQL_NO_DATA 100
 #define MYSQL_DATA_TRUNCATED 101
+#define MYSQL_DATA_MALFORMED 102
+
 #define MYSQL_DEFAULT_PREFETCH_ROWS (unsigned long) 1
 
 /* Bind flags */
@@ -33,6 +35,12 @@
   (!((stmt)->mysql->server_capabilities & CLIENT_MYSQL) &&\
     ((stmt)->mysql->extension->mariadb_server_capabilities & \
     (MARIADB_CLIENT_STMT_BULK_OPERATIONS >> 32))))
+
+#define MARIADB_STMT_BULK_UNIT_RESULTS_SUPPORTED(stmt)\
+  ((stmt)->mysql && \
+  (!((stmt)->mysql->server_capabilities & CLIENT_MYSQL) &&\
+    ((stmt)->mysql->extension->mariadb_client_flag & \
+    (MARIADB_CLIENT_BULK_UNIT_RESULTS >> 32))))
 
 #define CLEAR_CLIENT_STMT_ERROR(a) \
 do { \
@@ -63,7 +71,8 @@ enum enum_stmt_attr_type
   STMT_ATTR_STATE,
   STMT_ATTR_CB_USER_DATA,
   STMT_ATTR_CB_PARAM,
-  STMT_ATTR_CB_RESULT
+  STMT_ATTR_CB_RESULT,
+  STMT_ATTR_SQL_STATEMENT
 };
 
 enum enum_cursor_type
@@ -88,7 +97,7 @@ enum enum_indicator_type
   bulk PS flags
 */
 #define STMT_BULK_FLAG_CLIENT_SEND_TYPES 128
-#define STMT_BULK_FLAG_INSERT_ID_REQUEST 64
+#define STMT_BULK_FLAG_SEND_UNIT_RESULTS 64
 
 typedef enum mysql_stmt_state
 {
@@ -152,9 +161,9 @@ typedef struct st_mysql_error_info
   char sqlstate[SQLSTATE_LENGTH + 1];
 } mysql_error_info;
 
-typedef int  (*mysql_stmt_fetch_row_func)(MYSQL_STMT *stmt, unsigned char **row);
+typedef int  (*mysql_stmt_fetch_row_func)(MYSQL_STMT *stmt, unsigned char **row, unsigned long *length);
 typedef void (*ps_result_callback)(void *data, unsigned int column, unsigned char **row);
-typedef my_bool *(*ps_param_callback)(void *data, MYSQL_BIND *bind, unsigned int row_nr);
+typedef my_bool (*ps_param_callback)(void *data, MYSQL_BIND *bind, unsigned int row_nr);
 
 struct st_mysql_stmt
 {
@@ -198,6 +207,7 @@ struct st_mysql_stmt
   ps_result_callback result_callback;
   ps_param_callback param_callback;
   size_t request_length;
+  MARIADB_CONST_STRING sql;
 };
 
 typedef void (*ps_field_fetch_func)(MYSQL_BIND *r_param, const MYSQL_FIELD * field, unsigned char **row);

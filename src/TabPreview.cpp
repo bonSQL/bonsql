@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -17,8 +18,10 @@
 */
 
 #include "TabPreview.h"
+#include "ngsa/NgsaDark.h"   // NGSA (#2158)
 #include "MDIWindow.h"
 #include "Global.h"
+#include "ngsa/NgsaScintilla.h"   // NGSA (M13): Scintilla 5 lexer selection
 #include "GUIHelper.h"
 #include "CommonHelper.h"
 #include "TableTabInterface.h"
@@ -73,6 +76,17 @@ TabPreview::Create()
 	SendMessage(m_hwndpreview, SCI_SETWRAPMODE, SC_WRAP_NONE, SC_WRAP_NONE);
     SetFont();
     EditorFont::SetColor(m_hwndpreview, wyTrue);
+    if(NgsaDark::IsOn() && EditorFont::IsMainWindowEditor(m_hwndpreview))   // NGSA (#2158): the symbol margin uses STYLE_LINENUMBER
+    {
+        EDITORCOLORINFO ec;
+        if(wyTheme::GetEditorColors(&ec))
+        {
+            if(ec.m_mask & EDITORCF_MARGIN)
+                SendMessage(m_hwndpreview, SCI_STYLESETBACK, STYLE_LINENUMBER, ec.m_margin);
+            if(ec.m_mask & EDITORCF_LINENUMBER)
+                SendMessage(m_hwndpreview, SCI_STYLESETFORE, STYLE_LINENUMBER, ec.m_linenumber);
+        }
+    }
     SendMessage(m_hwndpreview, SCI_SETSCROLLWIDTH, 20, 0);
     SendMessage(m_hwndpreview, SCI_SETSCROLLWIDTHTRACKING, (WPARAM)1, 0);
     UpdateWindow(m_hwndpreview);
@@ -157,7 +171,7 @@ TabPreview::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
     case WM_HELP:
         {
-            ShowHelp("http://sqlyogkb.webyog.com/article/97-preview");
+            ShowHelp("help:preview");
         }
         return 1;
         break;
@@ -324,7 +338,7 @@ TabPreview::SetScintillaValues(HWND hwndedit)
     static  wyChar *func_xpm[] = FUNC_XPM;
 	static  wyChar *alias_xpm[] = ALIAS_XPM;
 
-    SendMessage(m_hwndpreview, SCI_SETLEXERLANGUAGE, 0, (LPARAM)"MySQL");
+    NgsaScintilla::SetLexer(m_hwndpreview, "MySQL");	// NGSA (M13)
 	SendMessage(m_hwndpreview, SCI_USEPOPUP, 0, 0);
     SendMessage(hwndedit, SCI_CLEARREGISTEREDIMAGES, 0, 0);
 	SendMessage(hwndedit, SCI_REGISTERIMAGE, 8, (LPARAM)alias_xpm);

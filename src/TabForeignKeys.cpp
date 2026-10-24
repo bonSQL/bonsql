@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -18,6 +19,7 @@
 
 
 #include "TabForeignKeys.h"
+#include "ngsa/NgsaDark.h"   // NGSA (#2158)
 #include "MDIWindow.h"
 #include "Global.h"
 #include "Include.h"
@@ -40,11 +42,11 @@ L"5) Selected columns were not found in the Reference Table\n" \
 L"6) Constraint name already exists\n" \
 L"\nPlease correct the errors."
 
-#define EDITRELERROR _(L"There in no direct way to ALTER a Foreign Key in MySQL.\r\n" \
-L"SQLyog will drop the existing one and create a new one using the existing name for the key.\r\n" \
-L"If necessary preconditions for a Foreign Key (matching data types, appropriate indexes etc.) are not met, the create process will fail. " \
-L"The result will be that existing FK is dropped and no new one is created.\r\n" \
-L"You can avoid this by specifying a new name for the key.\r\n\r\n" \
+#define EDITRELERROR _(L"There is no direct way to alter a foreign key in MySQL or MariaDB.\r\n" \
+L"bonSQL will drop the existing key and create a new one with the same name.\r\n" \
+L"If the preconditions for a foreign key (matching data types, suitable indexes and so on) are not met, creating it will fail: " \
+L"the existing key will then have been dropped and no new one created.\r\n" \
+L"You can avoid this by giving the key a new name.\r\n\r\n" \
 L"Do you want to continue?")
 
 //..Structure Destructor
@@ -1790,6 +1792,10 @@ TabForeignKeys::FetchInitValuesHelper(wyUInt32 row, wyString &fkey)
     
 
     wyString onupdate, ondelete;
+    // NGSA (#2290): SHOW CREATE TABLE leaves out the server's default rule, and the default differs:
+    // MariaDB omits RESTRICT (and prints NO ACTION), MySQL 8+ omits NO ACTION (and prints RESTRICT).
+    // information_schema.REFERENTIAL_CONSTRAINTS confirmed this on 10.11/11.8 and 8.0/8.4/9.
+    const wyChar* omittedrule = m_mdiwnd->m_ngsacaps.fkOmittedRuleIsRestrict ? "Restrict" : "No Action";
     //..Fetching and setting ForeignKey OnUpdate value
     switch(fkeyparam->m_onupdate)
     {
@@ -1806,7 +1812,7 @@ TabForeignKeys::FetchInitValuesHelper(wyUInt32 row, wyString &fkey)
         onupdate.SetAs("Restrict");
         break;
     default:
-        onupdate.SetAs("");
+        onupdate.SetAs(omittedrule);
         break;
     }
 
@@ -1830,7 +1836,7 @@ TabForeignKeys::FetchInitValuesHelper(wyUInt32 row, wyString &fkey)
         break;
 
     default:
-        ondelete.SetAs("");
+        ondelete.SetAs(omittedrule);
         break;
     }
     cwrapobj->m_oldval->m_onupdate.SetAs(onupdate);
@@ -2679,7 +2685,7 @@ TabForeignKeys::SrcColsDlgWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM
 
     case WM_HELP:
         {
-            ShowHelp("http://sqlyogkb.webyog.com/article/90-fk-in-mysql-and-sqlyog");
+            ShowHelp("help:foreign-keys");
         }
         return 1;
 
@@ -2756,7 +2762,7 @@ TabForeignKeys::TgtColsDlgWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM
 
     case WM_HELP:
         {
-            ShowHelp("http://sqlyogkb.webyog.com/article/90-fk-in-mysql-and-sqlyog");
+            ShowHelp("help:foreign-keys");
         }
         return 1;
 
@@ -4841,13 +4847,13 @@ TabForeignKeys::OnWMPaint(HWND hwnd)
 	RECT temp;
 	
 	VERIFY(hdc = BeginPaint(hwnd, &ps));
-	DoubleBuffer::EraseBackground(hwnd, hdc, NULL, GetSysColor(COLOR_3DFACE));
+	DoubleBuffer::EraseBackground(hwnd, hdc, NULL, NgsaDark::Panel(GetSysColor(COLOR_3DFACE)));
 	EndPaint(hwnd, &ps);
 
 	//To paint the resize grip
 	VERIFY(hdc = BeginPaint(hwndstat, &ps));
     GetClientRect(hwndstat, &temp);
-    DrawFrameControl(hdc, &temp, DFC_SCROLL, DFCS_SCROLLSIZEGRIP);
+    NgsaDark::FrameControl(hdc, &temp, DFC_SCROLL, DFCS_SCROLLSIZEGRIP, NgsaDark::IsOn());
     EndPaint(hwnd, &ps);
 }
 

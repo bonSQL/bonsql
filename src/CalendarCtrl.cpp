@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -43,6 +44,7 @@ CalendarCtrl::~CalendarCtrl()
 
 #ifndef COMMUNITY
 //Sets the parameters of the control in Formview
+#ifndef COMMUNITY   // Ultimate's Form view only
 HWND
 CalendarCtrl::CreateForm(htmlayout::dom::element hwndedit, FormView *pfv, wyBool isDate)
 {
@@ -84,6 +86,7 @@ CalendarCtrl::CreateForm(htmlayout::dom::element hwndedit, FormView *pfv, wyBool
 	
 	return m_hwnd;
 }
+#endif
 
 #endif
 
@@ -749,7 +752,7 @@ CalendarCtrl::GetPreferenceForNowButton()
 	wyString	dirstr;
 
 	// Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	ret = wyIni::IniGetInt(GENERALPREFA, "ShowServerDate", 1, dirstr.GetString());
 
@@ -785,11 +788,13 @@ CalendarCtrl::OnLButtonDown(LPARAM lParam)
 
 #ifndef COMMUNITY
 ///Public function to invoke the calendar popup from formview
+#ifndef COMMUNITY   // Ultimate's Form view only
 HWND DisplayCalendarForm(htmlayout::dom::element hwndedit, FormView *pfv , wyBool isDate)
 {
 	CalendarCtrl *c = new CalendarCtrl();
 	return c->CreateForm(hwndedit, pfv, isDate);
 }
+#endif
 #endif
 
 HWND DisplayCalendarGrid(HWND hwndParent, DataView *dv, wyBool isDate, wyBool isResult)

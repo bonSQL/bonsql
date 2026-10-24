@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -18,6 +19,7 @@
 
 
 #include "TabIndexes.h"
+#include "ngsa/NgsaDark.h"   // NGSA (#2158)
 #include "MDIWindow.h"
 #include "Global.h"
 #include "GUIHelper.h"
@@ -643,9 +645,9 @@ TabIndexes::GridWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
     case GVN_HELP:
         {
             if(ptabind->m_ptabmgmt->m_tabinterfaceptr->m_isaltertable)
-                ShowHelp("http://sqlyogkb.webyog.com/article/92-alter-index");
+                ShowHelp("help:alter-index");
             else
-                ShowHelp("http://sqlyogkb.webyog.com/article/91-create-index");
+                ShowHelp("help:create-index");
         }
     }
     return 1;
@@ -875,7 +877,6 @@ TabIndexes::ScanEntireRow(wyUInt32  currentrow, wyInt32 currentcol, wyString& cu
 
     //..Return if both oldval and newval are equal
 	if (cwrapobj->m_oldval == cwrapobj->m_newval) {
-		CustomGrid_SetColumnReadOnly(m_hgridindexes, row, INDEXVISIBILITY, wyTrue);
 		return wyFalse;
 	}
 
@@ -962,14 +963,10 @@ TabIndexes::ScanEntireRow(wyUInt32  currentrow, wyInt32 currentcol, wyString& cu
     {
         delete cwrapobj->m_newval;
         cwrapobj->m_newval = cwrapobj->m_oldval;
-		// it is different somehow....enable visibility back...
-		CustomGrid_SetColumnReadOnly(m_hgridindexes, row, INDEXVISIBILITY, wyTrue);
 		CustomGrid_SetText(m_hgridindexes, row, INDEXVISIBILITY, cwrapobj->m_newval->m_visible.GetString());
 	}
-	else {
-		// it is different somehow....enable visibility back...
-		CustomGrid_SetColumnReadOnly(m_hgridindexes, row, INDEXVISIBILITY, wyFalse);
-	}
+	// bonSQL: Visibility can be edited on its own; it used to be read-only until another cell in the row had
+	// changed (HELP-FINDINGS B11). The PRIMARY index keeps its guard in OnBeginEdit.
     return wyTrue;
 }
 
@@ -2050,8 +2047,7 @@ TabIndexes::FillInitValues()
 		
 		// could be invisible, in whihc case value is "", but set it anyhow even if only for clarity
 		CustomGrid_SetText(m_hgridindexes, row, INDEXVISIBILITY, cwrapobj->m_oldval->m_visible.GetString());
-
-		CustomGrid_SetColumnReadOnly(m_hgridindexes, row, INDEXVISIBILITY, wyTrue);
+		// bonSQL: not read-only (HELP-FINDINGS B11)
 			
 		if(m_ismysql553)
 			CustomGrid_SetText(m_hgridindexes, row, INDEXCOMMENT,cwrapobj->m_oldval->m_indexcomment.GetString());
@@ -2132,7 +2128,7 @@ TabIndexes::Refresh(IndexInfo *indexInfo)
 		indcolsstr.AddSprintf("%s%s%s", m_backtick, tmpstr.GetString(), m_backtick);
 		if (indcol->m_lenth != -1)
 			indcolsstr.AddSprintf("(%d)", indcol->m_lenth);
-		indcolsstr.AddSprintf("%s", indcol->m_order);
+		indcolsstr.AddSprintf("%s", indcol->m_order.GetString());	// NGSA: wyString passed to a variadic call (v143 rejects it)
 		indcolsstr.Add(", ");
 
 		indcol = (IndexColumn*)indcol->m_next;
@@ -2193,9 +2189,9 @@ TabIndexes::ColDlgWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
     case WM_HELP:
         {
             if(ptabind->m_ptabmgmt->m_tabinterfaceptr->m_isaltertable)
-                ShowHelp("http://sqlyogkb.webyog.com/article/92-alter-index");
+                ShowHelp("help:alter-index");
             else
-                   ShowHelp("http://sqlyogkb.webyog.com/article/91-create-index");
+                   ShowHelp("help:create-index");
         }
         return 1;
 
@@ -3474,7 +3470,7 @@ TabIndexes::HandleIndexesOnDatatypeChange(IndexesStructWrapper* indexwrap, Field
 
         if(iindcols->m_lenth != -1)
             indcolsstr.AddSprintf("(%d)", iindcols->m_lenth);
-		indcolsstr.AddSprintf(" %d", iindcols->m_order);
+		indcolsstr.AddSprintf(" %s", iindcols->m_order.GetString());	// NGSA: was %d with a wyString object
         indcolsstr.Add(", ");
 
         iindcols = (IndexColumn *)iindcols->m_next;
@@ -3529,7 +3525,7 @@ TabIndexes::HandleIndexesOnFieldRename(IndexesStructWrapper* indexwrap, FieldStr
             
         if(iindcols->m_lenth != -1)
             indcolsstr.AddSprintf("(%d)", iindcols->m_lenth);
-		indcolsstr.AddSprintf(" %s", iindcols->m_order);
+		indcolsstr.AddSprintf(" %s", iindcols->m_order.GetString());	// NGSA: wyString passed to a variadic call
         indcolsstr.Add(", ");
 
         iindcols = (IndexColumn *)iindcols->m_next;
@@ -3599,7 +3595,7 @@ TabIndexes::HandleIndexesOnFieldDelete(IndexesStructWrapper* indexwrap, FieldStr
             
             if(iindcols->m_lenth != -1)
                 indcolsstr.AddSprintf("(%d)", iindcols->m_lenth);
-			indcolsstr.AddSprintf("%s", iindcols->m_order);
+			indcolsstr.AddSprintf("%s", iindcols->m_order.GetString());	// NGSA: wyString passed to a variadic call
             indcolsstr.Add(", ");
 
             iindcols = (IndexColumn *)iindcols->m_next;
@@ -3774,13 +3770,13 @@ TabIndexes::OnWMPaint(HWND hwnd)
 	RECT temp;
 	
 	VERIFY(hdc = BeginPaint(hwnd, &ps));
-	DoubleBuffer::EraseBackground(hwnd, hdc, NULL, GetSysColor(COLOR_3DFACE));
+	DoubleBuffer::EraseBackground(hwnd, hdc, NULL, NgsaDark::Panel(GetSysColor(COLOR_3DFACE)));
 	EndPaint(hwnd, &ps);
 
 	//To paint the resize grip
 	VERIFY(hdc = BeginPaint(hwndstat, &ps));
     GetClientRect(hwndstat, &temp);
-    DrawFrameControl(hdc, &temp, DFC_SCROLL, DFCS_SCROLLSIZEGRIP);
+    NgsaDark::FrameControl(hdc, &temp, DFC_SCROLL, DFCS_SCROLLSIZEGRIP, NgsaDark::IsOn());
     EndPaint(hwnd, &ps);
 }
 

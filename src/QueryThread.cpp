@@ -786,11 +786,20 @@ AddExplainQueryResults(QueryResultList * queryresult, wyString &str, TabMgmt * t
         {
             index = 0;
         }
-        elem = (QueryResultElem*)queryresult->GetFirst();	
-    
+#ifdef COMMUNITY
+        // bonSQL: the paid editions showed the plan in their profiler tab; without it the EXPLAIN ran and
+        // nothing showed its rows. Show them on Result tabs, as running EXPLAIN by hand does (HELP-FINDINGS B1).
+        tab->DeleteAllItem(wyFalse);
+#endif
+        elem = (QueryResultElem*)queryresult->GetFirst();
+
 	    while(elem)
 	    {
-		
+#ifdef COMMUNITY
+            if(elem->param)
+                tab->AddRecordTab(count++, elem->param);
+#endif
+
     #ifndef COMMUNITY
 		
 		//Creates the Analyzer tab for 1st Result tab
@@ -875,13 +884,7 @@ AddQueryResults(QueryResultList * queryresult, wyString &str, TabMgmt * tab, wyI
             indexResultTab = isTabResultAdded? indexResultTab : count;
             isTabResultAdded = wyTrue;
 			tab->AddRecordTab(count++, elem->param);
-#ifdef COMMUNITY
-			if(count == 1)
-			{
-				tab->AddAnalyzerTab(1);
-				count ++;
-			}
-#endif
+			// bonSQL: no "Analyzer" tab; in Community it was only an Ultimate upsell (docs/ngsa/UPSELLS.md)
 		}
 
 #ifndef COMMUNITY

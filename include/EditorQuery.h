@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc.
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -66,14 +67,14 @@ public:
     @param stop         : IN Stop condition
 	@returns wyTrue on success
     */
-	wyBool				ExecuteAllQuery(wyInt32 *stop);
+	wyBool				ExecuteAllQuery(wyInt32 *stop, wyBool isedit = wyFalse);
 
     // Executes selected queries.
     /**
     @param stop         : IN Stop condition
 	@returns wyTrue on success
     */
-	wyBool				ExecuteSelQuery(wyInt32 *stop);
+	wyBool				ExecuteSelQuery(wyInt32 *stop, wyBool isedit = wyFalse);
 
     /// Function to handle after query execution finish
 	/**

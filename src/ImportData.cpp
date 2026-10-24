@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -120,7 +121,7 @@ ExportMultiFormat::DlgProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam
 		break;
 
 	case WM_HELP:
-		ShowHelp("http://sqlyogkb.webyog.com/article/100-import-csv-data-using-load-local");
+		ShowHelp("help:import-csv-data-using-load-local");
 		return TRUE;
 
 	case WM_COMMAND:
@@ -155,7 +156,7 @@ ExportMultiFormat::DlgProcXML(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 		break;
 
 	case WM_HELP:
-		ShowHelp("http://sqlyogkb.webyog.com/article/101-import-XML-data-using-load-local");
+		ShowHelp("help:import-xml-data-using-load-local");
 		return TRUE;
 
 	case WM_COMMAND:
@@ -767,7 +768,7 @@ ExportMultiFormat::ImportData(wyBool iscsv)
 	m_tunnel->mysql_free_result(res);
 
 	/* starting from 4.07 we show it in a different dialog that allows us to show warnings */
-	warn.Create(m_hwnd, m_tunnel, m_mysql, L"CSV Import Result", msg.GetAsWideChar());
+	warn.Create(m_hwnd, m_tunnel, m_mysql, iscsv ? _(L"CSV Import Result") : _(L"XML Import Result"), msg.GetAsWideChar());
 	SetCursor(LoadCursor(NULL, IDC_ARROW));
 	return wyTrue;
 
@@ -1064,7 +1065,7 @@ CRestore::DlgProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 		break;
 
 	case WM_HELP:
-		ShowHelp("http://sqlyogkb.webyog.com/article/117-excute-sql-script");
+		ShowHelp("help:execute-sql-script");
 		return 1;
 
 	case WM_COMMAND:

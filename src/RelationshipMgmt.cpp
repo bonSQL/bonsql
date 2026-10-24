@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -37,11 +38,11 @@ L"5) Selected columns were not found in the Reference Table\n"\
 L"6) Constraint name already exists\n"\
 L"\nPlease correct the errors."
 
-#define EDITRELERROR L"There in no direct way to ALTER a Foreign Key in MySQL.\n"\
-L"SQLyog will drop the existing one and create a new one using the existing name for the key.\n"\
-L"If necessary preconditions for a Foreign Key (matching data types, appropriate indexes etc.) are not met, the create process will fail."\
-L"The result will be that existing FK is dropped and no new one is created.\n"\
-L"You can avoid this by specify a new name for the key.\n"\
+#define EDITRELERROR L"There is no direct way to alter a foreign key in MySQL or MariaDB.\n"\
+L"bonSQL will drop the existing key and create a new one with the same name.\n"\
+L"If the preconditions for a foreign key (matching data types, suitable indexes and so on) are not met, creating it will fail: "\
+L"the existing key will then have been dropped and no new one created.\n"\
+L"You can avoid this by giving the key a new name.\n\n"\
 L"Do you want to continue?"
 
 
@@ -135,7 +136,7 @@ RelationshipMgmt::DlgProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 	break;
 
 	case WM_HELP:
-		ShowHelp("FK%20In%20SQLyog.htm");
+		ShowHelp("help:foreign-keys");
 		return wyTrue;
 
 	case WM_INITGRIDVALUES:

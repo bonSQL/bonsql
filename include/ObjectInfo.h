@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc.
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -207,6 +208,10 @@ class ObjectInfo
 	@return wyTrue on success else return wyFalse
 	*/
 	wyBool		ShowEventInfoHtmlFormat(MDIWindow *pcquerywnd, MYSQL_RES *myres, const wyChar *event);
+
+	/// NGSA: one sequence (DDL + current state)
+	wyBool		ShowSequenceInfo(MDIWindow *pcquerywnd, const wyChar *db, const wyChar *sequence);
+	wyBool		ShowSequenceInfoHtmlFormat(MDIWindow *pcquerywnd, MYSQL_RES *myres, const wyChar *sequence);
 	
 	/// Function to show information about all Tables.
     /**
@@ -321,6 +326,10 @@ class ObjectInfo
     @returns wyTrue on success else wyFalse
     */
 	wyBool		ShowAllEventsHtmlFormat(MDIWindow *pcquerywnd, MYSQL_RES *myres, const wyChar *db, OBJECT obj);
+
+	/// NGSA: all sequences of a database
+	wyBool		ShowAllSequences(MDIWindow *pcquerywnd, const wyChar *db, OBJECT obj);
+	wyBool		ShowAllSequencesHtmlFormat(MDIWindow *pcquerywnd, MYSQL_RES *myres, const wyChar *db, OBJECT obj);
 
     /// Generic function to add the information whose query is passed as parameter.
     /**
@@ -675,6 +684,10 @@ class ObjectInfo
 
         //Event infos
         MYSQL_RES*  m_eventinfores;
+
+        //NGSA: Sequence infos (DDL / list) and one sequence's state
+        MYSQL_RES*  m_seqinfores;
+        MYSQL_RES*  m_seqstateres;
 
         //DBB ddl info
         MYSQL_RES*  m_dbddlinfores;

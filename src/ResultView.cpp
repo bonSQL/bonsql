@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -438,7 +439,7 @@ ResultView::OnTableComboChange()
         if(!pelem->m_pdb->GetLength())
         {
             //popup a message box
-            ret = MessageBox(m_hwndgrid, _(L"SQLyog could not identify the database for the selected table. \r\n\r\nDo you want to use the active database context?"),
+            ret = MessageBox(m_hwndgrid, _(L"bonSQL could not identify the database for the selected table. \r\n\r\nDo you want to use the active database context?"),
                 pGlobals->m_appname.GetAsWideChar(), MB_YESNOCANCEL | MB_ICONQUESTION);
 
             //if the user want to continue with the current data base selected
@@ -747,12 +748,14 @@ ResultView::AddToolButtons()
 
     for(j = 0, k = 0, size = sizeof(command2)/sizeof(command2[0]); j < size; j++)	
 	{
-#ifndef COMMUNITY
+#ifdef COMMUNITY
+        if(command2[j] == ID_VIEW_FORMVIEW)	// NGSA: Community never has a form view; hide the button instead of showing an upsell
+#else
         if(command2[j] == ID_VIEW_FORMVIEW && !m_formview)
+#endif
         {
             continue;
         }
-#endif
         hicon = (HICON)LoadImage(pGlobals->m_hinstance, MAKEINTRESOURCE(imgres2[j]), IMAGE_ICON, ICON_SIZE, ICON_SIZE, LR_DEFAULTCOLOR);
 		i = ImageList_AddIcon(m_himglist, hicon);
 		DestroyIcon(hicon);
@@ -1343,7 +1346,7 @@ ResultView::SelectTableComboItem(wyInt32 i)
 void 
 ResultView::ShowHelpFile()
 {
-    ShowHelp("http://sqlyogkb.webyog.com/article/65-result-tab");
+    ShowHelp("help:result-tab");
 }
 
 //function to get auto incrment column index

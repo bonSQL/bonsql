@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc.
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -21,7 +22,7 @@
 
 #include "Include.h"
 #include "Global.h"
-#include "htmlayout.h"
+// bonSQL: no HTMLayout
 
 class Announcements;
 class Announcements
@@ -41,7 +42,6 @@ public:
 	/**
 	@return void
 	*/
-	static BOOL                 HandleEvents(HELEMENT he, BEHAVIOR_EVENT_PARAMS& params);
 	wyBool						HandleAnnouncementsCheck(HWND hwnd);
 	void						Resize(HWND hwnd, wyBool isstart = wyFalse);
 	static LRESULT	CALLBACK	AnnounceWndMainProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);

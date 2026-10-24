@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -17,6 +18,7 @@
 */
 
 #include <mlang.h>
+#include "ngsa/NgsaDark.h"   // NGSA (#2158)
 #include <stdio.h>
 #include <crtdbg.h>
 #include <winuser.h>
@@ -174,6 +176,8 @@ HWND CreateCustomGrid(HWND hwndparent, wyInt32 x, wyInt32 y, wyInt32 width,
 		return NULL;
 
 	SendMessage(hwndgrid, GVM_SETLONGDATA, 0, lparam);
+	if(isdefaultgrid && (NgsaDark::IsOn() || NgsaDark::InMainWindow(hwndparent)))	// NGSA (#2158): main-window grids follow the theme; in the Dark theme every grid does
+		isdefaultgrid = wyFalse;
 	CustomGrid_SetDefaultGrid(hwndgrid, isdefaultgrid);
 	CustomGrid_SetColorInfo(hwndgrid, NULL);
 
@@ -215,6 +219,8 @@ HWND CreateCustomGridEx(HWND hwndparent, wyInt32 x, wyInt32 y, wyInt32 width, wy
 	SendMessage(hwndgrid, GVM_SETLONGDATA, 0, lparam);
 
 	CustomGrid_SetExtendedStyle(hwndgrid, styles);
+	if(isdefaultgrid && (NgsaDark::IsOn() || NgsaDark::InMainWindow(hwndparent)))	// NGSA (#2158): main-window grids follow the theme; in the Dark theme every grid does
+		isdefaultgrid = wyFalse;
 	CustomGrid_SetDefaultGrid(hwndgrid, isdefaultgrid);
 	CustomGrid_SetColorInfo(hwndgrid, NULL);
 
@@ -1970,7 +1976,7 @@ CCustGrid::CreateFonts()
 #ifdef DEF_PGLOBAL
     wyWChar		directory[MAX_PATH+1] = {0}, *lpfileport = 0;
 
-	ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	if(ret == 0)
 		return wyFalse;
 	
@@ -2125,7 +2131,7 @@ CCustGrid::DrawInitialButton(PGVCOLNODE pgvnode, HDC hdcmem, RECT *rect)
         else
             rect->right = GV_DEFWIDTH;
     }
-    VERIFY(DrawFrameControl(hdcmem, rect, DFC_BUTTON, DFCS_BUTTONPUSH|DFCS_FLAT));
+    VERIFY(NgsaDark::FrameControl(hdcmem, rect, DFC_BUTTON, DFCS_BUTTONPUSH|DFCS_FLAT, m_isdarktheme));
 
 	//// filling the rectangle with border color and then setting the gradient
 	VERIFY(hbrush = CreateSolidBrush(m_colorinfo.m_cellborder));
@@ -2180,12 +2186,12 @@ CCustGrid::DrawInitialButton(PGVCOLNODE pgvnode, HDC hdcmem, RECT *rect)
         //    rect2.right = rect->right - 7;
 
         if(m_selallinfo.checkstate&BST_PUSHED)
-            DrawFrameControl(hdcmem, rect, DFC_BUTTON, style|DFCS_PUSHED);
+            NgsaDark::FrameControl(hdcmem, rect, DFC_BUTTON, style|DFCS_PUSHED, m_isdarktheme);
         else if(m_selallinfo.checkstate == BST_CHECKED)
-            DrawFrameControl(hdcmem, rect, DFC_BUTTON, style|DFCS_CHECKED);
+            NgsaDark::FrameControl(hdcmem, rect, DFC_BUTTON, style|DFCS_CHECKED, m_isdarktheme);
         else if(m_selallinfo.checkstate == BST_INDETERMINATE)
         {
-            DrawFrameControl(hdcmem, rect, DFC_BUTTON, style);
+            NgsaDark::FrameControl(hdcmem, rect, DFC_BUTTON, style, m_isdarktheme);
             if((rect->bottom - rect->top) > (rect->right - rect->left))
             {
                 side = (rect->right - rect->left);
@@ -2222,7 +2228,7 @@ CCustGrid::DrawInitialButton(PGVCOLNODE pgvnode, HDC hdcmem, RECT *rect)
             FillRect(hdcmem, &rect2, hbrush);
         }
         else
-            DrawFrameControl(hdcmem, rect, DFC_BUTTON, style);
+            NgsaDark::FrameControl(hdcmem, rect, DFC_BUTTON, style, m_isdarktheme);
     }
 
     
@@ -2750,7 +2756,7 @@ CCustGrid::DrawButtonForColumn(HDC hdcmem, PGVCOLUMN pgvcol, RECT *rect, wyUInt3
 	vertex[1].Green = GetGValue(m_colorinfo.m_gridcolheader) << 8;//0xc600;
 	vertex[1].Blue = GetBValue(m_colorinfo.m_gridcolheader) << 8;//0xb800;
 		
-	DrawFrameControl(hdcmem, rect, DFC_BUTTON, state);
+	NgsaDark::FrameControl(hdcmem, rect, DFC_BUTTON, state, m_isdarktheme);
 
 	VERIFY(hbrush = CreateSolidBrush(m_colorinfo.m_cellborder));
 	VERIFY(FillRect(hdcmem, rect, hbrush));
@@ -2758,6 +2764,68 @@ CCustGrid::DrawButtonForColumn(HDC hdcmem, PGVCOLUMN pgvcol, RECT *rect, wyUInt3
 
 	//Column header gradient
 	SetGradient(hdcmem, vertex, wyFalse);
+}
+
+// bonSQL: the opaque part of a 16 px icon (alpha above 40), so that it can be centred by what is actually
+// drawn rather than by its box. Remembered for the last two icons asked for (the sort icons are shared handles).
+static RECT
+NgsaIconInk(HICON icon)
+{
+	static HICON    cached[2] = {NULL, NULL};
+	static RECT     cachedink[2];
+	static wyInt32  next = 0;
+	RECT            ink = {0, 0, 16, 16};
+	ICONINFO        ii = {0};
+
+	for(wyInt32 i = 0; i < 2; i++)
+		if(cached[i] == icon)
+			return cachedink[i];
+
+	if(!GetIconInfo(icon, &ii))
+		return ink;
+
+	if(ii.hbmColor)
+	{
+		BITMAPINFO  bi = {0};
+		DWORD       px[16 * 16];
+		HDC         hdc = GetDC(NULL);
+
+		bi.bmiHeader.biSize = sizeof(bi.bmiHeader);
+		bi.bmiHeader.biWidth = 16;
+		bi.bmiHeader.biHeight = -16;		// top-down
+		bi.bmiHeader.biPlanes = 1;
+		bi.bmiHeader.biBitCount = 32;
+		bi.bmiHeader.biCompression = BI_RGB;
+
+		if(GetDIBits(hdc, ii.hbmColor, 0, 16, px, &bi, DIB_RGB_COLORS) == 16)
+		{
+			wyInt32 l = 16, t = 16, r = -1, b = -1;
+
+			for(wyInt32 y = 0; y < 16; y++)
+				for(wyInt32 x = 0; x < 16; x++)
+					if((px[y * 16 + x] >> 24) > 40)
+					{
+						if(x < l) l = x;
+						if(x > r) r = x;
+						if(y < t) t = y;
+						if(y > b) b = y;
+					}
+
+			if(r >= 0)
+				SetRect(&ink, l, t, r + 1, b + 1);
+		}
+
+		ReleaseDC(NULL, hdc);
+		DeleteObject(ii.hbmColor);
+	}
+
+	if(ii.hbmMask)
+		DeleteObject(ii.hbmMask);
+
+	cached[next] = icon;
+	cachedink[next] = ink;
+	next = 1 - next;
+	return ink;
 }
 
 void
@@ -2773,12 +2841,22 @@ CCustGrid::DrawColumnIcons(HDC hdcmem, wyInt32 *ncurcol, RECT *recttemp)
 
 	if(iconid == GV_ASCENDING || iconid == GV_DESCENDING)
 	{
-		if(iconid == GV_ASCENDING)
-			VERIFY(icon = LoadIcon(pGlobals->m_hinstance, MAKEINTRESOURCE(IDI_SORTASC)));
-		else
-			VERIFY(icon = LoadIcon(pGlobals->m_hinstance, MAKEINTRESOURCE(IDI_SORTDSC)));
+		// bonSQL: the 16 px image of the icon, drawn at 16 px. With LoadIcon and DI_DEFAULTSIZE the system icon
+		// size (32 px) was used, which only went unnoticed while the .ico held a single 16 px image; the
+		// bonSQL icons hold 16 to 48 px and the arrow covered the column name.
+		VERIFY(icon = (HICON)LoadImage(pGlobals->m_hinstance, MAKEINTRESOURCE(iconid == GV_ASCENDING ? IDI_SORTASC : IDI_SORTDSC),
+									   IMAGE_ICON, 16, 16, LR_SHARED));
 
-		VERIFY(DrawIconEx(hdcmem, recttemp->left, recttemp->top, icon, 16, 16, 2, NULL, DI_NORMAL | DI_COMPAT | DI_DEFAULTSIZE));
+		// bonSQL (Andre, 13/10/2026): the heading stays where it is; the visible part of the icon is centred in
+		// the space between the column's left edge (3 px left of recttemp) and the heading (SORTICONWIDTH right
+		// of it), across and down
+		RECT    ink = NgsaIconInk(icon);
+		wyInt32 gapl = recttemp->left - 3, gapr = recttemp->left + SORTICONWIDTH;
+		wyInt32 gapt = recttemp->top + 1, gapb = recttemp->bottom - 1;
+		wyInt32 x = gapl + ((gapr - gapl) - (ink.right - ink.left)) / 2 - ink.left;
+		wyInt32 y = gapt + ((gapb - gapt) - (ink.bottom - ink.top)) / 2 - ink.top;
+
+		VERIFY(DrawIconEx(hdcmem, x, y, icon, 16, 16, 0, NULL, DI_NORMAL));
 	}
 
 	if(iconid == GV_ASCENDING || iconid == GV_DESCENDING)
@@ -2884,14 +2962,15 @@ CCustGrid::PaintColumnHeader(HDC hdcmem, RECT *recttemp, wyInt32 *ncurcol)
 	vertex[1].x     = recttemp->right+1;
 	vertex[1].y     = recttemp->bottom-1; 
 
-	vertex[0].Red   = 0x4C00;
-	vertex[0].Green = 0xAA00;
-	vertex[0].Blue  = 0xF900;
+	// NGSA (#2158): the theme's selected column header colour (Dark.xml colheader color2); the light default is this blue
+	vertex[0].Red   = GetRValue(m_colorinfo.m_gridselcolheader) << 8;
+	vertex[0].Green = GetGValue(m_colorinfo.m_gridselcolheader) << 8;
+	vertex[0].Blue  = GetBValue(m_colorinfo.m_gridselcolheader) << 8;
 	vertex[0].Alpha = 0x0000;
 
-	vertex[1].Red   = 0x4C00;
-	vertex[1].Green = 0xAA00;
-	vertex[1].Blue  = 0xF900;
+	vertex[1].Red   = vertex[0].Red;
+	vertex[1].Green = vertex[0].Green;
+	vertex[1].Blue  = vertex[0].Blue;
 	
     logtext("PaintColumnHeader");
 
@@ -2906,15 +2985,15 @@ CCustGrid::PaintRowHeader(HDC hdcmem, RECT *recttemp, wyInt32 *ncurrow)
     RECT        temprect;
 	TRIVERTEX	vertex[2];
 
-	//Gradient variables
-	vertex[0].Red   = 0xffffff;
-	vertex[0].Green = 0xffffff;
-	vertex[0].Blue  = 0xffffff;
-	vertex[0].Alpha = 0xffffff;
+	//Gradient variables (NGSA #2158: the selected row header is white in the light theme; in the Dark theme the selected column header colour)
+	vertex[0].Red   = NgsaDark::IsOn() ? (GetRValue(m_colorinfo.m_gridselcolheader) << 8) : 0xffff;
+	vertex[0].Green = NgsaDark::IsOn() ? (GetGValue(m_colorinfo.m_gridselcolheader) << 8) : 0xffff;
+	vertex[0].Blue  = NgsaDark::IsOn() ? (GetBValue(m_colorinfo.m_gridselcolheader) << 8) : 0xffff;
+	vertex[0].Alpha = 0xffff;
 
-	vertex[1].Red   = 0xffffff;
-	vertex[1].Green = 0xffffff;
-	vertex[1].Blue  = 0xffffff;
+	vertex[1].Red   = vertex[0].Red;
+	vertex[1].Green = vertex[0].Green;
+	vertex[1].Blue  = vertex[0].Blue;
 	
     if(m_curselrow == *ncurrow)
 	{
@@ -3070,7 +3149,7 @@ CCustGrid::DrawRowButtons(HDC hdcmem, RECT *rect, RECT *recttemp, wyInt32 *rowco
 	// now we see whether we need a checkbox somewhere.
 	if(m_exstyle & GV_EX_ROWCHECKBOX)
     {
-		VERIFY(DrawFrameControl(hdcmem, rect, DFC_BUTTON, DFCS_BUTTONPUSH|DFCS_FLAT));
+		VERIFY(NgsaDark::FrameControl(hdcmem, rect, DFC_BUTTON, DFCS_BUTTONPUSH|DFCS_FLAT, m_isdarktheme));
 
 		VERIFY(hbrush = CreateSolidBrush(m_colorinfo.m_cellborder)); //RGB(255, 255, 255));
 		VERIFY(FillRect(hdcmem, rect, hbrush));
@@ -3113,7 +3192,7 @@ CCustGrid::DrawRowButtons(HDC hdcmem, RECT *rect, RECT *recttemp, wyInt32 *rowco
 			recttemp->top+=2;
 			recttemp->bottom--;
 		   						
-			VERIFY(DrawFrameControl(hdcmem, recttemp, DFC_BUTTON, state));
+			VERIFY(NgsaDark::FrameControl(hdcmem, recttemp, DFC_BUTTON, state, m_isdarktheme));
 		}
 		else {
 			if (m_isdarktheme && m_curselrow == *rowcount)
@@ -3128,7 +3207,7 @@ CCustGrid::DrawRowButtons(HDC hdcmem, RECT *rect, RECT *recttemp, wyInt32 *rowco
     {
 		state = DFCS_BUTTONPUSH | DFCS_FLAT;
 			
-		VERIFY(DrawFrameControl(hdcmem, rect, DFC_BUTTON, state));
+		VERIFY(NgsaDark::FrameControl(hdcmem, rect, DFC_BUTTON, state, m_isdarktheme));
 		
 		VERIFY(hbrush = CreateSolidBrush(m_colorinfo.m_cellborder)); //RGB(255, 255, 255));
 		VERIFY(FillRect(hdcmem, rect, hbrush));
@@ -3435,7 +3514,7 @@ wyUInt32    state = 0;
 		else
 			state = DFCS_BUTTONCHECK | DFCS_FLAT;
 
-        VERIFY(DrawFrameControl(hdcmem, rowrect, DFC_BUTTON, state));
+        VERIFY(NgsaDark::FrameControl(hdcmem, rowrect, DFC_BUTTON, state, m_isdarktheme));
 	} 
     else 
     {
@@ -3446,7 +3525,7 @@ wyUInt32    state = 0;
         else 
 			state = DFCS_BUTTONCHECK | DFCS_FLAT;
 
-		VERIFY(DrawFrameControl(hdcmem, rowrect, DFC_BUTTON, state));
+		VERIFY(NgsaDark::FrameControl(hdcmem, rowrect, DFC_BUTTON, state, m_isdarktheme));
 	}
 }
 
@@ -3473,8 +3552,8 @@ wyString    tempstr, disptextstr;
 	  	tempstr.SetAs(temp);
 
 		// now we draw a button.
-		//VERIFY(DrawFrameControl(hdcmem, rowrect, DFC_BUTTON, DFCS_BUTTONPUSH));
-		VERIFY(DrawFrameControl(hdcmem, rowrect, DFC_BUTTON, DFCS_BUTTONPUSH|DFCS_FLAT));
+		//VERIFY(NgsaDark::FrameControl(hdcmem, rowrect, DFC_BUTTON, DFCS_BUTTONPUSH, m_isdarktheme));
+		VERIFY(NgsaDark::FrameControl(hdcmem, rowrect, DFC_BUTTON, DFCS_BUTTONPUSH|DFCS_FLAT, m_isdarktheme));
 		DrawText(hdcmem, tempstr.GetAsWideChar(), len, rowrect, DT_VCENTER | DT_SINGLELINE | DT_CENTER);
 	}	
     else if(pgvcolbutton->uIsButtonVis)
@@ -3670,7 +3749,7 @@ CCustGrid::DrawCell(HDC hdcmem, wyInt32 row, wyInt32 col, PGVCOLNODE topcolstruc
             {
                 if(row == m_curselrow)
                 {
-                    hpenthick = CreatePen(PS_SOLID, 1, m_colorinfo.m_selcelltext);
+                    hpenthick = CreatePen(PS_SOLID, 1, NgsaDark::IsOn() ? RGB(0x8A, 0x8A, 0x90) : m_colorinfo.m_selcelltext);
                     hpenthick = (HPEN)SelectObject(hdcmem, hpenthick);
                     MoveToEx(hdcmem, rect->left - 2, rect->top - 1, NULL);
                     LineTo(hdcmem, rect->right, rect->top - 1);
@@ -3685,7 +3764,7 @@ CCustGrid::DrawCell(HDC hdcmem, wyInt32 row, wyInt32 col, PGVCOLNODE topcolstruc
             {
                 if(row == m_curselrow && col == m_curselcol)
                 {
-                    hpenthick = CreatePen(PS_SOLID, 2, m_colorinfo.m_selcelltext);
+                    hpenthick = CreatePen(PS_SOLID, 2, NgsaDark::IsOn() ? RGB(0x8A, 0x8A, 0x90) : m_colorinfo.m_selcelltext);
                     hpenthick = (HPEN)SelectObject(hdcmem, hpenthick);
                     MoveToEx(hdcmem, rect->left - 1, rect->top - 1, NULL);
                     LineTo(hdcmem, rect->right, rect->top - 1);
@@ -3733,7 +3812,7 @@ CCustGrid::DrawCell(HDC hdcmem, wyInt32 row, wyInt32 col, PGVCOLNODE topcolstruc
         if((row == m_curselrow &&  col == m_curselcol) && topcolstruct && topcolstruct->isshow == wyTrue)
         {
 		    VERIFY(hbrgrey = CreateSolidBrush(m_colorinfo.m_selrowcolor));
-			VERIFY(hpenthick = CreatePen(PS_SOLID, 2, m_colorinfo.m_selcelltext)); //RGB(59,125,187)));
+			VERIFY(hpenthick = CreatePen(PS_SOLID, 2, NgsaDark::IsOn() ? RGB(0x8A, 0x8A, 0x90) : m_colorinfo.m_selcelltext)); //RGB(59,125,187)));
 		    hbrold	= (HBRUSH)SelectObject(hdcmem, hbrgrey); // no ret
 		    hpenold = (HPEN)SelectObject(hdcmem, hpenthick); // no ret
 
@@ -3859,9 +3938,9 @@ CCustGrid::DrawButtonWithText(HDC hdc, RECT * rect, const wyChar * text, const w
 	rect->right -= 5;
 
 	if(iscombodrop == wyFalse)
-		VERIFY(DrawFrameControl(hdc, rect, DFC_BUTTON, DFCS_BUTTONPUSH | DFCS_FLAT));
+		VERIFY(NgsaDark::FrameControl(hdc, rect, DFC_BUTTON, DFCS_BUTTONPUSH | DFCS_FLAT, m_isdarktheme));
 	else
-		VERIFY(DrawFrameControl(hdc, rect, DFC_SCROLL, DFCS_SCROLLDOWN | DFCS_FLAT));
+		VERIFY(NgsaDark::FrameControl(hdc, rect, DFC_SCROLL, DFCS_SCROLLDOWN | DFCS_FLAT, m_isdarktheme));
 
 	rect->left += 2;
 

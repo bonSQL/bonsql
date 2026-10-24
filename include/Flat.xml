@@ -1,4 +1,4 @@
-<sqlyogtheme name="Flat" sysmenu="no">
+<bonsqltheme name="Flat" sysmenu="no">
 	<framewindow>
 		<background color1="0xFFFFFF" />
 		<!-- text active="16777215" inactive="16777215" / -->
@@ -100,4 +100,4 @@
 		<hyperlink color1="0xFFFF80" />
 	</tabletab>
 
-</sqlyogtheme>
+</bonsqltheme>

@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -18,6 +19,7 @@
 
 
 #include "PreferenceBase.h"
+#include "ngsa/NgsaDark.h"   // NGSA (#2158)
 #include "EditorFont.h"
 #include "CommonHelper.h"
 #include "GUIHelper.h"
@@ -25,6 +27,7 @@
 #include "TableTabInterface.h"
 #include "wyTheme.h"
 #include "resource.h"
+#include "ngsa/NgsaScintilla.h"   // NGSA (M13): Scintilla 5 lexer selection
 
 extern PGLOBALS		pGlobals;
 
@@ -52,12 +55,13 @@ extern PGLOBALS		pGlobals;
 //Other Preference Default Values
 #define		COLUMNWIDTH_DEFAULT				0
 #define		REFRESHTABLEDATA_DEFAULT		0
+#define		NGSA_TABLEDATADESC_DEFAULT	0	// NGSA (#2369)
 #define		GETINFOALWAYS_DEFAULT			0
 #define		GETINFOKW_DEFAULT				1
 #define		SWITCHSHORTCUT_DEFAULT			0
 #define		OPENTABLES_DEFAULT				0
 #define		CONRESTORE_DEFAULT				1
-#define		ENABLEUPGRADE_DEFAULT			1
+#define		NGSA_UPDATECHECK_DEFAULT		0	// bonSQL: weekly check for new versions, off unless asked for
 #define		UPDATEPROMPT_DEFAULT			1
 #define		PROMPTTRANSACTION_DEFAULT		1
 #define		PROMPTTRANSACTIONCLOSE_DEFAULT	1
@@ -73,7 +77,7 @@ PreferenceBase::PreferenceBase()
 {
 	wyWChar	*lpfileport=0;
 	// Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, m_directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, m_directory, &lpfileport);
 	m_ispreferenceapplied   = wyFalse;
 	m_isrestorealldefaults	= wyFalse;
 	m_startpage = GENERALPREF_PAGE;
@@ -120,7 +124,9 @@ PreferenceBase::Create(wyInt32 startpage)
     psp.pszTemplate =   MAKEINTRESOURCE(IDD_PREF3);
     psp.pszTitle    =   _(L"Power Tools");
     
+#ifndef COMMUNITY	// bonSQL: Ultimate-only page, every control disabled in Community
     ahpsp[pagecount++] =          CreatePropertySheetPage(&psp);
+#endif
     
 	psp.dwSize		=	sizeof(psp);
     psp.dwFlags		=	PSP_DEFAULT | PSH_NOAPPLYNOW | PSP_USETITLE | PSP_PREMATURE;
@@ -132,7 +138,11 @@ PreferenceBase::Create(wyInt32 startpage)
 
     ahpsp[pagecount++] =          CreatePropertySheetPage(&psp);
 
+#ifndef COMMUNITY	// bonSQL: Ultimate-only page, every control disabled in Community
 	if(pGlobals->m_entlicense.CompareI("Professional"))
+#else
+	if(0)
+#endif
 	{
 		psp.dwSize		=	sizeof(psp);
 		psp.dwFlags		=	PSP_DEFAULT | PSH_NOAPPLYNOW | PSP_USETITLE;
@@ -166,6 +176,9 @@ PreferenceBase::Create(wyInt32 startpage)
 	psh.hwndParent  = pGlobals->m_pcmainwin->m_hwndmain;
 	psh.pszCaption	= _(L"Preferences");
 	psh.nPages		= pagecount;
+	if(startpage < 0 || startpage >= pagecount)	// bonSQL: a remembered page that no longer exists
+		startpage = GENERALPREF_PAGE;
+	m_startpage = startpage;
 	psh.nStartPage  = startpage;
 	
 	PropertySheet(&psh);
@@ -182,6 +195,14 @@ PreferenceBase::GeneralPrefDlgProc(HWND hwnd, UINT message, WPARAM wParam, LPARA
 {
 	PreferenceBase		*pref = (PreferenceBase*)GetWindowLongPtr(hwnd, GWLP_USERDATA);
 
+	if(!pref && message != WM_INITDIALOG)	// NGSA (#2158): a notification before WM_INITDIALOG has no page object yet
+	{
+		char dbg[128];
+		sprintf_s(dbg, "NGSA pref page %p: message 0x%04X (notify code %d) before WM_INITDIALOG, ignored\n", hwnd, message, (message == WM_NOTIFY && lParam) ? (int)((LPNMHDR)lParam)->code : 0);
+		OutputDebugStringA(dbg);
+		return 0;
+	}
+
 	switch(message)
 	{
 	case WM_INITDIALOG:
@@ -196,7 +217,7 @@ PreferenceBase::GeneralPrefDlgProc(HWND hwnd, UINT message, WPARAM wParam, LPARA
 		break;
 
 	case WM_HELP:
-		ShowHelp("http://sqlyogkb.webyog.com/article/131-preferences");
+		ShowHelp("help:preferences");
 		return TRUE;
 
 	case WM_NOTIFY:
@@ -212,6 +233,14 @@ PreferenceBase::ACPrefDlgProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 {
 	PreferenceBase		*pref = (PreferenceBase*)GetWindowLongPtr(hwnd, GWLP_USERDATA);
 
+	if(!pref && message != WM_INITDIALOG)	// NGSA (#2158): a notification before WM_INITDIALOG has no page object yet
+	{
+		char dbg[128];
+		sprintf_s(dbg, "NGSA pref page %p: message 0x%04X (notify code %d) before WM_INITDIALOG, ignored\n", hwnd, message, (message == WM_NOTIFY && lParam) ? (int)((LPNMHDR)lParam)->code : 0);
+		OutputDebugStringA(dbg);
+		return 0;
+	}
+
 	switch(message)
 	{
 	case WM_INITDIALOG:
@@ -226,7 +255,7 @@ PreferenceBase::ACPrefDlgProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 		return TRUE;
 
 	case WM_HELP:
-		ShowHelp("http://sqlyogkb.webyog.com/article/131-preferences");
+		ShowHelp("help:preferences");
 		return TRUE;
 
 	case WM_NOTIFY:
@@ -242,6 +271,14 @@ PreferenceBase::FormatterPrefDlgProc(HWND hwnd, UINT message, WPARAM wParam, LPA
 {
 	PreferenceBase		*pref = (PreferenceBase*)GetWindowLongPtr(hwnd, GWLP_USERDATA);
 
+	if(!pref && message != WM_INITDIALOG)	// NGSA (#2158): a notification before WM_INITDIALOG has no page object yet
+	{
+		char dbg[128];
+		sprintf_s(dbg, "NGSA pref page %p: message 0x%04X (notify code %d) before WM_INITDIALOG, ignored\n", hwnd, message, (message == WM_NOTIFY && lParam) ? (int)((LPNMHDR)lParam)->code : 0);
+		OutputDebugStringA(dbg);
+		return 0;
+	}
+
 	switch(message)
 	{
 	case WM_INITDIALOG:
@@ -256,7 +293,7 @@ PreferenceBase::FormatterPrefDlgProc(HWND hwnd, UINT message, WPARAM wParam, LPA
 		return TRUE;
 
 	case WM_HELP:
-		ShowHelp("http://sqlyogkb.webyog.com/article/131-preferences");
+		ShowHelp("help:preferences");
 		return TRUE;
 
 	case WM_NOTIFY:
@@ -345,6 +382,14 @@ PreferenceBase::FontPrefDlgProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
 {
 	PreferenceBase		*pref = (PreferenceBase*)GetWindowLongPtr(hwnd, GWLP_USERDATA);
 
+	if(!pref && message != WM_INITDIALOG)	// NGSA (#2158): a notification before WM_INITDIALOG has no page object yet
+	{
+		char dbg[128];
+		sprintf_s(dbg, "NGSA pref page %p: message 0x%04X (notify code %d) before WM_INITDIALOG, ignored\n", hwnd, message, (message == WM_NOTIFY && lParam) ? (int)((LPNMHDR)lParam)->code : 0);
+		OutputDebugStringA(dbg);
+		return 0;
+	}
+
 	switch(message)
 	{
 	case WM_INITDIALOG:
@@ -362,7 +407,7 @@ PreferenceBase::FontPrefDlgProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
 		break;
 
 	case WM_HELP:
-		ShowHelp("http://sqlyogkb.webyog.com/article/131-preferences");
+		ShowHelp("help:preferences");
 		return TRUE;
 
 	case WM_NOTIFY:
@@ -739,44 +784,6 @@ PreferenceBase::FontPrefHandleWmInitDialog(HWND hwnd)
 
     color1=new COLORREF;
     color2=new COLORREF;
-    *color1=wyIni::IniGetInt(GENERALPREFA, "CanvasBgColor",   DEF_BKGNDCANVASCOLOR, dirstr.GetString());
-    *color2=wyIni::IniGetInt(GENERALPREFA, "CanvasTextColor",   GetSysColor(COLOR_GRAYTEXT), dirstr.GetString());
-    tvd=new TREEVIEWDATA;
-    tvd->style=CANVAS;
-    tvd->mask=IF_BACKGROUND_MASK;
-    tvd->bgColor=color1;
-    tvd->fgColor=color2;
-    
-    tvinsert.item.lParam=(LPARAM)tvd;
-    tvinsert.hParent=NULL;
-    tvinsert.item.pszText=_(L"Canvas");
-    hTvItem=(HTREEITEM)SendDlgItemMessage(hwnd,IDC_TREE2,TVM_INSERTITEM,0,(LPARAM)&tvinsert);
-
-    color3=new COLORREF;
-    *color3=wyIni::IniGetInt(GENERALPREFA, "CanvasLineColor",  RGB(160,160,160), dirstr.GetString());
-    tvd=new TREEVIEWDATA;
-    tvd->style=CANVAS_LINE;
-    tvd->mask=IF_FOREGROUND_MASK;
-    tvd->bgColor=color1;
-    tvd->fgColor=color3;
-    
-    tvinsert.item.lParam=(LPARAM)tvd;
-    tvinsert.hParent=hTvItem;
-    tvinsert.item.pszText=_(L"Line");
-    hTvItem=(HTREEITEM)SendDlgItemMessage(hwnd,IDC_TREE2,TVM_INSERTITEM,0,(LPARAM)&tvinsert);
-
-    tvd=new TREEVIEWDATA;
-    tvd->style=CANVAS_TEXT;
-    tvd->mask=IF_FOREGROUND_MASK;
-    tvd->bgColor=color1;
-    tvd->fgColor=color2;
-    
-    tvinsert.item.lParam=(LPARAM)tvd;
-    tvinsert.item.pszText=_(L"Text");
-    hTvItem=(HTREEITEM)SendDlgItemMessage(hwnd,IDC_TREE2,TVM_INSERTITEM,0,(LPARAM)&tvinsert);
-
-    color1=new COLORREF;
-    color2=new COLORREF;
     *color1=wyIni::IniGetInt(GENERALPREFA, "MTIBgColor",   COLOR_WHITE, dirstr.GetString());
     *color2=wyIni::IniGetInt(GENERALPREFA, "MTIFgColor",   RGB(0,0,0), dirstr.GetString());
     tvd=new TREEVIEWDATA;
@@ -831,7 +838,7 @@ PreferenceBase::FontPrefHandleWmCtlColorStatic(HWND hwnd, WPARAM wParam, LPARAM 
         if(wyTheme::IsDarkThemeActive())
         {
             SetTextColor(hdc, GetSysColor(COLOR_GRAYTEXT));
-            SetDCBrushColor(hdc, GetSysColor(COLOR_BTNFACE));
+            SetDCBrushColor(hdc, NgsaDark::kPanel);   // NGSA (#2158): on the dark panel
         }
         else
         {
@@ -850,7 +857,7 @@ void PreferenceBase::SetColorsInStaticControl(HWND hwnd)
     // Don't update colors when dark theme is active
     if(wyTheme::IsDarkThemeActive())
     {
-        ChangeBkFrColor(hwnd, GetSysColor(COLOR_GRAYTEXT), GetSysColor(COLOR_BTNFACE));
+        ChangeBkFrColor(hwnd, GetSysColor(COLOR_GRAYTEXT), NgsaDark::kPanel);   // NGSA (#2158)
         return;
     }
     
@@ -1043,6 +1050,14 @@ INT_PTR CALLBACK
 PreferenceBase::OthersPrefDlgProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	PreferenceBase		*pref = (PreferenceBase*)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+
+	if(!pref && message != WM_INITDIALOG)	// NGSA (#2158): a notification before WM_INITDIALOG has no page object yet
+	{
+		char dbg[128];
+		sprintf_s(dbg, "NGSA pref page %p: message 0x%04X (notify code %d) before WM_INITDIALOG, ignored\n", hwnd, message, (message == WM_NOTIFY && lParam) ? (int)((LPNMHDR)lParam)->code : 0);
+		OutputDebugStringA(dbg);
+		return 0;
+	}
     HWND hwndcombo;
     LPTHEMEINFO pthemeinfo;
 
@@ -1060,7 +1075,7 @@ PreferenceBase::OthersPrefDlgProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM
 		break;
 
 	case WM_HELP:
-		ShowHelp("http://sqlyogkb.webyog.com/article/131-preferences");
+		ShowHelp("help:preferences");
 		return TRUE;
 
 	case WM_NOTIFY:
@@ -1153,34 +1168,7 @@ PreferenceBase::OthersPrefHandleWmCommand(HWND hwnd, WPARAM wParam)
 		break;
 		case IDC_THEMECOMBO: 
 			
-			if (HIWORD(wParam) == CBN_SELCHANGE) {
-#ifdef COMMUNITY
-				hwndcombo = GetDlgItem(hwnd, IDC_THEMECOMBO);
-
-				if ((pthemeinfo = (LPTHEMEINFO)GetWindowLongPtr(hwndcombo, GWLP_USERDATA)))
-				{
-					index = SendMessage(hwndcombo, CB_GETCURSEL, 0, 0);
-					index = SendMessage(hwndcombo, CB_GETITEMDATA, index, 0);
-
-					if (((pthemeinfo + index)->m_type == RESOURCE_THEME) && (pthemeinfo + index)->m_name.Compare("Dark") ==0)
-					{
-						pGlobals->m_pcmainwin->m_connection->GetSQLyogUltimateDialog();
-						THEMEINFO* pactivetheme;
-
-						pactivetheme = wyTheme::GetActiveThemeInfo();
-						index = -1;
-						if (pactivetheme) {
-							index = SendMessage(hwndcombo, CB_SELECTSTRING, -1, (LPARAM)pactivetheme->m_name.GetAsWideChar());
-						}
-						if (index == -1)
-							index = 0;
-						
-						SendMessage(hwndcombo, CB_SETCURSEL, index, 0);
-					}
-				}				
-#endif
-				
-			}
+			// NGSA build: Dark theme is selectable like any other theme (Ultimate upsell hook removed)
 			break;
 	}
 }
@@ -1270,9 +1258,9 @@ PreferenceBase::InitGeneralPrefValues()
 	truncdata	= wyIni::IniGetInt(GENERALPREFA, "HaltExecutionOnError", HALTEXEC_DEFAULT, dirstr.GetString());
 	SendMessage(GetDlgItem(m_hwnd, IDC_HALTEXEC), BM_SETCHECK, truncdata, 0);
 
-	//disable fk check in http import batch
-	truncdata	= wyIni::IniGetInt(GENERALPREFA, "FKcheckImport", FKCHKIMPORT_DEFAULT, dirstr.GetString());
-	SendMessage(GetDlgItem(m_hwnd, IDC_FKCHKIMPORT), BM_SETCHECK, truncdata, 0);
+	truncdata	= wyIni::IniGetInt(GENERALPREFA, "UpdateCheck", NGSA_UPDATECHECK_DEFAULT, dirstr.GetString());	// bonSQL
+	SendMessage(GetDlgItem(m_hwnd, IDC_NGSA_UPDATECHECK), BM_SETCHECK, truncdata, 0);
+
     
 	truncdata	= wyIni::IniGetInt(GENERALPREFA, "DefBulkSize", DEF_BULK_SIZE_DEFAULT, dirstr.GetString());
 	SendMessage(GetDlgItem(m_hwnd, IDC_DEF_BULK_SIZE), BM_SETCHECK, truncdata, 0);
@@ -1575,6 +1563,8 @@ PreferenceBase::InitOthersPrefValues()
 
 	truncdata	= wyIni::IniGetInt(GENERALPREFA, "RefreshTableData", REFRESHTABLEDATA_DEFAULT, dirstr.GetString());
     SendMessage(GetDlgItem(m_hwnd, IDC_REFRESHTABLEDATA), BM_SETCHECK,truncdata, 0);
+	truncdata	= wyIni::IniGetInt(GENERALPREFA, "TableDataDescending", NGSA_TABLEDATADESC_DEFAULT, dirstr.GetString());	// NGSA (#2369)
+    SendMessage(GetDlgItem(m_hwnd, IDC_NGSA_TABLEDATADESC), BM_SETCHECK, truncdata, 0);
 
 	/*truncdata	= wyIni::IniGetInt(GENERALPREFA, "GetInfoAlways", GETINFOALWAYS_DEFAULT, dirstr.GetString());
 	SendMessage(GetDlgItem(m_hwnd, IDC_GETINFOALWAYS), BM_SETCHECK, truncdata, 0);*/
@@ -1591,8 +1581,6 @@ PreferenceBase::InitOthersPrefValues()
 	truncdata	= wyIni::IniGetInt(GENERALPREFA, "SessionRestore", CONRESTORE_DEFAULT, dirstr.GetString());
     SendMessage(GetDlgItem(m_hwnd, IDC_CONRESTORE), BM_SETCHECK, truncdata, 0);
 
-	truncdata   = wyIni::IniGetInt(GENERALPREFA, "UpdateCheck", ENABLEUPGRADE_DEFAULT, dirstr.GetString());
-	SendMessage(GetDlgItem(m_hwnd, IDC_ENABLEUPGRADE), BM_SETCHECK, truncdata, 0);
 	
 	truncdata	= wyIni::IniGetInt(GENERALPREFA, "PromptUpdate", UPDATEPROMPT_DEFAULT, dirstr.GetString());
 	SendMessage(GetDlgItem(m_hwnd, IDC_UPDATEPROMPT), BM_SETCHECK, truncdata, 0);
@@ -1607,9 +1595,10 @@ PreferenceBase::InitOthersPrefValues()
 
 	if(pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_NORMAL && pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_ULTIMATE && pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_TRIAL)
 	{
-		SetWindowText(GetDlgItem(m_hwnd, IDC_TRANSACTION), _(L"Transaction options (Ultimate only)"));
-		EnableWindow(GetDlgItem(m_hwnd, IDC_PROMPTTRANSACTION), FALSE);
-		EnableWindow(GetDlgItem(m_hwnd, IDC_PROMPTCLOSETRANSACTION), FALSE);
+		// bonSQL: Ultimate-only options; hidden rather than labelled "(Ultimate only)" (docs/ngsa/UPSELLS.md)
+		ShowWindow(GetDlgItem(m_hwnd, IDC_TRANSACTION), SW_HIDE);
+		ShowWindow(GetDlgItem(m_hwnd, IDC_PROMPTTRANSACTION), SW_HIDE);
+		ShowWindow(GetDlgItem(m_hwnd, IDC_PROMPTCLOSETRANSACTION), SW_HIDE);
 		return;
 	}
 	else
@@ -1636,6 +1625,15 @@ PreferenceBase::FillThemeCombo(HWND hwnd)
 
     for(i = count - 1; i >= 0; --i)
     {
+#if 0   // NGSA (#2158): Dark.xml is complete now, offer it
+        // NGSA build: the open-source Dark.xml is an empty stub (the real Dark theme is
+        // Ultimate-only), so don't offer it rather than show the Ultimate upsell dialog.
+        if((pthemeinfo + i)->m_type == RESOURCE_THEME && (pthemeinfo + i)->m_name.Compare("Dark") == 0)
+        {
+            continue;
+        }
+#endif
+
         if(i == 0)
         {
             index = SendMessage(hwnd, CB_INSERTSTRING, 0, (LPARAM)(pthemeinfo + i)->m_name.GetAsWideChar());
@@ -1657,16 +1655,7 @@ PreferenceBase::FillThemeCombo(HWND hwnd)
         else
         {
 
-#ifdef COMMUNITY
-			if (pactivetheme->m_type == RESOURCE_THEME && pactivetheme->m_name.Compare("Dark") == 0){
-				SendMessage(hwnd, CB_SETCURSEL, index, 0);
-			}
-			else if (!(pthemeinfo + i)->m_filename.CompareI(pactivetheme->m_filename) &&
-				(pthemeinfo + i)->m_type == pactivetheme->m_type)
-			{
-				SendMessage(hwnd, CB_SETCURSEL, index, 0);
-			}
-
+#if 0   // NGSA (#2158): 13.3.1 selected every index in turn when Dark was active (combo showed the last entry); the plain compare below works for Dark too
 #else
             if(!(pthemeinfo + i)->m_filename.CompareI(pactivetheme->m_filename) &&
                 (pthemeinfo + i)->m_type == pactivetheme->m_type)
@@ -1758,10 +1747,10 @@ PreferenceBase::SaveGeneralPreferences(HWND hwndbase, wyInt32 page)
 	SetIntProfileString(hwnd, GENERALPREF, L"BulkSize", IDC_BULKINSERT);
     SetBoolProfileString(hwnd, GENERALPREF, L"DefBulkSize", IDC_DEF_BULK_SIZE);	
 
-	SetBoolProfileString(hwnd, GENERALPREF, L"FKcheckImport", IDC_FKCHKIMPORT);
 
 	SetBoolProfileString(hwnd, GENERALPREF, L"ShowWarnings", IDC_SHOWWARNING);
 	SetBoolProfileString(hwnd, GENERALPREF, L"HaltExecutionOnError", IDC_HALTEXEC);
+	SetBoolProfileString(hwnd, GENERALPREF, L"UpdateCheck", IDC_NGSA_UPDATECHECK);	// bonSQL
     SetBoolProfileString(hwnd, GENERALPREF, L"TableDataUnderQuery", IDC_TABLEDATAPOSITION);
     SetBoolProfileString(hwnd, GENERALPREF, L"InfoTabUnderQuery", IDC_INFOPOSITION);
     SetBoolProfileString(hwnd, GENERALPREF, L"HistoryUnderQuery", IDC_HISTORYPOSITION);
@@ -1839,6 +1828,7 @@ PreferenceBase::SaveOthersPreferences(HWND hwndbase, wyInt32 page)
 	SetBoolProfileString(hwnd, GENERALPREF, L"RetainColumnWidth", IDC_RETAINCOLUMNWIDTH);
     SetBoolProfileString(hwnd, GENERALPREF, L"TruncData", IDC_COLUMNWIDTH);
 	SetBoolProfileString(hwnd, GENERALPREF, L"RefreshTableData", IDC_REFRESHTABLEDATA);
+	SetBoolProfileString(hwnd, GENERALPREF, L"TableDataDescending", IDC_NGSA_TABLEDATADESC);	// NGSA (#2369)
 	//SetBoolProfileString(hwnd, GENERALPREF, L"GetInfoAlways", IDC_GETINFOALWAYS);
 	SetBoolProfileString(hwnd, GENERALPREF, L"SmartKeyword", IDC_GETINFOKW);
 
@@ -1852,7 +1842,6 @@ PreferenceBase::SaveOthersPreferences(HWND hwndbase, wyInt32 page)
 	SetBoolProfileString(hwnd, GENERALPREF, L"SessionRestore", IDC_CONRESTORE);
 
 	//enable implicity upgrade check if it is checck
-	SetBoolProfileString(hwnd, GENERALPREF, L"UpdateCheck", IDC_ENABLEUPGRADE);
 
 	SetBoolProfileString(hwnd, GENERALPREF, L"PromptUpdate", IDC_UPDATEPROMPT);
 #ifndef COMMUNITY
@@ -2305,6 +2294,7 @@ PreferenceBase::SetGenPrefDefaultValues(HWND hwnd)
 
 	SendMessage(GetDlgItem(hwnd, IDC_SHOWWARNING), BM_SETCHECK, SHOWWARNINGS_DEFAULT, 0);
 	SendMessage(GetDlgItem(hwnd, IDC_HALTEXEC), BM_SETCHECK, HALTEXEC_DEFAULT, 0);
+	SendMessage(GetDlgItem(hwnd, IDC_NGSA_UPDATECHECK), BM_SETCHECK, NGSA_UPDATECHECK_DEFAULT, 0);	// bonSQL
     SendMessage(GetDlgItem(hwnd, IDC_TABLEDATAPOSITION), BM_SETCHECK, TABLEDATA_POS_DEFAULT, 0);
     SendMessage(GetDlgItem(hwnd, IDC_INFOPOSITION), BM_SETCHECK, INFOTAB_POS_DEFAULT, 0);
     SendMessage(GetDlgItem(hwnd, IDC_HISTORYPOSITION), BM_SETCHECK, HISTORY_POS_DEFAULT, 0);
@@ -2342,9 +2332,9 @@ PreferenceBase::SetOthersPrefDefaultValues(HWND hwnd)
 	SendMessage(GetDlgItem(hwnd, IDC_SWITCHSHORTCUT), BM_SETCHECK, SWITCHSHORTCUT_DEFAULT, 0);
 	SendMessage(GetDlgItem(hwnd, IDC_OPENTABLES), BM_SETCHECK, OPENTABLES_DEFAULT, 0);
 	SendMessage(GetDlgItem(hwnd, IDC_CONRESTORE), BM_SETCHECK, CONRESTORE_DEFAULT, 0);
-	SendMessage(GetDlgItem(hwnd, IDC_ENABLEUPGRADE), BM_SETCHECK, ENABLEUPGRADE_DEFAULT, 0);
 		
 	SendMessage(GetDlgItem(hwnd, IDC_REFRESHTABLEDATA), BM_SETCHECK, REFRESHTABLEDATA_DEFAULT, 0);
+	SendMessage(GetDlgItem(hwnd, IDC_NGSA_TABLEDATADESC), BM_SETCHECK, NGSA_TABLEDATADESC_DEFAULT, 0);	// NGSA (#2369)
 	
 	SendMessage(GetDlgItem(hwnd, IDC_UPDATEPROMPT), BM_SETCHECK, UPDATEPROMPT_DEFAULT, 0);  
 #ifndef community
@@ -2591,7 +2581,6 @@ PreferenceBase::SaveDefaultGeneralPreferences()
 	wyIni::IniWriteInt(GENERALPREFA, "BulkSize", DEF_BULK_SIZE_DEFAULT, dirstr.GetString());
 	wyIni::IniWriteInt(GENERALPREFA, "RowLimit", ROW_LIMIT_DEFAULT, dirstr.GetString());
 	wyIni::IniWriteInt(GENERALPREFA, "DefBulkSize", BULKINSERT_DEFAULT, dirstr.GetString());
-	wyIni::IniWriteInt(GENERALPREFA, "FKcheckImport", FKCHKIMPORT_DEFAULT, dirstr.GetString());
     wyIni::IniWriteInt(GENERALPREFA, "TableDataUnderQuery", TABLEDATA_POS_DEFAULT, dirstr.GetString());
     wyIni::IniWriteInt(GENERALPREFA, "InfoTabUnderQuery", INFOTAB_POS_DEFAULT, dirstr.GetString());
     wyIni::IniWriteInt(GENERALPREFA, "HistoryUnderQuery", HISTORY_POS_DEFAULT, dirstr.GetString());
@@ -2612,9 +2601,10 @@ PreferenceBase::SaveDefaultOthersPreferences()
 	wyIni::IniWriteInt(GENERALPREFA, "SmartKeyword", GETINFOKW_DEFAULT, dirstr.GetString());
 	wyIni::IniWriteInt(GENERALPREFA, "SwitchShortcut", SWITCHSHORTCUT_DEFAULT, dirstr.GetString());
 	wyIni::IniWriteInt(GENERALPREFA, "OBOpenTablesByDefault", OPENTABLES_DEFAULT, dirstr.GetString());
-	wyIni::IniWriteInt(GENERALPREFA, "UpdateCheck", ENABLEUPGRADE_DEFAULT, dirstr.GetString());
+	wyIni::IniWriteInt(GENERALPREFA, "UpdateCheck", NGSA_UPDATECHECK_DEFAULT, dirstr.GetString());
 	
 	wyIni::IniWriteInt(GENERALPREFA, "RefreshTableData", REFRESHTABLEDATA_DEFAULT, dirstr.GetString());
+	wyIni::IniWriteInt(GENERALPREFA, "TableDataDescending", NGSA_TABLEDATADESC_DEFAULT, dirstr.GetString());	// NGSA (#2369)
 
 	wyIni::IniWriteInt(GENERALPREFA, "PromptUpdate", UPDATEPROMPT_DEFAULT, dirstr.GetString());
 
@@ -2768,7 +2758,7 @@ PreferenceBase::SetPreviewEditor(HWND hwnd)
 	GetAllScintillaKeyWordsAndFunctions(wyFalse, m_functionstring);
 
     //set the lexer language 
-	SendMessage(hwndpreview, SCI_SETLEXERLANGUAGE, 0, (LPARAM)"MySQL");
+	NgsaScintilla::SetLexer(hwndpreview, "MySQL");	// NGSA (M13)
 
 	EditorFont::FormatEditor(hwndpreview, wyTrue, m_keywordstring, m_functionstring);
 

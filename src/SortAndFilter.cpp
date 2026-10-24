@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -25,6 +26,7 @@ Author: Vishal P.R, Janani SriGuha
 #include "SortAndFilter.h"
 #include "FrameWindow.h"
 #include "BlobMgmt.h"
+#include "ngsa/NgsaScintilla.h"   // NGSA (M13): Scintilla 5 lexer selection
 #include "EditorFont.h"
 #ifndef COMMUNITY
 #include "SCIFormatter.h"
@@ -241,7 +243,7 @@ SortAndFilter::FilterWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpar
 
         //show filter help
 	    case WM_HELP:
-		    ShowHelp("http://sqlyogkb.webyog.com/article/83-gui-filtering-and-sorting-of-data");
+		    ShowHelp("help:gui-filtering-and-sorting-of-data");
 		    return TRUE;
 	}
 
@@ -538,7 +540,7 @@ SortAndFilter::OnWMInitdlgValues(HWND hwnd)
 	// attempt to set scintilla code page to support utf8 data
 
 	//set the lexer language 
-	SendMessage(hwndpreview, SCI_SETLEXERLANGUAGE, 0, (LPARAM)"MySQL");
+	NgsaScintilla::SetLexer(hwndpreview, "MySQL");	// NGSA (M13)
 
 	SendMessage(hwndpreview, SCI_SETCODEPAGE, SC_CP_UTF8, 0);
 
@@ -1892,4 +1894,85 @@ SortAndFilter::RowsExArrayCallback(ArrayAction aa, void* data, wyInt32 index, vo
             delete myrowex;
         }
     }
+}
+
+// NGSA (#2137): per-session memory of the Table Data sort and filter. The filter text is column-name based
+// and the sort uses the column positions of the table's select *, so re-applying them to the same table of
+// the same connection is safe. Nothing is written to disk.
+#include <map>
+#include <string>
+#include <vector>
+namespace
+{
+    struct NgsaSfSnapshot
+    {
+        wyBool                      isfilter;
+        std::string                 filterstring;
+        std::vector<wyInt32>        fcol;
+        std::vector<wyInt32>        ftype;
+        std::vector<std::string>    fvalue;
+        std::vector<wyInt32>        scol;
+        std::vector<wyInt32>        stype;
+    };
+    std::map<std::string, NgsaSfSnapshot> s_ngsasfmemory;
+
+    std::string NgsaSfKey(const void* conn, const wyChar* db, const wyChar* table)
+    {
+        char buf[32];
+        sprintf(buf, "%p|", conn);
+        return std::string(buf) + (db ? db : "") + "|" + (table ? table : "");
+    }
+}
+
+void
+SortAndFilter::NgsaRemember(const void* conn, const wyChar* db, const wyChar* table)
+{
+    NgsaSfSnapshot  snap;
+    wyInt32         i;
+
+    if(m_isclient == wyTrue || !db || !table || !*table)
+        return;
+    snap.isfilter = m_isfilter;
+    snap.filterstring = m_filterstring.GetString();
+    for(i = 0; i < m_filtercolumns; ++i)
+    {
+        snap.fcol.push_back(m_filter[i].m_currcolindex);
+        snap.ftype.push_back((wyInt32)m_filter[i].m_currfiltertype);
+        snap.fvalue.push_back(m_filter[i].m_currvalue.GetString());
+    }
+    for(i = 0; i < m_sortcolumns; ++i)
+    {
+        snap.scol.push_back(m_sort[i].m_colindex);
+        snap.stype.push_back((wyInt32)m_sort[i].m_sorttype);
+    }
+    s_ngsasfmemory[NgsaSfKey(conn, db, table)] = snap;
+}
+
+wyBool
+SortAndFilter::NgsaRecall(const void* conn, const wyChar* db, const wyChar* table)
+{
+    std::map<std::string, NgsaSfSnapshot>::iterator it;
+    wyInt32 i;
+
+    if(m_isclient == wyTrue || !db || !table || !*table)
+        return wyFalse;
+    it = s_ngsasfmemory.find(NgsaSfKey(conn, db, table));
+    if(it == s_ngsasfmemory.end())
+        return wyFalse;
+    for(i = 0; i < m_filtercolumns && i < (wyInt32)it->second.fcol.size(); ++i)
+    {
+        m_filter[i].m_colindex = m_filter[i].m_currcolindex = it->second.fcol[i];
+        m_filter[i].m_filtertype = m_filter[i].m_currfiltertype = (FilterType)it->second.ftype[i];
+        m_filter[i].m_value.SetAs(it->second.fvalue[i].c_str());
+        m_filter[i].m_currvalue.SetAs(it->second.fvalue[i].c_str());
+    }
+    for(i = 0; i < m_sortcolumns && i < (wyInt32)it->second.scol.size(); ++i)
+    {
+        m_sort[i].m_colindex = m_sort[i].m_currcolindex = it->second.scol[i];
+        m_sort[i].m_sorttype = m_sort[i].m_currsorttype = (SortType)it->second.stype[i];
+    }
+    m_isfilter = it->second.isfilter;
+    m_filterstring.SetAs(it->second.filterstring.c_str());
+    m_currfilterstring.SetAs(it->second.filterstring.c_str());
+    return wyTrue;
 }

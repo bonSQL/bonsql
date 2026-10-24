@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc.
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -347,6 +348,10 @@ class SortAndFilter
         @returns wyTrue on success else wyFalse
         */
         wyBool                      GetFilterString(wyString& filterstring);
+        /* NGSA (#2137): remember / recall the server-side sort and filter of a table for the session,
+           keyed by connection, database and table (in memory, not written anywhere) */
+        void                        NgsaRemember(const void* conn, const wyChar* db, const wyChar* table);
+        wyBool                      NgsaRecall(const void* conn, const wyChar* db, const wyChar* table);
 
         ///Function to replicate the changes in the data array to the original array in client side sort/filter.
         //This function is called in response to array notifications

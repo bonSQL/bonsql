@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -22,14 +23,17 @@ Author: Vishal P.R
 
 *********************************************/
 
+#include <string>
+#include "ngsa/NgsaDark.h"   // NGSA (#2158)
+#include "ngsa/NgsaTrace.h"
 #include "UserManager.h"
 #include "MySQLVersionHelper.h"
 #include "DoubleBuffer.h"
 #include "CCustomComboBox.h"
 
-#define U_ACCESSDENIED          _("SQLyog cannot retrieve what information is required to populate the User Manager dialog. \
+#define U_ACCESSDENIED          _("bonSQL cannot retrieve what information is required to populate the User Manager dialog. \
 Most likely the user does not have SELECT privilege to privileges tables in the `mysql` database. \
-Without that information SQLyog User Manager cannot continue.")
+Without that information the User Manager cannot continue.")
 
 #define U_GLOBAL_PRIV           _(L"Global Privileges")
 #define U_OBJECTS_PRIV          _(L"Object Level Privileges")
@@ -54,6 +58,7 @@ Without that information SQLyog User Manager cannot continue.")
 #define U_COLUMNS           8
 #define U_FUNCTIONS         16
 #define U_PROCEDURES        32
+#define U_ROLES             64      // NGSA (M3): the Roles node
 #define U_SERVER_ADMIN      64
 #define U_FILE_ACCESS       128
 
@@ -92,27 +97,10 @@ wyChar* UserManager::m_privmapping[] = {
     "UPDATE", "Update_priv",
 };
 
-// New privilege for MariaDB 10.5.2 and above
-wyChar* UserManager::m_mariadb_100502_priv[] = {
-	"BINLOG ADMIN",
-	"BINLOG MONITOR",
-	"BINLOG REPLAY",
-	"CONNECTION ADMIN",
-	"FEDERATED ADMIN",
-	"READ_ONLY ADMIN",
-	"REPLICATION MASTER ADMIN",
-	"REPLICATION SLAVE ADMIN",
-	"SET USER"
-};
-
-// Privilege to remove for MariaDb 10.5.2 and above
-wyChar* UserManager::m_mariadb_100502_hide_priv[] = {
-	"REPLICATION CLIENT"
-};
-
 //default constructor
 UserManager::UserManager()
 {
+    m_isrole = wyFalse;     // NGSA (M3)
     wyInt32 i;
 
     m_hwnd = NULL;
@@ -368,7 +356,7 @@ UserManager::OnPaint(HWND hwnd)
 
     VERIFY(hdc = BeginPaint(hwnd, &ps));
     //DoubleBuffer db(hwnd, hdc);
-    DoubleBuffer::EraseBackground(hwnd, hdc, NULL, GetSysColor(COLOR_3DFACE));
+    DoubleBuffer::EraseBackground(hwnd, hdc, NULL, NgsaDark::Panel(GetSysColor(COLOR_3DFACE)));
     //db.EraseBackground(GetSysColor(COLOR_3DFACE));
     //db.PaintWindow();
 	EndPaint(hwnd, &ps);
@@ -574,7 +562,7 @@ UserManager::GripProc(HWND hwnd, wyUInt32 message, WPARAM wparam, LPARAM lparam)
     {
         VERIFY(hdc = BeginPaint(hwnd, &ps));
         GetClientRect(hwnd, &temp);
-        DrawFrameControl(hdc, &temp, DFC_SCROLL, DFCS_SCROLLSIZEGRIP);
+        NgsaDark::FrameControl(hdc, &temp, DFC_SCROLL, DFCS_SCROLLSIZEGRIP, NgsaDark::IsOn());
         EndPaint(hwnd, &ps);
         return 0;
     }
@@ -630,7 +618,8 @@ UserManager::GetCtrlRects()
         IDC_CANCEL_CHANGES, 0, 0,
         IDCANCEL, 0, 0,
 		IDC_AUTHPLUGIN, 0,0,
-		IDC_PLUGIN_PROMPT, 0,0
+		IDC_PLUGIN_PROMPT, 0,0,
+		IDC_UM_ISROLE, 0,0      // NGSA (M3): right-anchored like the plugin combo
     };
 
     count = sizeof(ctrlid)/sizeof(ctrlid[0]);
@@ -1230,7 +1219,7 @@ UserManager::AddNewUser()
 	//validate the user name and form the error string
 	if (!username.GetLength())
 	{
-		ret = MessageBox(m_hwnd, _(L"You have not specifed a username. Do you want to create anonymous user?"),
+		ret = MessageBox(m_hwnd, _(L"You have not specified a username. Do you want to create an anonymous user?"),
 			pGlobals->m_appname.GetAsWideChar(),
 			MB_YESNO | MB_ICONQUESTION);
 
@@ -1245,8 +1234,25 @@ UserManager::AddNewUser()
 	EscapeMySQLString(password.GetString(), temppassword);
 	EscapeMySQLString(authplugin.GetString(), tempauthplugin);
 
+	// NGSA (M3): a role has no password or plugin; MariaDB roles have no host either
+	if(IsDlgButtonChecked(m_hwnd, IDC_UM_ISROLE) == BST_CHECKED)
+	{
+		if(m_hmdi->m_ngsacaps.engine == NGSA_ENGINE_MARIADB)
+		{
+			host.Clear();
+			temphost.Clear();
+			query.Sprintf("CREATE ROLE '%s'", tempuser.GetString());
+		}
+		else
+			query.Sprintf("CREATE ROLE '%s'@'%s'", tempuser.GetString(), temphost.GetString());
+		if (ExecuteUMQuery(query) == wyFalse)
+		{
+			return wyFalse;
+		}
+		m_rolekeys.AddSprintf("%s@%s|", username.GetString(), host.GetString());
+	}
 	//if it is mysql version > 5.02 use the CREATE USER stmt
-	if (m_ismysql502 == wyTrue)
+	else if (m_ismysql502 == wyTrue)
 	{
 		// if it is higher than 5.7.5, but not maria db, add plugin when creating user 
 		if (m_serververno >= 50706 && m_ismariadb == false) {
@@ -1422,7 +1428,14 @@ UserManager::PopulateUserCombo()
 	m_hmdi->m_tunnel->mysql_free_result(myres);
 
     //execute the query and get all the entries
-    query.SetAs("SELECT `Host`, `User` FROM `mysql`.`user`");
+    // NGSA (M3): the third column says whether the account is a role
+    if(m_hmdi->m_ngsacaps.engine == NGSA_ENGINE_MARIADB && m_hmdi->m_ngsacaps.roles == wyTrue)
+        query.SetAs("SELECT `Host`, `User`, `is_role` FROM `mysql`.`user`");
+    else if(m_hmdi->m_ngsacaps.roles == wyTrue)
+        query.SetAs("SELECT `Host`, `User`, IF(`account_locked` = 'Y' AND `authentication_string` = '', 'Y', 'N') FROM `mysql`.`user`");
+    else
+        query.SetAs("SELECT `Host`, `User`, 'N' FROM `mysql`.`user`");
+    m_rolekeys.SetAs("|");
     myres = ExecuteAndGetResult(m_hmdi, m_hmdi->m_tunnel, &m_hmdi->m_mysql, query);
 
     if(myres == NULL)
@@ -1439,6 +1452,8 @@ UserManager::PopulateUserCombo()
         temp.SetAs(row[1], m_hmdi->m_ismysql41);
         length = temp.GetLength();
         temp.AddSprintf("@%s", row[0]);        
+        if(row[2] && (row[2][0] == 'Y' || row[2][0] == 'y'))
+            m_rolekeys.AddSprintf("%s|", temp.GetString());     // NGSA (M3)
         index = SendMessage(hwndusercombo, CB_ADDSTRING, 0, (LPARAM)temp.GetAsWideChar());
 
 
@@ -1570,12 +1585,13 @@ UserManager::GetUserCurrentAuthPlugin()
 wyBool
 UserManager::PopulateUserInfo()
 {
+    LoadGrantedRoles();     // NGSA (M3)
     TVITEM      tvi = {0};
     HWND        hwndobtree = GetDlgItem(m_hwnd, IDC_OBTREE);
     wyString    user;
 
     //set the root item
-    user.Sprintf("%s@%s", m_username.GetString(), m_host.GetString());
+    user.Sprintf("%s@%s%s", m_username.GetString(), m_host.GetString(), m_isrole ? " (role)" : "");   // NGSA (M3)
     tvi.mask = TVIF_TEXT;
     tvi.hItem = TreeView_GetRoot(hwndobtree);
     tvi.pszText = user.GetAsWideChar();
@@ -1646,6 +1662,9 @@ UserManager::OnNewUser()
     }
 
     EnableUserControls();   
+    // NGSA (M3): a new account may be a role when the server has roles (after EnableUserControls, which disables every child first)
+    CheckDlgButton(m_hwnd, IDC_UM_ISROLE, BST_UNCHECKED);
+    EnableWindow(GetDlgItem(m_hwnd, IDC_UM_ISROLE), m_hmdi->m_ngsacaps.roles == wyTrue ? TRUE : FALSE);
     SetDlgItemText(m_hwnd, IDC_CANCEL_CHANGES, _(L"&Cancel"));
     SetDlgItemText(m_hwnd, IDC_SAVE_CHANGES, _(L"Creat&e"));
     //SetDlgItemText(m_hwnd, IDC_OBJECTINFO, U_NEW_USER);
@@ -1694,7 +1713,7 @@ UserManager::EnableChildren(HWND hwnd, LPARAM lparam)
 void
 UserManager::HandleHelp(wyBool ishelpclicked)
 {
-    ShowHelp("http://sqlyogkb.webyog.com/category/129-user-management");
+    ShowHelp("help:user-management");
 }
 
 //handler function for CBN_CHANGE. this is an import function as this alone triggers all the other functions to populate the user details
@@ -1764,6 +1783,7 @@ UserManager::OnUserComboChange()
     m_username.SetAs(temp ? temp : "");
     temp = curruser.Substr(curruser.GetLength() - len, len);
     m_host.SetAs(temp ? temp : "");
+    m_isrole = IsRoleAccount(m_username.GetString(), m_host.GetString());   // NGSA (M3)
 
     //delete the user level items
     DeleteUserLevelItems();
@@ -1905,7 +1925,7 @@ UserManager::InitTreeViewNodes(HWND hwndtv)
 
     TreeView_DeleteAllItems(hwndtv);
 
-    curruser.Sprintf("%s@%s", m_username.GetString(), m_host.GetString());
+    curruser.Sprintf("%s@%s%s", m_username.GetString(), m_host.GetString(), m_isrole ? " (role)" : "");   // NGSA (M3)
     
     insertstruct.hInsertAfter = TVI_SORT;
     insertstruct.item.mask = TVIF_TEXT | TVIF_IMAGE | TVIF_SELECTEDIMAGE | TVIF_STATE;
@@ -1934,6 +1954,16 @@ UserManager::InitTreeViewNodes(HWND hwndtv)
     insertstruct.item.pszText = _(L"Object Level Privileges");
     insertstruct.item.cchTextMax = wcslen(insertstruct.item.pszText);
     hobjpriv = TreeView_InsertItem(hwndtv, &insertstruct);
+    // NGSA (M3): roles granted to this account (MariaDB 10.0.5+, MySQL 8.0+)
+    if(m_hmdi->m_ngsacaps.roles == wyTrue)
+    {
+        insertstruct.hInsertAfter = hobjpriv;
+        insertstruct.item.iImage = m_umimageindex + 3;
+        insertstruct.item.iSelectedImage = m_umimageindex + 3;
+        insertstruct.item.pszText = _(L"Roles");
+        insertstruct.item.cchTextMax = wcslen(insertstruct.item.pszText);
+        TreeView_InsertItem(hwndtv, &insertstruct);
+    }
 
     TreeView_Expand(hwndtv, huser, TVE_EXPAND);
 
@@ -1970,11 +2000,12 @@ UserManager::CreateImageList()
         IDI_SERVER, IDI_DATABASE, IDI_OPEN, IDI_TABLE, IDI_COLUMN, 
 		IDI_INDEX, IDI_OPEN, IDI_PROCEDURE, IDI_OPEN, IDI_FUNCTION, 
 		IDI_OPEN, IDI_VIEW, IDI_OPEN, IDI_TRIGGER, IDI_OPEN, IDI_EVENT, IDI_OPEN, IDI_PRIMARYKEY, IDI_PRIMARYKEY,
-        IDI_USER_16, IDI_USER_GLOBALPRIV, IDI_USER_OBJECTPRIV
+        IDI_USER_16, IDI_USER_GLOBALPRIV, IDI_USER_OBJECTPRIV,
+        IDI_USER_16     // NGSA (M3): Roles node
     };
 
     m_imagecount = sizeof(imgres)/sizeof(imgres[0]);
-    m_umimageindex = m_imagecount - 3;
+    m_umimageindex = m_imagecount - 4;    // NGSA (M3): +3 is the Roles node
 
     VERIFY(m_himagelist = ImageList_Create(16, 16, ILC_COLOR32 | ILC_MASK , m_imagecount, 0));
 	
@@ -2184,7 +2215,11 @@ UserManager::OnTreeViewSelChanging(LPARAM lparam)
     context = ImageIndexToContext(tvi.iImage);
 
     //if the context is valid, then update the SQLite working copy
-    if(context != -1)
+    if(context == U_ROLES)
+    {
+        UpdateRolesWorking();   // NGSA (M3)
+    }
+    else if(context != -1)
     {
         UpdateSQLite(context, skipoptimization);
     }
@@ -2231,6 +2266,11 @@ UserManager::OnTreeViewSelChanged(LPARAM lparam)
     {
         //SetDlgItemText(m_hwnd, IDC_OBJECTINFO, U_EDIT_USER);
         SetDlgItemText(m_hwnd, IDC_CONTEXTHELP, U_CONTEXTHELP_USER);
+        SendDlgItemMessage(m_hwnd, IDC_CONTEXTICON, STM_SETICON, (WPARAM)m_husericon, 0);
+    }
+    else if(tvi.iImage == m_umimageindex + 3)   // NGSA (M3)
+    {
+        SetDlgItemText(m_hwnd, IDC_CONTEXTHELP, _(L"Roles granted to this account (tick to grant, untick to revoke)"));
         SendDlgItemMessage(m_hwnd, IDC_CONTEXTICON, STM_SETICON, (WPARAM)m_husericon, 0);
     }
     else if(tvi.iImage == m_umimageindex + 1)
@@ -2392,7 +2432,8 @@ UserManager::ShowHideControls(wyInt32 imageindex)
         IDC_MAXCONN_PROMPT, IDC_MAXCONN, IDC_MAXCONN_SPIN,
         IDC_MAXCONNSIM_PROMPT, IDC_MAXSIMCONN, IDC_MAXSIMCONN_SPIN,
         IDC_HELPZERO,
-		IDC_PLUGIN_PROMPT,IDC_AUTHPLUGIN
+		IDC_PLUGIN_PROMPT,IDC_AUTHPLUGIN,
+		IDC_UM_ISROLE   // NGSA (M3)
     };
 
     wyInt32 ctrlids1[] = {
@@ -2599,6 +2640,11 @@ UserManager::ApplyChanges(wyBool issave)
 
         //grant/revoke privileges
         if(ProcessGrantRevoke() == wyFalse)
+        {
+            return wyFalse;
+        }
+        //NGSA (M3): grant/revoke roles
+        if(ProcessRoleChanges() == wyFalse)
         {
             return wyFalse;
         }
@@ -2943,6 +2989,8 @@ UserManager::PrepareGrantRevokeQuery(sqlite3_stmt** privstmt, sqlite3_stmt** pri
 
     EscapeMySQLString(m_username.GetString(), tempuser);
     EscapeMySQLString(m_host.GetString(), temphost);
+    wyString account;
+    AccountLiteral(account);    // NGSA (M3): 'u'@'h', or the bare name for a MariaDB role
 
     //set the object type
     if(objecttype == U_PROCEDURES)
@@ -2956,13 +3004,12 @@ UserManager::PrepareGrantRevokeQuery(sqlite3_stmt** privstmt, sqlite3_stmt** pri
 
     if(revokequery.GetLength())
     {
-        temp.Sprintf("REVOKE%s ON %s %s.%s FROM '%s'@'%s'", 
+        temp.Sprintf("REVOKE%s ON %s %s.%s FROM %s", 
                      revokequery.GetString(), 
                      type.GetString(),
                      dbname.GetString(),
                      objectname.GetString(),
-                     tempuser.GetString(),
-                     temphost.GetString()
+                     account.GetString()
                      );
         revokequery.SetAs(temp);
     }
@@ -2974,13 +3021,12 @@ UserManager::PrepareGrantRevokeQuery(sqlite3_stmt** privstmt, sqlite3_stmt** pri
 
     if(grantquery.GetLength())
     {
-        temp.Sprintf("GRANT %s ON %s %s.%s TO '%s'@'%s' %s", 
+        temp.Sprintf("GRANT %s ON %s %s.%s TO %s %s", 
                      grantquery.GetString(), 
                      type.GetString(),
                      dbname.GetString(),
                      objectname.GetString(),
-                     tempuser.GetString(),
-                     temphost.GetString(),
+                     account.GetString(),
                      (grantgrant == wyTrue) ? "WITH GRANT OPTION" : "");
         grantquery.SetAs(temp);
     }
@@ -2993,12 +3039,11 @@ UserManager::PrepareGrantRevokeQuery(sqlite3_stmt** privstmt, sqlite3_stmt** pri
 
     if(revokegrant == wyTrue)
     {
-        revokequery.Sprintf("REVOKE GRANT OPTION ON %s %s.%s FROM '%s'@'%s'",
+        revokequery.Sprintf("REVOKE GRANT OPTION ON %s %s.%s FROM %s",
                             type.GetString(),
                             dbname.GetString(),
                             objectname.GetString(),
-                            tempuser.GetString(),
-                            temphost.GetString());
+                            account.GetString());
 
         retval = ExecuteGrantRevoke(NULL, &revokequery);
     }
@@ -3084,9 +3129,14 @@ UserManager::DropUser()
     //else manually delete the user from the mysql tables
     if(m_ismysql502 == wyTrue)
     {
-        query.Sprintf("DROP USER '%s'@'%s'",
-            tempuser.GetString(),
-            temphost.GetString());
+        if(m_isrole)   // NGSA (M3)
+        {
+            wyString account;
+            AccountLiteral(account);
+            query.Sprintf("DROP ROLE %s", account.GetString());
+        }
+        else
+            query.Sprintf("DROP USER '%s'@'%s'", tempuser.GetString(), temphost.GetString());
 
         if(ExecuteUMQuery(query) == wyFalse)
         {
@@ -3155,6 +3205,10 @@ UserManager::DropUser()
 void
 UserManager::FillUserInfo()
 {
+    // NGSA (M3): an existing account's role flag is shown, not editable; a new account may be a role
+    if(m_isnewuser == wyFalse)
+        CheckDlgButton(m_hwnd, IDC_UM_ISROLE, m_isrole ? BST_CHECKED : BST_UNCHECKED);
+    EnableWindow(GetDlgItem(m_hwnd, IDC_UM_ISROLE), (m_isnewuser == wyTrue && m_hmdi->m_ngsacaps.roles == wyTrue) ? TRUE : FALSE);
     wyInt32 ctrls[] = {IDC_MAXQUERY_SPIN, IDC_MAXUPDATE_SPIN, IDC_MAXCONN_SPIN, IDC_MAXSIMCONN_SPIN};
     wyInt32 i;
 	string temp;
@@ -3207,7 +3261,7 @@ UserManager::RenameUser()
 
     if(!username.GetLength() && m_username.Compare(username))
     {
-        ret = MessageBox(m_hwnd, _(L"You have not specifed a username. Do you want to rename it as anonymous user?"), 
+        ret = MessageBox(m_hwnd, _(L"You have not specified a username. Do you want to rename it to the anonymous user?"), 
                          pGlobals->m_appname.GetAsWideChar(), 
                          MB_YESNOCANCEL | MB_ICONQUESTION);
 
@@ -3641,128 +3695,106 @@ UserManager::GetPrivilegeTableMapping(wyString* key, wyBool iscolumnname)
 void
 UserManager::GetGlobalPrivileges()
 {
-    wyString            query, boolvalue, value, tempuser, temphost, grantquery;
-    MYSQL_RES*          myres, *grantqueryresult;
-    MYSQL_ROW           row, grantrow;
-    PrivilegedObject*  privobject = NULL;
-    wyInt32             i, fieldindex, mariadb100502privcount;
-    wyChar*             fieldname;
-	wyBool              ismariadb100502;
+    wyString            query, value, tempuser, temphost, name;
+    MYSQL_RES*          myres;
+    MYSQL_ROW           row;
+    PrivilegedObject*   privobject = NULL;
+    wyInt32             i, idx;
+    wyChar*             limitations[] = {"max_questions", "max_updates", "max_connections", "max_user_connections"};
 
-    wyChar* limitations[] = {
-        "max_questions", 
-        "max_updates", 
-        "max_connections", 
-        "max_user_connections"
-    };
-
-	// Add the new privilege count if it's MariaDB 10.5.2 and above
-	ismariadb100502 = IsMariaDB100502(m_hmdi->m_tunnel, &m_hmdi->m_mysql);
-
-	if (!ismariadb100502)
-	{
-		mariadb100502privcount = 0;
-	}
-	else
-	{
-		mariadb100502privcount = sizeof(m_mariadb_100502_priv) / sizeof(m_mariadb_100502_priv[0]);
-	}
-        
     SetCursor(LoadCursor(NULL, IDC_WAIT));
-    query.Sprintf("SELECT * FROM `mysql`.`user` WHERE User = '%s' AND Host = '%s'",
-        EscapeMySQLString(m_username.GetString(), tempuser).GetString(),
-        EscapeMySQLString(m_host.GetString(), temphost).GetString());
+
+    privobject = new PrivilegedObject(m_privcount, m_privarray, 0, 0);
+    privobject->m_objecttype = 0;
+
+    // NGSA (M2): a user's global privileges come from SHOW GRANTS, which both engines print in
+    // one shape: "GRANT <list> ON *.* TO ... [WITH GRANT OPTION]". <list> is ALL PRIVILEGES, USAGE
+    // or comma-separated names; MySQL 8 prints its dynamic privileges on a second line. Reading
+    // mysql.user columns could never see the dynamic ones or MariaDB's new ones.
+    AccountLiteral(tempuser);   // NGSA (M3): 'u'@'h', or the bare name for a MariaDB role
+    query.Sprintf("SHOW GRANTS FOR %s", tempuser.GetString());
     myres = ExecuteAndGetResult(m_hmdi, m_hmdi->m_tunnel, &m_hmdi->m_mysql, query);
 
     if(myres == NULL)
     {
         ShowMySQLError(m_hwnd, m_hmdi->m_tunnel, &m_hmdi->m_mysql, query.GetString());
+        delete privobject;
         return;
     }
 
     while((row =  m_hmdi->m_tunnel->mysql_fetch_row(myres)))
     {
-        privobject = new PrivilegedObject(m_privcount, m_privarray, 0, 0);
-        privobject->m_objecttype = 0;
-        
-        for(i = 0; i < m_privcount; ++i)
-        {
-            fieldname = GetPrivilegeTableMapping(&(m_privarray[i]->priv));
-            
-            if(fieldname)
-            {
-                fieldindex = GetFieldIndex(m_hmdi->m_tunnel, myres, fieldname);
-                boolvalue.SetAs(row[fieldindex], m_hmdi->m_ismysql41);
+        if(!row[0])
+            continue;
 
-                if(!boolvalue.CompareI("Y"))
-                {
+        value.SetAs(row[0], m_hmdi->m_ismysql41);
+
+        std::string grant(value.GetString());
+        size_t      on = grant.find(" ON *.* ");
+
+        if(grant.compare(0, 6, "GRANT ") != 0 || on == std::string::npos)
+            continue;                       // database/table grants, roles, proxy: handled elsewhere
+
+        if(grant.find(" WITH GRANT OPTION") != std::string::npos && m_grantoptionindex >= 0)
+            privobject->m_privileges[m_grantoptionindex] = 1;
+
+        std::string list = grant.substr(6, on - 6);
+
+        if(list == "ALL PRIVILEGES")
+        {
+            for(i = 0; i < m_privcount; ++i)
+            {
+                if(i != m_grantoptionindex && IsDynamicPrivilege(m_privarray[i]->priv.GetString()) == wyFalse)
                     privobject->m_privileges[i] = 1;
-                }
             }
+            continue;
         }
 
-		// Check status of new privileges for MariaDB 10.5.2 and above 
-		if (ismariadb100502)
-		{
-			grantquery.Sprintf("SHOW GRANTS FOR '%s'@'%s'",
-				EscapeMySQLString(m_username.GetString(), tempuser).GetString(),
-				EscapeMySQLString(m_host.GetString(), temphost).GetString());
-			grantqueryresult = ExecuteAndGetResult(m_hmdi, m_hmdi->m_tunnel, &m_hmdi->m_mysql, grantquery);
+        size_t start = 0;
 
-			if (grantqueryresult == NULL)
-			{
-				m_hmdi->m_tunnel->mysql_free_result(myres);
-				ShowMySQLError(m_hwnd, m_hmdi->m_tunnel, &m_hmdi->m_mysql, query.GetString());
-				return;
-			}
-
-			grantrow = m_hmdi->m_tunnel->mysql_fetch_row(grantqueryresult);
-
-			char *grantlist = grantrow[0];
-			bool areallprivilages = strstr(grantlist, "GRANT ALL PRIVILEGES");
-
-			// if all privileges are granted to user mark each privilege to true else match the new privilege with the grant result
-			// and update accordingly.
-			if (areallprivilages)
-			{
-				for (i = 0; i < m_privcount; ++i)
-				{
-					privobject->m_privileges[i] = 1;
-				}
-			}
-			else
-			{
-				for (i = 0; i < mariadb100502privcount; ++i)
-				{
-					if (strstr(grantlist, m_mariadb_100502_priv[i]))
-					{
-						wyString privilege = m_mariadb_100502_priv[i];
-						fieldindex = GetPrivilegeIndex(privilege);
-						if(fieldindex != -1)
-							privobject->m_privileges[fieldindex] = 1;
-					}
-				}
-			}
-
-			m_hmdi->m_tunnel->mysql_free_result(grantqueryresult);
-		}
-
-        InsertIntoSQLite(privobject);
-        delete privobject;
-
-        for(i = 0; i < 4; ++i)
+        while(start <= list.size())
         {
-            fieldindex = GetFieldIndex(m_hmdi->m_tunnel, myres, limitations[i]);
+            size_t      comma = list.find(',', start);
+            std::string item = list.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
 
-            if(fieldindex != -1)
-            {
-                value.SetAs(row[fieldindex], m_hmdi->m_ismysql41);
-                m_limitations[i] = value.GetAsInt32();
-            }
+            name.SetAs(item.c_str());
+            NormalizePrivilegeName(name);
+
+            if(name.GetLength() && name.Compare("USAGE") != 0 && (idx = GetPrivilegeIndex(name)) != -1)
+                privobject->m_privileges[idx] = 1;
+
+            if(comma == std::string::npos)
+                break;
+
+            start = comma + 1;
         }
     }
 
     m_hmdi->m_tunnel->mysql_free_result(myres);
+
+    InsertIntoSQLite(privobject);
+    delete privobject;
+
+    // resource limits
+    query.Sprintf("SELECT max_questions, max_updates, max_connections, max_user_connections FROM `mysql`.`user` WHERE User = '%s' AND Host = '%s'",
+        EscapeMySQLString(m_username.GetString(), tempuser).GetString(),
+        EscapeMySQLString(m_host.GetString(), temphost).GetString());
+    myres = ExecuteAndGetResult(m_hmdi, m_hmdi->m_tunnel, &m_hmdi->m_mysql, query);
+
+    if(myres)
+    {
+        if((row = m_hmdi->m_tunnel->mysql_fetch_row(myres)))
+        {
+            for(i = 0; i < 4; ++i)
+            {
+                value.SetAs(row[i] ? row[i] : "0", m_hmdi->m_ismysql41);
+                m_limitations[i] = value.GetAsInt32();
+            }
+        }
+
+        m_hmdi->m_tunnel->mysql_free_result(myres);
+    }
+
     SetCursor(LoadCursor(NULL, IDC_ARROW));
 }
 
@@ -3770,14 +3802,14 @@ UserManager::GetGlobalPrivileges()
 void
 UserManager::GetDBPrivileges()
 {
-    wyString            query, boolvalue, tempuser, temphost;
+    wyString            query, boolvalue, tempuser, temphost, colstr;
     MYSQL_RES*          myres;
     MYSQL_ROW           row;
     PrivilegedObject*   privobject = NULL;
     wyInt32             i, fieldindex;
-    wyChar*             fieldname;
-        
+
     SetCursor(LoadCursor(NULL, IDC_WAIT));
+
     query.Sprintf("SELECT * FROM `mysql`.`db` WHERE User = '%s' AND Host = '%s'",
         EscapeMySQLString(m_username.GetString(), tempuser).GetString(),
         EscapeMySQLString(m_host.GetString(), temphost).GetString());
@@ -3795,23 +3827,26 @@ UserManager::GetDBPrivileges()
         privobject->m_objecttype = U_DBS;
         fieldindex = GetFieldIndex(m_hmdi->m_tunnel, myres, "Db");
         privobject->m_dbname.SetAs(row[fieldindex], m_hmdi->m_ismysql41);
-        
+
         for(i = 0; i < m_privcount; ++i)
         {
-            if(m_privarray[i]->context & U_DBS)
+            if(!(m_privarray[i]->context & U_DBS))
+                continue;
+
+            // NGSA (M2): privilege name -> mysql.db column, generic rule plus the irregular map
+            if(PrivilegeToColumn(m_privarray[i]->priv, colstr) == wyFalse)
+                continue;
+
+            fieldindex = GetFieldIndex(m_hmdi->m_tunnel, myres, (wyChar*)colstr.GetString());
+
+            if(fieldindex == -1)
+                continue;
+
+            boolvalue.SetAs(row[fieldindex], m_hmdi->m_ismysql41);
+
+            if(!boolvalue.CompareI("Y"))
             {
-                fieldname = GetPrivilegeTableMapping(&(m_privarray[i]->priv));
-
-                if(fieldname)
-                {
-                    fieldindex = GetFieldIndex(m_hmdi->m_tunnel, myres, fieldname);
-                    boolvalue.SetAs(row[fieldindex], m_hmdi->m_ismysql41);
-
-                    if(!boolvalue.CompareI("Y"))
-                    {
-                        privobject->m_privileges[i] = 1;
-                    }
-                }
+                privobject->m_privileges[i] = 1;
             }
         }
 
@@ -3983,20 +4018,17 @@ UserManager::GetColumnPrivileges()
 wyBool
 UserManager::GetServerPrivileges()
 {
-    wyString    query, temp;
+    wyString    query, temp, name;
     MYSQL_RES*  myres;
     MYSQL_ROW   row;
-    wyInt32     i, j = 0, maria10502privcount;
-    wyChar*     privname;
-    wyChar* limitations[] = {"max_questions", "max_updates", "max_connections", "max_user_connections"};
-	wyBool      ismaridb100502;
-    
+    wyInt32     i, j;
+    wyChar*     limitations[] = {"max_questions", "max_updates", "max_connections", "max_user_connections"};
+
     SetCursor(LoadCursor(NULL, IDC_WAIT));
+
+    // the resource limits are still columns of mysql.user (a view on MariaDB 10.4+, still readable)
     query.SetAs("SHOW COLUMNS FROM `mysql`.`user`");
     myres = ExecuteAndGetResult(m_hmdi, m_hmdi->m_tunnel, &m_hmdi->m_mysql, query);
-    m_privcount = 0;
-	ismaridb100502 = IsMariaDB100502(m_hmdi->m_tunnel, &m_hmdi->m_mysql);
-	maria10502privcount = sizeof(m_mariadb_100502_priv) / sizeof(m_mariadb_100502_priv[0]);
 
     if(myres == NULL)
     {
@@ -4008,63 +4040,65 @@ UserManager::GetServerPrivileges()
     {
         temp.SetAs(row[0], m_hmdi->m_ismysql41);
 
-        if(GetPrivilegeTableMapping(&temp, wyTrue) != NULL)
+        for(i = 0; i < U_MAXLIMITATIONS; ++i)
         {
-            m_privcount++;
-        }
-        else
-        {
-            for(i = 0; i < U_MAXLIMITATIONS; ++i)
+            if(!temp.CompareI(limitations[i]))
             {
-                if(!temp.CompareI(limitations[i]))
-                {
-                    m_showlimitations[i] = wyTrue;
-                }
+                m_showlimitations[i] = wyTrue;
             }
         }
     }
 
-	// Add the new privilege count to m_privcount if it's MariaDB 10.5.2 and above.
-	if (ismaridb100502)
-	{
-		m_privcount += maria10502privcount - (sizeof(m_mariadb_100502_hide_priv) / sizeof(m_mariadb_100502_hide_priv[0]));
-	}
-    
-    //create the privilege array used for this server
-    m_privarray = new Privileges*[m_privcount];
-    m_hmdi->m_tunnel->mysql_data_seek(myres, 0);
+    m_hmdi->m_tunnel->mysql_free_result(myres);
+
+    // NGSA (M2, #2354): the privilege list is what the server itself reports. SHOW PRIVILEGES covers
+    // the static ones, MariaDB's split of SUPER (BINLOG ADMIN, CONNECTION ADMIN...), DELETE HISTORY,
+    // SHOW CREATE ROUTINE and MySQL 8's dynamic privileges (BACKUP_ADMIN...). The old fixed column
+    // map and the MariaDB 10.5.2 bolt-on are gone. USAGE is "nothing" and PROXY has its own GRANT
+    // syntax, so both are left out as before.
+    query.SetAs("SHOW PRIVILEGES");
+    myres = ExecuteAndGetResult(m_hmdi, m_hmdi->m_tunnel, &m_hmdi->m_mysql, query);
+
+    if(myres == NULL)
+    {
+        OnUMError(query.GetString(), wyTrue);
+        return wyFalse;
+    }
+
+    m_privcount = 0;
+    m_privarray = new Privileges*[(wyInt32)m_hmdi->m_tunnel->mysql_num_rows(myres) + 1];
 
     while((row =  m_hmdi->m_tunnel->mysql_fetch_row(myres)))
     {
-        temp.SetAs(row[0], m_hmdi->m_ismysql41);
+        if(!row[0])
+            continue;
 
-        if((privname = GetPrivilegeTableMapping(&temp, wyTrue)) != NULL)
+        name.SetAs(row[0], m_hmdi->m_ismysql41);
+        NormalizePrivilegeName(name);
+
+        if(!name.Compare("USAGE") || !name.Compare("PROXY"))
+            continue;
+
+        for(j = 0; j < m_privcount; ++j)        // SHOW PRIVILEGES may repeat a name
         {
-			// check for the hidden privilege for MariaDB 10.5.2 and don't add it to the privilege array.
-			if (ismaridb100502 && CheckHiddenPrivelegeMariaDB100502(privname) == wyTrue)
-				continue;
-
-            m_privarray[j] = new Privileges;
-            m_privarray[j]->priv.SetAs(privname);
-            m_privarray[j]->context = 0;
-            ++j;
+            if(!m_privarray[j]->priv.Compare(name))
+                break;
         }
+
+        if(j < m_privcount)
+            continue;
+
+        m_privarray[m_privcount] = new Privileges;
+        m_privarray[m_privcount]->priv.SetAs(name);
+        m_privarray[m_privcount]->context = 0;
+        m_privcount++;
     }
 
-	// add new privileges to priv array for mariadb 10.5.2 and above.
-	if (ismaridb100502)
-	{
-		for (int i = 0; i < maria10502privcount; i++)
-		{
-			m_privarray[j] = new Privileges;
-			m_privarray[j]->priv.SetAs(m_mariadb_100502_priv[i]);
-			m_privarray[j]->context = 0;
-			++j;
-		}
-	}
-
     m_hmdi->m_tunnel->mysql_free_result(myres);
+
     qsort((void*)m_privarray, m_privcount, sizeof(Privileges*), UserManager::CompareFunct);
+
+    m_grantoptionindex = -1;
 
     for(i = 0; i < m_privcount; ++i)
     {
@@ -4073,6 +4107,8 @@ UserManager::GetServerPrivileges()
             m_grantoptionindex = i;
         }
     }
+
+    NgsaTrace("UserManager: %d privileges from SHOW PRIVILEGES (%s)", m_privcount, NgsaCapsCompute::EngineName(m_hmdi->m_ngsacaps.engine));
 
     if(GetServerPrivsForDB() == wyFalse || GetServerPrivsForTableAndColumn() == wyFalse)
     {
@@ -4105,12 +4141,11 @@ UserManager::CompareFunct(const void* elem1, const void* elem2)
 wyBool
 UserManager::GetServerPrivsForDB()
 {
-    wyString    query, temp;
+    wyString    query, temp, privstr;
     MYSQL_RES*  myres;
     MYSQL_ROW   row;
     wyInt32     j;
-    wyChar*     privname;
-    
+
     query.SetAs("SHOW COLUMNS FROM `mysql`.`db`");
     myres = ExecuteAndGetResult(m_hmdi, m_hmdi->m_tunnel, &m_hmdi->m_mysql, query);
 
@@ -4124,17 +4159,9 @@ UserManager::GetServerPrivsForDB()
     {
         temp.SetAs(row[0], m_hmdi->m_ismysql41);
 
-        if((privname = GetPrivilegeTableMapping(&temp, wyTrue)) != NULL)
-        {
-            for(j = 0; j < m_privcount; ++j)
-            {
-                if(!m_privarray[j]->priv.CompareI(privname))
-                {
-                    m_privarray[j]->context |= U_DBS;
-                    break;
-                }
-            }
-        }
+        // NGSA (M2): any *_priv column of mysql.db names a database-level privilege (Delete_history_priv too)
+        if(ColumnToPrivilege(temp, privstr) == wyTrue && (j = GetPrivilegeIndex(privstr)) != -1)
+            m_privarray[j]->context |= U_DBS;
     }
 
     m_hmdi->m_tunnel->mysql_free_result(myres);
@@ -4235,26 +4262,94 @@ UserManager::GetServerPrivsForRoutine()
     return wyTrue;
 }
 
-// get index of hidden privilege for mariadb 10.5.2 and above using privilege name
-wyBool UserManager::CheckHiddenPrivelegeMariaDB100502(wyChar* priv)
+// NGSA (M2): one spelling for a privilege wherever it comes from. SHOW PRIVILEGES says "Grant option",
+// the grant tables say "Grant_priv" / "Delete versioning rows", SHOW GRANTS says "GRANT OPTION" /
+// "DELETE HISTORY". Everything is compared in upper case through this.
+void
+UserManager::NormalizePrivilegeName(wyString& name)
 {
-	wyInt32 hiddenprivcount = sizeof(m_mariadb_100502_hide_priv) / sizeof(m_mariadb_100502_hide_priv[0]);
+    name.LTrim();
+    name.RTrim();
+    name.ToUpper();
 
-	for (int i = 0; i < hiddenprivcount; i++)
-	{
-		if (strcmp(priv, m_mariadb_100502_hide_priv[i]) == 0)
-			return wyTrue;
-	}
+    if(name.Compare("GRANT OPTION") == 0)
+        name.SetAs("GRANT");
+    else if(name.Compare("DELETE VERSIONING ROWS") == 0)   // mysql.tables_priv on MariaDB
+        name.SetAs("DELETE HISTORY");
+}
 
-	return wyFalse;
+// NGSA (M2): mysql.db / mysql.user column -> privilege name ("Delete_history_priv" -> "DELETE HISTORY").
+// The static map covers the irregular ones (Create_tmp_table_priv, Repl_slave_priv, Show_db_priv...).
+wyBool
+UserManager::ColumnToPrivilege(wyString& column, wyString& privilege)
+{
+    wyChar* mapped = GetPrivilegeTableMapping(&column, wyTrue);
+
+    if(mapped)
+    {
+        privilege.SetAs(mapped);
+    }
+    else
+    {
+        wyInt32 len = column.GetLength();
+
+        if(len <= 5 || stricmp(column.GetString() + len - 5, "_priv") != 0)
+            return wyFalse;
+
+        privilege.SetAs(column.GetString());
+        privilege.Strip(5);
+        privilege.FindAndReplace("_", " ");
+    }
+
+    NormalizePrivilegeName(privilege);
+    return wyTrue;
+}
+
+// NGSA (M2): privilege name -> mysql.db column ("DELETE HISTORY" -> "Delete_history_priv").
+wyBool
+UserManager::PrivilegeToColumn(wyString& privilege, wyString& column)
+{
+    wyChar* mapped = GetPrivilegeTableMapping(&privilege, wyFalse);
+
+    if(mapped)
+    {
+        column.SetAs(mapped);
+        return wyTrue;
+    }
+
+    column.SetAs(privilege.GetString());
+    column.ToLower();
+    column.FindAndReplace(" ", "_");
+    column.Add("_priv");
+
+    if(column.GetLength())
+    {
+        wyChar* p = (wyChar*)column.GetString();
+        p[0] = (wyChar)toupper(p[0]);
+    }
+
+    return wyTrue;
+}
+
+// NGSA (M2): MySQL 8 "dynamic" privileges are single upper-case tokens with underscores (BACKUP_ADMIN).
+// They are not part of ALL PRIVILEGES and SHOW GRANTS lists them on their own line.
+wyBool
+UserManager::IsDynamicPrivilege(const wyChar* name)
+{
+    if(m_hmdi->m_ngsacaps.engine == NGSA_ENGINE_MARIADB)
+        return wyFalse;
+
+    return (strchr(name, ' ') == NULL && strchr(name, '_') != NULL) ? wyTrue : wyFalse;
 }
 
 // get the index of the privilege by privilege name
 wyInt32 UserManager::GetPrivilegeIndex(wyString & value)
 {
+	wyString norm(value.GetString());
+	NormalizePrivilegeName(norm);	// NGSA (M2)
 	for (int i = 0; i < m_privcount; i++)
 	{
-		if (!m_privarray[i]->priv.CompareI(value))
+		if (!m_privarray[i]->priv.CompareI(norm))
 		{
 			return i;
 		}
@@ -4271,9 +4366,9 @@ UserManager::GetPrivilegeIndexes(wyString& value, wyInt32* indexarray, wyBool is
     wyChar          temp[2] = {0, 0};
     wyString        buffer;
     wyInt32         i, j;
-    
-    ptr += (istype == wyTrue) ? 4 : 0;
-     
+
+    ptr += (istype == wyTrue) ? 4 : 0;      // skip "set(" / "enum("
+
     for(buffer.Clear(), j = 0; *ptr != 0; ++ptr)
     {
         if(*ptr == '\'' || *ptr == ')')
@@ -4283,14 +4378,8 @@ UserManager::GetPrivilegeIndexes(wyString& value, wyInt32* indexarray, wyBool is
 
         if(*ptr == ',')
         {
-            for(i = 0; i < m_privcount; ++i)
-            {
-                if(!m_privarray[i]->priv.CompareI(buffer))
-                {
-                    indexarray[j++] = i;
-                    break;
-                }
-            }
+            if((i = GetPrivilegeIndex(buffer)) != -1)   // NGSA (M2): normalised compare, aliases included
+                indexarray[j++] = i;
 
             buffer.Clear();
             continue;
@@ -4300,14 +4389,8 @@ UserManager::GetPrivilegeIndexes(wyString& value, wyInt32* indexarray, wyBool is
         buffer.Add(temp);
     }
 
-    for(i = 0; i < m_privcount; ++i)
-    {
-        if(!m_privarray[i]->priv.CompareI(buffer))
-        {
-            indexarray[j++] = i;
-            break;
-        }
-    }
+    if((i = GetPrivilegeIndex(buffer)) != -1)
+        indexarray[j++] = i;
 
     return j;
 }
@@ -4373,6 +4456,11 @@ UserManager::UpdateListView(wyInt32 imageindex)
 void
 UserManager::PopulatePrivsBasedOnContext(wyInt32 imageindex)
 {
+    if(imageindex == m_umimageindex + 3)    // NGSA (M3)
+    {
+        PopulateRoles();
+        return;
+    }
     LVITEM  lvi;
     HWND    hwndlistview = GetDlgItem(m_hwnd, IDC_PRIVLIST);
     wyInt32 i, context = 0;
@@ -4417,6 +4505,10 @@ UserManager::ImageIndexToContext(wyInt32 imageindex)
     {
         return 0;
     }
+    if(imageindex == m_umimageindex + 3)
+    {
+        return U_ROLES;     // NGSA (M3)
+    }
 
     switch(imageindex)
     {
@@ -4455,6 +4547,11 @@ UserManager::ImageIndexToContext(wyInt32 imageindex)
 void
 UserManager::FillPrivileges(wyInt32 imageindex)
 {
+    if(imageindex == m_umimageindex + 3)    // NGSA (M3)
+    {
+        FillRoles();
+        return;
+    }
     wyInt32         i, count, context, temp, j;
     HWND            hwndlistview = GetDlgItem(m_hwnd, IDC_PRIVLIST);
     LVITEM	        lvi;    
@@ -4779,9 +4876,9 @@ UserManager::OnUMError(const wyChar* query, wyBool isinitializing)
 
     if(isinitializing == wyTrue && m_hmdi->m_tunnel->mysql_errno(m_hmdi->m_mysql) == 1142)
     {
-        temp.Sprintf("MySQL error : (1142) - %s\n\n%s", 
+        temp.Sprintf("Server error: (1142) - %s\n\n%s",
             m_hmdi->m_tunnel->mysql_error(m_hmdi->m_mysql), U_ACCESSDENIED);
-        MessageBox(m_hwnd, temp.GetAsWideChar(), L"MySQL Error", MB_ICONERROR | MB_OK);
+        MessageBox(m_hwnd, temp.GetAsWideChar(), _(L"Server Error"), MB_ICONERROR | MB_OK);	// bonSQL: was "MySQL Error"
     }
     else
     {
@@ -4796,4 +4893,278 @@ CreateUserManager()
     UserManager ob;
 
     return ob.Create(pGlobals->m_pcmainwin->m_hwndmain);
+}
+
+// ---------------------------------------------------------------------------------------------
+// NGSA (M3): roles
+// ---------------------------------------------------------------------------------------------
+
+// the selected account as it must appear in GRANT/REVOKE/SHOW GRANTS/DROP
+void
+UserManager::AccountLiteral(wyString& out)
+{
+    wyString user, host;
+
+    EscapeMySQLString(m_username.GetString(), user);
+    EscapeMySQLString(m_host.GetString(), host);
+
+    if(m_isrole && m_hmdi->m_ngsacaps.engine == NGSA_ENGINE_MARIADB)
+        out.Sprintf("'%s'", user.GetString());
+    else
+        out.Sprintf("'%s'@'%s'", user.GetString(), host.GetString());
+}
+
+// a role key ("name" on MariaDB, "name@host" on MySQL) as a literal
+void
+UserManager::RoleLiteral(const wyChar* key, wyString& out)
+{
+    wyString    k(key), user, host;
+    wyInt32     at = k.FindIWithReverse("@", 0, wyTrue);
+
+    if(m_hmdi->m_ngsacaps.engine == NGSA_ENGINE_MARIADB || at == -1)
+    {
+        EscapeMySQLString(k.GetString(), user);
+        out.Sprintf("'%s'", user.GetString());
+        return;
+    }
+
+    user.SetAs(k.Substr(0, k.GetLength() - at - 1));
+    host.SetAs(k.Substr(k.GetLength() - at, at));
+    EscapeMySQLString(user.GetString(), user);
+    EscapeMySQLString(host.GetString(), host);
+    out.Sprintf("'%s'@'%s'", user.GetString(), host.GetString());
+}
+
+wyBool
+UserManager::IsRoleAccount(const wyChar* user, const wyChar* host)
+{
+    wyString key;
+
+    key.Sprintf("|%s@%s|", user, host);
+    return m_rolekeys.Find(key.GetString(), 0) != -1 ? wyTrue : wyFalse;
+}
+
+// roles granted to the selection -> m_rolesgrantedorig / m_rolesgranted
+void
+UserManager::LoadGrantedRoles()
+{
+    wyString    query, tempuser, temphost;
+    MYSQL_RES*  myres;
+    MYSQL_ROW   row;
+
+    m_rolesgrantedorig.SetAs("|");
+    m_rolesgranted.SetAs("|");
+
+    if(m_hmdi->m_ngsacaps.roles == wyFalse)
+        return;
+
+    EscapeMySQLString(m_username.GetString(), tempuser);
+    EscapeMySQLString(m_host.GetString(), temphost);
+
+    if(m_hmdi->m_ngsacaps.engine == NGSA_ENGINE_MARIADB)
+        query.Sprintf("SELECT `Role`, '' FROM `mysql`.`roles_mapping` WHERE `User` = '%s' AND `Host` = '%s'", tempuser.GetString(), temphost.GetString());
+    else
+        query.Sprintf("SELECT `FROM_USER`, `FROM_HOST` FROM `mysql`.`role_edges` WHERE `TO_USER` = '%s' AND `TO_HOST` = '%s'", tempuser.GetString(), temphost.GetString());
+
+    myres = ExecuteAndGetResult(m_hmdi, m_hmdi->m_tunnel, &m_hmdi->m_mysql, query, wyFalse);
+
+    if(myres == NULL)
+        return;
+
+    while((row = m_hmdi->m_tunnel->mysql_fetch_row(myres)))
+    {
+        if(!row[0])
+            continue;
+
+        if(m_hmdi->m_ngsacaps.engine == NGSA_ENGINE_MARIADB)
+            m_rolesgrantedorig.AddSprintf("%s|", row[0]);
+        else
+            m_rolesgrantedorig.AddSprintf("%s@%s|", row[0], row[1] ? row[1] : "%");
+    }
+
+    m_hmdi->m_tunnel->mysql_free_result(myres);
+    m_rolesgranted.SetAs(m_rolesgrantedorig);
+}
+
+// the Roles list: every role on the server except the selection itself
+void
+UserManager::PopulateRoles()
+{
+    LVITEM      lvi;
+    HWND        hwndlistview = GetDlgItem(m_hwnd, IDC_PRIVLIST);
+    wyString    query, key, text;
+    MYSQL_RES*  myres;
+    MYSQL_ROW   row;
+    wyInt32     i = 0;
+
+    m_roleitems.SetAs("|");
+
+    if(m_hmdi->m_ngsacaps.engine == NGSA_ENGINE_MARIADB)
+        query.SetAs("SELECT `User`, '' FROM `mysql`.`user` WHERE `is_role` = 'Y' ORDER BY `User`");
+    else
+        query.SetAs("SELECT `User`, `Host` FROM `mysql`.`user` WHERE `account_locked` = 'Y' AND `authentication_string` = '' ORDER BY `User`, `Host`");
+
+    myres = ExecuteAndGetResult(m_hmdi, m_hmdi->m_tunnel, &m_hmdi->m_mysql, query, wyFalse);
+
+    if(myres == NULL)
+        return;
+
+    lvi.mask = LVIF_TEXT;
+    lvi.iSubItem = 0;
+
+    while((row = m_hmdi->m_tunnel->mysql_fetch_row(myres)))
+    {
+        if(!row[0])
+            continue;
+
+        if(m_hmdi->m_ngsacaps.engine == NGSA_ENGINE_MARIADB)
+            key.SetAs(row[0]);
+        else
+            key.Sprintf("%s@%s", row[0], row[1] ? row[1] : "%");
+
+        if(!m_username.Compare(row[0]) && (m_hmdi->m_ngsacaps.engine == NGSA_ENGINE_MARIADB || !m_host.Compare(row[1] ? row[1] : "")))
+            continue;       // a role cannot be granted to itself
+
+        text.SetAs(key);
+        lvi.iItem = i++;
+        lvi.pszText = text.GetAsWideChar();
+        lvi.cchTextMax = text.GetLength();
+        ListView_InsertItem(hwndlistview, &lvi);
+        m_roleitems.AddSprintf("%s|", key.GetString());
+    }
+
+    m_hmdi->m_tunnel->mysql_free_result(myres);
+}
+
+// check states from the working copy
+void
+UserManager::FillRoles()
+{
+    HWND        hwndlistview = GetDlgItem(m_hwnd, IDC_PRIVLIST);
+    wyInt32     i, count = ListView_GetItemCount(hwndlistview);
+    wyWChar     buffer[SIZE_256];
+    wyString    key;
+
+    for(i = 0; i < count; ++i)
+    {
+        buffer[0] = 0;
+        ListView_GetItemText(hwndlistview, i, 0, buffer, SIZE_256 - 1);
+        key.Sprintf("|%S|", buffer);
+        ListView_SetCheckState(hwndlistview, i, m_rolesgranted.Find(key.GetString(), 0) != -1 ? TRUE : FALSE);
+    }
+}
+
+// the list -> working copy (called when leaving the Roles node and before saving)
+void
+UserManager::UpdateRolesWorking()
+{
+    HWND        hwndlistview = GetDlgItem(m_hwnd, IDC_PRIVLIST);
+    wyInt32     i, count = ListView_GetItemCount(hwndlistview);
+    wyWChar     buffer[SIZE_256];
+
+    if(count == 0 || !IsWindowVisible(hwndlistview))
+        return;
+
+    m_rolesgranted.SetAs("|");
+
+    for(i = 0; i < count; ++i)
+    {
+        if(!ListView_GetCheckState(hwndlistview, i))
+            continue;
+
+        buffer[0] = 0;
+        ListView_GetItemText(hwndlistview, i, 0, buffer, SIZE_256 - 1);
+        m_rolesgranted.AddSprintf("%S|", buffer);
+    }
+}
+
+// GRANT role TO account / REVOKE role FROM account for the difference between loaded and working copy.
+// MySQL: granted roles are inactive until they are default roles, so SET DEFAULT ROLE ALL follows a
+// grant. MariaDB: a single default role; it is set when the account has none yet.
+wyBool
+UserManager::ProcessRoleChanges()
+{
+    wyString    query, account, role, key, probe;
+    wyInt32     start, end;
+    wyBool      granted = wyFalse, changed = wyFalse;
+
+    if(m_hmdi->m_ngsacaps.roles == wyFalse)
+        return wyTrue;
+
+    AccountLiteral(account);
+
+    // revokes: in the original, not in the working copy
+    for(start = 1; (end = m_rolesgrantedorig.Find("|", start)) != -1; start = end + 1)
+    {
+        key.SetAs(m_rolesgrantedorig.Substr(start, end - start));
+        probe.Sprintf("|%s|", key.GetString());
+
+        if(m_rolesgranted.Find(probe.GetString(), 0) != -1)
+            continue;
+
+        RoleLiteral(key.GetString(), role);
+        query.Sprintf("REVOKE %s FROM %s", role.GetString(), account.GetString());
+
+        if(ExecuteUMQuery(query) == wyFalse)
+            return wyFalse;
+
+        changed = wyTrue;
+    }
+
+    // grants: in the working copy, not in the original
+    for(start = 1; (end = m_rolesgranted.Find("|", start)) != -1; start = end + 1)
+    {
+        key.SetAs(m_rolesgranted.Substr(start, end - start));
+        probe.Sprintf("|%s|", key.GetString());
+
+        if(m_rolesgrantedorig.Find(probe.GetString(), 0) != -1)
+            continue;
+
+        RoleLiteral(key.GetString(), role);
+        query.Sprintf("GRANT %s TO %s", role.GetString(), account.GetString());
+
+        if(ExecuteUMQuery(query) == wyFalse)
+            return wyFalse;
+
+        changed = granted = wyTrue;
+
+        if(m_hmdi->m_ngsacaps.engine == NGSA_ENGINE_MARIADB && m_isrole == wyFalse)
+        {
+            // MariaDB: make it the default role when the account has none
+            wyString    q2, tempuser, temphost;
+            MYSQL_RES*  res;
+            MYSQL_ROW   row;
+
+            EscapeMySQLString(m_username.GetString(), tempuser);
+            EscapeMySQLString(m_host.GetString(), temphost);
+            q2.Sprintf("SELECT `default_role` FROM `mysql`.`user` WHERE `User` = '%s' AND `Host` = '%s'", tempuser.GetString(), temphost.GetString());
+            res = ExecuteAndGetResult(m_hmdi, m_hmdi->m_tunnel, &m_hmdi->m_mysql, q2, wyFalse);
+
+            if(res)
+            {
+                row = m_hmdi->m_tunnel->mysql_fetch_row(res);
+
+                if(row && (!row[0] || !row[0][0]))
+                {
+                    q2.Sprintf("SET DEFAULT ROLE %s FOR %s", role.GetString(), account.GetString());
+                    ExecuteUMQuery(q2);
+                }
+
+                m_hmdi->m_tunnel->mysql_free_result(res);
+            }
+        }
+    }
+
+    if(granted && m_hmdi->m_ngsacaps.engine != NGSA_ENGINE_MARIADB && m_isrole == wyFalse)
+    {
+        query.Sprintf("SET DEFAULT ROLE ALL TO %s", account.GetString());
+
+        if(ExecuteUMQuery(query) == wyFalse)
+            return wyFalse;
+    }
+
+    if(changed)
+        m_rolesgrantedorig.SetAs(m_rolesgranted);
+
+    return wyTrue;
 }

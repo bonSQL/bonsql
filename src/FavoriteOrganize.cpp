@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -24,12 +25,14 @@
 */
 
 #include <shlobj.h>
+#include "ngsa/NgsaDark.h"   // NGSA (#2158)
 #include "FavoriteOrganize.h"
 #include "MDIWindow.h"
 #include "SQLTokenizer.h"
 #include "GUIHelper.h"
 #include "commonhelper.h"
 #include "EditorFont.h"
+#include "ngsa/NgsaScintilla.h"   // NGSA (M13): Scintilla 5 lexer selection
 
 extern	PGLOBALS		pGlobals;
 
@@ -591,7 +594,7 @@ COrganizeFavorite::OnWMInitdlgValues(HWND hwnd)
 	// attempt to set scintilla code page to support utf8 data
 
     //set the lexer language 
-	SendMessage(hwndpreview, SCI_SETLEXERLANGUAGE, 0, (LPARAM)"MySQL");
+	NgsaScintilla::SetLexer(hwndpreview, "MySQL");	// NGSA (M13)
 
 	SendMessage(hwndpreview, SCI_SETCODEPAGE, SC_CP_UTF8, 0);
 
@@ -944,12 +947,12 @@ COrganizeFavorite::OnPaint(HWND hwnd)
 	RECT temp;
 	
 	VERIFY(hdc = BeginPaint(hwnd, &ps));
-	DoubleBuffer::EraseBackground(hwnd, hdc, NULL, GetSysColor(COLOR_3DFACE));
+	DoubleBuffer::EraseBackground(hwnd, hdc, NULL, NgsaDark::Panel(GetSysColor(COLOR_3DFACE)));
 	EndPaint(hwnd, &ps);
 
 	//To paint the resize grip
 	VERIFY(hdc = BeginPaint(hwndstat, &ps));
     GetClientRect(hwndstat, &temp);
-    DrawFrameControl(hdc, &temp, DFC_SCROLL, DFCS_SCROLLSIZEGRIP);
+    NgsaDark::FrameControl(hdc, &temp, DFC_SCROLL, DFCS_SCROLLSIZEGRIP, NgsaDark::IsOn());
     EndPaint(hwnd, &ps);
 }

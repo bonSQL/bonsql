@@ -524,7 +524,7 @@ TableMakerAlterTable::AlterTable()
 	
 	if(CustomGrid_GetRowCount(GetGrid()) == 0)
 	{
-		yog_message(GetGrid(), _(L"Please add atleast one row to the table"), pGlobals->m_appname.GetAsWideChar(), MB_OK | MB_ICONINFORMATION | MB_HELP);
+		yog_message(GetGrid(), _(L"Please add at least one row to the table"), pGlobals->m_appname.GetAsWideChar(), MB_OK | MB_ICONINFORMATION | MB_HELP);
 		return wyFalse;
 	}
 

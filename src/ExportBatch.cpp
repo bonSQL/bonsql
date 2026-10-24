@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -17,6 +18,7 @@
 */
 
 #include <assert.h>
+#include "ngsa/NgsaDark.h"   // NGSA (#2158)
 #include "FrameWindowHelper.h"
 #include "MySQLVersionHelper.h"
 #include "CommonHelper.h"
@@ -34,6 +36,7 @@ extern	PGLOBALS		 pGlobals;
 #define      FUNCTION      3
 #define      TRIGGER       4
 #define      EVENT         5
+#define      SEQUENCE      6	// NGSA
 
 #define      NODBSEL	  _(L"No database selected. Please select a database from the dropdown.")
 
@@ -143,7 +146,7 @@ ExportBatch::ExpDataDlgProc	(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPar
 		break;
 
 	case WM_HELP:
-		ShowHelp("http://sqlyogkb.webyog.com/article/116-backup-database-as-sql-dump");
+		ShowHelp("help:backup-database-as-sql-dump");
 		return TRUE;
 
 	case WM_MOUSEMOVE:
@@ -761,7 +764,8 @@ ExportBatch::CreateImageList(HWND hwnd)
 	HIMAGELIST		m_himl;		
 	wyInt32			imgres[] = {IDI_SERVER, IDI_DATABASE, IDI_OPEN, IDI_TABLE, IDI_COLUMN, 
 								IDI_INDEX, IDI_OPEN,IDI_PROCEDURE, IDI_OPEN, IDI_FUNCTION,
-								IDI_OPEN, IDI_VIEW, IDI_OPEN, IDI_TRIGGER, IDI_OPEN, IDI_EVENT, IDI_OPEN};
+								IDI_OPEN, IDI_VIEW, IDI_OPEN, IDI_TRIGGER, IDI_OPEN, IDI_EVENT, IDI_OPEN,
+								IDI_PRIMARYKEY, IDI_PRIMARYKEY, IDI_OVERLAYFILTER, IDI_SEQUENCE, IDI_SEQUENCE};	// NGSA: same slots as the object browser
 
 	VERIFY(m_himl = ImageList_Create(16, 16, ILC_COLOR32 | ILC_MASK , 6, 0));
 	hwndtree = GetDlgItem(hwnd, IDC_EXPORTTREE);
@@ -1134,6 +1138,25 @@ ExportBatch::ValidateInput()
 			}
 		}
 			
+		// NGSA: sequences folder not expanded: ask the server whether there are any
+        else if(isnontable == wyFalse && wcsicmp(temptext, TXT_SEQUENCES)== 0)
+		{
+			if(isexpanded == wyFalse)
+			{
+				count = GetSelectSequenceStmt(m_db.GetString(), query);
+				count = GetObjectsMyRes(m_hwnd, wnd, m_tunnel, m_mysql, myres , &query);
+				if(count == -1)
+					return wyFalse;
+				else if(count)
+				{
+					isnontable = wyTrue;
+					break;
+				}
+				if(myres)
+					m_tunnel->mysql_free_result(myres);
+			}
+		}
+
 		//Gets the the Event(s) if its not expanded...execute query for this
         else if(isnontable == wyFalse && wcsicmp(temptext, TXT_EVENTS)== 0)
 		{
@@ -1183,7 +1206,7 @@ ExportBatch::CheckForDumpOptions(wyBool istable, wyBool isnontable, wyInt32 chec
 
 		else if(istable == wyFalse) //if objects other than table selected
 		{
-			yog_message(m_hwnd, _(L"Only table(s) have data. You need to select atleast one table for dumping - Data Only"), 
+			yog_message(m_hwnd, _(L"Only tables have data. Select at least one table for a data-only dump."), 
 				pGlobals->m_appname.GetAsWideChar(), MB_ICONINFORMATION | MB_OK);
 			return wyFalse;
 		}
@@ -1319,6 +1342,12 @@ loop:
 			dump->SelectedEvents(str);
 			}
 			break;		
+		case SEQUENCE:	// NGSA
+			{
+			str = new SelectedObjects(selnames.GetString());
+			dump->SelectedSequences(str);
+			}
+			break;
 	    }		
 	}
 	return wyFalse;
@@ -1465,6 +1494,16 @@ ExportBatch::SetInitExportValues(MySQLDump * dump)
 				selall = wyTrue;
 
 			dump->SetAllEvents(selall);
+			continue;
+		}
+        if(wcsicmp(temptext, TXT_SEQUENCES)== 0)	// NGSA
+		{
+			if(checkstate && isexpanded == wyTrue)
+				selall = GetSelectedObjects(hwndtree, hrootitem, dump, SEQUENCE); 
+			else if(checkstate)
+				selall = wyTrue;
+
+			dump->SetAllSequences(selall);
 			continue;
 		}
 	}
@@ -1661,10 +1700,15 @@ ExportBatch::EnableDlgWindows(bool state)
 
 	for(i = 0; i < count; i++)
     {
+#ifdef COMMUNITY
+		// bonSQL: these two stay off (set in OnWmInitDialog); re-enabling them after an export was a leak
+		if(id[i] == IDC_TIMESTAMP_PREFIX || id[i] == IDC_FILE_TABLE)
+			continue;
+#endif
 		VERIFY(hobj = GetDlgItem(m_hwnd, id[i]));
 		EnableWindow(hobj, state);
 	}
-	
+
 	if(IsMySQL402(m_tunnel, m_mysql) == wyFalse)
 		EnableWindow(GetDlgItem(m_hwnd, IDC_SINGLE_TRANSACTION), FALSE);
 	
@@ -1742,6 +1786,9 @@ ExportBatch::GuiUpdate(void * lpParam, const wyChar * tablename, wyUInt32 rows, 
 			break;
 		case EVENTSTART:
 			 msg.Sprintf(_("Exporting event: %s"), tablename);
+            break;
+		case SEQUENCESTART:	// NGSA
+			 msg.Sprintf(_("Exporting sequence: %s"), tablename);
             break;
 		case TRIGGERSTART:
 			msg.Sprintf(_("Exporting trigger: %s"), tablename);
@@ -2162,13 +2209,13 @@ ExportBatch::OnPaint(HWND hwnd)
 	RECT temp;
 	
 	VERIFY(hdc = BeginPaint(hwnd, &ps));
-	DoubleBuffer::EraseBackground(hwnd, hdc, NULL, GetSysColor(COLOR_3DFACE));
+	DoubleBuffer::EraseBackground(hwnd, hdc, NULL, NgsaDark::Panel(GetSysColor(COLOR_3DFACE)));
 	EndPaint(hwnd, &ps);
 
 	//To paint the resize grip
 	VERIFY(hdc = BeginPaint(hwndstat, &ps));
     GetClientRect(hwndstat, &temp);
-    DrawFrameControl(hdc, &temp, DFC_SCROLL, DFCS_SCROLLSIZEGRIP);
+    NgsaDark::FrameControl(hdc, &temp, DFC_SCROLL, DFCS_SCROLLSIZEGRIP, NgsaDark::IsOn());
     EndPaint(hwnd, &ps);
 }
 void ExportBatch::IsDirectory(HWND hwnd)

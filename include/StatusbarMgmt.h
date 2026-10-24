@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc.
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -56,6 +57,8 @@ public:
     @returns void
     */
     void		AddTickCount(Tunnel * tunnel, wyInt64 execsec, wyInt64 totsec, wyBool clear = wyFalse);
+    void		NgsaShowRunning(wyInt64 elapsedus);   // NGSA (#2135): live elapsed time while a query runs (microseconds)
+    void		NgsaClearRunning();                   // NGSA (#2135): drop a leftover 'Running:' when no final numbers came
 
     /// Adds number of rows in the result
     /**

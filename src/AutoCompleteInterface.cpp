@@ -155,7 +155,7 @@ AutoCompleteInterface::UpdateTagBuildFlag()
 	wyWChar		directory[MAX_PATH] = {0}, *lpfileport = 0;
 	ConnectionBase *conbase = pGlobals->m_pcmainwin->m_connection;
 
-	ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH - 1, directory, &lpfileport);
+	ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH - 1, directory, &lpfileport);
 	if(ret == 0)
 		return;
 

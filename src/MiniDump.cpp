@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -41,15 +42,15 @@ MINIDUMPWRITEDUMP MiniDump::m_dump;
 #define FAIL_MSG "Failed to save SJA dump file!"
 #define MSGCAPTION "SJA diagnostic message"
 #else
-#define DUMPNAME "SQLyog"
-#define CRASH_MSG "SQLyog crashed. \nDump file saved in "
-#define FAIL_MSG "Failed to save SQLyog dump file!"
-#define MSGCAPTION "SQLyog diagnostic message"
+#define DUMPNAME "bonSQL"
+#define CRASH_MSG "bonSQL crashed. \nDump file saved in "
+#define FAIL_MSG "Failed to save bonSQL dump file!"
+#define MSGCAPTION "bonSQL diagnostic message"
 #endif
 
-#define DBGHELP L"DBGHELP.DLL not found! or DBGHELP.DLL in your system is too old for SQLyog debug information!, \n\
+#define DBGHELP L"DBGHELP.DLL not found! or DBGHELP.DLL in your system is too old for bonSQL debug information!, \n\
 To get debug information you need dbghelp.dll version no older than 5.1.\n\
-You must copy such newer file to SQLyog installation folder."
+You must copy such newer file to the bonSQL installation folder."
 
 
 
@@ -71,11 +72,11 @@ MiniDump::~MiniDump()
 			fullpathstr.SetAs(m_dumpfilepath);
 		}
 
-        else if(SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, fullpath)))
+        else if(SUCCEEDED(NgsaGetAppData(fullpath)))
 		{
             fullpathstr.SetAs(fullpath);
 
-			fullpathstr.Add("\\SQLyog");
+			fullpathstr.Add("\\" BRAND_CFG_DIR_A);
 		}
             
         appnamestr.SetAs(m_appname);
@@ -158,11 +159,11 @@ MiniDump::HandleSQLyogCrashDump(struct _EXCEPTION_POINTERS *pexceptioninfo)
 			dumppath.SetAs(m_dumpfilepath);
 		}
 
-        else if(SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, apppath)))
+        else if(SUCCEEDED(NgsaGetAppData(apppath)))
         {
             dumppath.SetAs(apppath);
             /*appnamestr.SetAs(m_appname);*/
-            dumppath.Add("\\SQLyog");
+            dumppath.Add("\\" BRAND_CFG_DIR_A);
         }
 
 		appnamestr.SetAs(m_appname);
@@ -193,10 +194,10 @@ MiniDump::CreateUniqueDumpFile()
 		fullpathstr.SetAs(m_dumpfilepath);
 	}
 
-    else if(SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, fullpath)))
+    else if(SUCCEEDED(NgsaGetAppData(fullpath)))
     {
         fullpathstr.SetAs(fullpath);
-        fullpathstr.Add("\\SQLyog");
+        fullpathstr.Add("\\" BRAND_CFG_DIR_A);
     }
     else
         return;
@@ -265,10 +266,10 @@ MiniDump::DelZeroByteDumpFiles()
 		fullpathstr.Sprintf("%s\\*", m_dumpfilepath.GetString());
 	}
 
-    else if(SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, fullpath)))
+    else if(SUCCEEDED(NgsaGetAppData(fullpath)))
     {
         fullpathstr.SetAs(fullpath);
-        fullpathstr.Add("\\SQLyog\\*");
+        fullpathstr.Add("\\" BRAND_CFG_DIR_A "\\*");
     }
     else
         return;
@@ -300,7 +301,7 @@ MiniDump::DelZeroByteDumpFiles()
 					if(extstr.GetLength() != 0 && extstr.CompareI("dmp") == 0)
 					{
 						fullpathstr.SetAs(fullpath);
-						fullpathstr.AddSprintf("\\SQLyog\\%s", filename.GetString());
+						fullpathstr.AddSprintf("\\" BRAND_CFG_DIR_A "\\%s", filename.GetString());
 
 						holdfile	=	CreateFile(fullpathstr.GetAsWideChar(), GENERIC_WRITE, FILE_SHARE_DELETE, NULL, 
 										OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);

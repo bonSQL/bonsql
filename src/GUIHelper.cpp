@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -17,7 +18,11 @@
 */
 
 #include "GUIHelper.h"
+#include "ngsa/NgsaDark.h"   // NGSA (#2158)
+#include "ngsa/NgsaBrand.h"   // bonSQL: name and help base
+#include "ngsa/NgsaCaps.h"   // NGSA: sequences folder gate
 #include "EditorFont.h"
+#include "ngsa/NgsaScintilla.h"   // NGSA (M13): Scintilla 5 lexer selection
 #include "Verify.h"
 #include "MDIWindow.h"
 #include "Global.h"
@@ -421,7 +426,7 @@ GetBulkSize(wyInt32 * bulksize)
 	wyString	dirstr;
 	
 	// Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	defbulksize = wyIni::IniGetInt(GENERALPREFA, "DefBulkSize", DEF_BULK_SIZE, dirstr.GetString());
 
@@ -474,9 +479,9 @@ CheckForAutoCompleteDir(wyString &path)
 	//if tags path is not found or path is empty in ini file  set to the default path
 	if(fullpathstr.GetLength() == 0)		
 	{
-		if(SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, fullpath)))
+		if(SUCCEEDED(NgsaGetAppData(fullpath)))
 		{
-			wcscat(fullpath, L"\\SQLyog\\");
+			wcscat(fullpath, L"\\" BRAND_CFG_DIR_W L"\\");
 			wcscat(fullpath, L"Tags");
 		}
 		else
@@ -494,9 +499,9 @@ CheckForAutoCompleteDir(wyString &path)
 			path.SetAs(fullpathstr);
         
 		//If explicit path is invalid then use the 'AppData' as default for 'Tags'
-		else if(isappdatafolder == wyFalse && SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, fullpath)))
+		else if(isappdatafolder == wyFalse && SUCCEEDED(NgsaGetAppData(fullpath)))
 		{			
-			wcscat(fullpath, L"\\SQLyog\\");
+			wcscat(fullpath, L"\\" BRAND_CFG_DIR_W L"\\");
 			wcscat(fullpath, L"Tags");
 			fullpathstr.SetAs(fullpath);	
 
@@ -630,7 +635,7 @@ ChangeEditMenuItem(HMENU hmenu)
         HandleRemoveExplainOptions(hmenu);
     }
 
-	if(wyTheme::IsDarkThemeActive() || pGlobals->m_conncount == 0)
+	if(pGlobals->m_conncount == 0)   // NGSA (#2158): per-connection colours are allowed in the Dark theme too
 	{
 		EnableMenuItem(hmenu, IDM_OBCOLOR, MF_GRAYED | MF_BYCOMMAND);
 	}
@@ -1004,8 +1009,9 @@ SetExplainMenuItems(HMENU hmenu, HWND hwnd)
         lpmii.dwTypeData = queryExplain.GetAsWideChar();
         SetMenuItemInfo(hmenu, ID_EXPLAIN_EXTENDED, FALSE, &lpmii);
         
+        // bonSQL: MariaDB explains INSERT/UPDATE/DELETE/REPLACE too (checked on 10.11 and 11.8, 15/10/2026); IsMySQL563 excludes it
         if(IsQuerySELECT(query.GetString()) ||
-            (IsMySQL563(wnd->m_tunnel, &wnd->m_mysql) && IsQueryDeleteInsertReplaceUpdate(query.GetString())))
+            ((IsMySQL563(wnd->m_tunnel, &wnd->m_mysql) || IsMariaDB(wnd->m_tunnel, &wnd->m_mysql)) && IsQueryDeleteInsertReplaceUpdate(query.GetString())))
         {
             VERIFY(EnableMenuItem(hmenu, ID_EXPLAIN_EXPLAIN, MF_ENABLED)!= -1);
 			
@@ -1258,6 +1264,7 @@ EnableDBItems(HMENU hmenu)
 
 	//first disable create event menu 
 	EnableMenuItem(hmenu, ID_DB_CREATEEVENT, MF_GRAYED| MF_BYCOMMAND);
+	EnableMenuItem(hmenu, ID_DB_CREATESEQUENCE, MF_GRAYED| MF_BYCOMMAND);	// NGSA
 
 #ifndef COMMUNITY
 	if(pcquerywnd->m_conninfo.m_isreadonly == wyTrue)
@@ -1277,7 +1284,8 @@ EnableDBItems(HMENU hmenu)
 
 	if(image == NDATABASE ||  image == NTABLES || image == NTABLE || image == NPRIMARYKEY || image == NCOLUMN || image == NINDEX || 
 		image == NPRIMARYINDEX || image == NSP || image == NSPITEM || image == NVIEWS || image == NVIEWSITEM || image == NEVENTITEM || 
-		image == NEVENTS || image == NFUNC || image == NFUNCITEM || image == NTRIGGER || image == NTRIGGERITEM ||  image == NFOLDER)
+		image == NEVENTS || image == NFUNC || image == NFUNCITEM || image == NTRIGGER || image == NTRIGGERITEM ||  image == NFOLDER ||
+		image == NSEQUENCES || image == NSEQUENCEITEM)	// NGSA
 	{
 		state = MF_ENABLED;
 
@@ -1296,6 +1304,8 @@ EnableDBItems(HMENU hmenu)
 				EnableMenuItem(hmenu, advnid[count], state | MF_BYCOMMAND);
 			if(IsMySQL516(pcquerywnd->m_tunnel, &pcquerywnd->m_mysql))
 				EnableMenuItem(hmenu, ID_DB_CREATEEVENT, MF_ENABLED|MF_BYCOMMAND);
+			if(NgsaCapsCompute::HasSequences(&pcquerywnd->m_mysql))	// NGSA
+				EnableMenuItem(hmenu, ID_DB_CREATESEQUENCE, MF_ENABLED|MF_BYCOMMAND);
 		}
 	}
 	
@@ -1503,6 +1513,17 @@ EnableColumnItems(HMENU hmenu)
 		EnableMenuItem(hmenu, ID_OBJECT_RENAMEEVENT, MF_ENABLED | MF_BYCOMMAND); 
 
 	}
+	else if(image == NSEQUENCEITEM)	// NGSA
+	{
+		EnableMenuItem(hmenu, ID_OBJECT_DROPFIELD, MF_GRAYED | MF_BYCOMMAND);
+		EnableMenuItem(hmenu, ID_COLUMNS_DROPINDEX, MF_GRAYED | MF_BYCOMMAND);
+		EnableMenuItem(hmenu, ID_OBJECT_MAINMANINDEX, MF_GRAYED | MF_BYCOMMAND); 
+
+		DisableAdvMenu(hmenu);
+		EnableMenuItem(hmenu, ID_OBJECT_ALTERSEQUENCE, MF_ENABLED | MF_BYCOMMAND); 
+		EnableMenuItem(hmenu, ID_OBJECT_DROPSEQUENCE, MF_ENABLED | MF_BYCOMMAND); 
+		EnableMenuItem(hmenu, ID_OBJECT_RENAMESEQUENCE, MF_ENABLED | MF_BYCOMMAND); 
+	}
     else if(image == NFUNCITEM)	
     {
 		EnableMenuItem(hmenu, ID_OBJECT_DROPFIELD, MF_GRAYED | MF_BYCOMMAND);
@@ -1559,6 +1580,8 @@ EnableColumnItems(HMENU hmenu)
 		EnableMenuItem(hmenu, ID_OBJECT_CREATETRIGGER, MF_ENABLED | MF_BYCOMMAND); 
 		if(IsMySQL516(pcquerywnd->m_tunnel, &pcquerywnd->m_mysql))
 			EnableMenuItem(hmenu, ID_OBJECT_CREATEEVENT, MF_ENABLED | MF_BYCOMMAND);
+		if(NgsaCapsCompute::HasSequences(&pcquerywnd->m_mysql))	// NGSA
+			EnableMenuItem(hmenu, ID_OBJECT_CREATESEQUENCE, MF_ENABLED | MF_BYCOMMAND);
 	}
 		
 		if(image == NTABLE || image == NFOLDER || image == NINDEX || image == NPRIMARYINDEX)
@@ -1616,7 +1639,8 @@ DisableAdvMenu(HMENU hmenu)
                       ID_OBJECT_DROPFUNCTION, ID_OBJECT_CREATETRIGGER, ID_OBJECT_ALTERTRIGGER, 
                       ID_OBJECT_DROPTRIGGER, ID_OBJECTS_RENAMETRIGGER, ID_INDEXES_CREATEINDEX, ID_INDEXES_EDITINDEX,
 					  ID_INDEXES_DROPINDEX, ID_COLUMNS_MANAGECOLUMNS, 
-  ID_OBJECT_CREATEEVENT, ID_OBJECT_ALTEREVENT, ID_OBJECT_DROPEVENT, ID_OBJECT_RENAMEEVENT};
+  ID_OBJECT_CREATEEVENT, ID_OBJECT_ALTEREVENT, ID_OBJECT_DROPEVENT, ID_OBJECT_RENAMEEVENT,
+  ID_OBJECT_CREATESEQUENCE, ID_OBJECT_ALTERSEQUENCE, ID_OBJECT_DROPSEQUENCE, ID_OBJECT_RENAMESEQUENCE};	// NGSA
 
     wyInt32 size = sizeof(nid)/ sizeof(nid[0]), count;
 
@@ -1860,7 +1884,7 @@ WriteConnDetails(HWND hdlg)
     HWND        hcb = GetDlgItem(hdlg,IDC_DESC);
     HWND        hwndCombo = (HWND)SendMessage(hcb, CCBM_GETCOMBOHWND, NULL, NULL);
 	
-	ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH - 1, directory, &lpfileport);
+	ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH - 1, directory, &lpfileport);
 
 	if(ret == 0)
 		return;
@@ -1902,7 +1926,21 @@ ShowHelp(wyChar *helpid)
 	//removing offline helpfile from version 12.05
 	/*helplink.Sprintf("%s::/%s", pGlobals->m_helpfile, helpid);
 	HtmlHelp(::GetDesktopWindow(), helplink.GetAsWideChar(), HH_DISPLAY_TOPIC, NULL);*/
-	helplink.Sprintf("%s", helpid);
+	// bonSQL: help is "help:<topic>", resolved against BRAND_HELP_BASE_A (ngsa/NgsaBrand.h); the topics are the
+	// pages the website needs (docs/ngsa/LINK-AUDIT.md). Until the pages exist, say so instead of opening anything.
+	if(!strncmp(helpid, "help:", 5))
+	{
+		if(!*BRAND_HELP_BASE_A)
+		{
+			wyString msg;
+			msg.Sprintf("The %s help pages are not online yet.\n\nTopic: %s", BRAND_NAME_A, helpid + 5);
+			MessageBox(GetActiveWindow(), msg.GetAsWideChar(), BRAND_NAME_W, MB_OK | MB_ICONINFORMATION);
+			return wyFalse;
+		}
+		helplink.Sprintf("%s%s", BRAND_HELP_BASE_A, helpid + 5);
+	}
+	else
+		helplink.Sprintf("%s", helpid);
 	ShellExecute(NULL, L"open", helplink.GetAsWideChar(), NULL, NULL, SW_SHOWNORMAL);
 	return wyTrue;
 }
@@ -2525,6 +2563,7 @@ HandleTreeViewItem(LPARAM lParam, WPARAM  wParam, wyBool spacekeydown)
 		    case NFUNC:
 		    case NSP:
 		    case NEVENTS:
+		    case NSEQUENCES:
 		    case NTRIGGER:
  			    ClickOnFolderTreeViewItem(lpnmh->hwndFrom, ht.hItem);
 			    break;
@@ -2536,6 +2575,7 @@ HandleTreeViewItem(LPARAM lParam, WPARAM  wParam, wyBool spacekeydown)
 		    case NFUNCITEM:
 		    case NSPITEM:
 		    case NEVENTITEM:
+		    case NSEQUENCEITEM:
  			    CheckUnCheckTreeViewItems(lpnmh->hwndFrom, ht.hItem);
 			    break;
 
@@ -3071,6 +3111,8 @@ OnItemExpanding(TREEVIEWPARAMS &treeparam, wyBool isrefreshnode, wyBool iscalled
 			         InsertTriggers(hwnd, hitem);
 			         if(IsMySQL516(tunnel, mysql) == wyTrue)
 				          InsertEvents(hwnd, hitem);			
+			         if(NgsaCapsCompute::HasSequences(mysql) == wyTrue)	// NGSA
+				          InsertSequences(hwnd, hitem);
 		        }
 		}
 
@@ -3116,6 +3158,11 @@ OnItemExpanding(TREEVIEWPARAMS &treeparam, wyBool isrefreshnode, wyBool iscalled
 	else if(tvi->iImage == NEVENTS && !(tvi->state & TVIS_EXPANDEDONCE))
 	{
 		ExpandEvents(hwnd, tunnel, mysql, tvi->hItem, database, checkstate, isrefreshnode);
+		TreeView_SortChildren(hwnd, tvi->hItem, TRUE);
+	}
+	else if(tvi->iImage == NSEQUENCES && !(tvi->state & TVIS_EXPANDEDONCE))	// NGSA
+	{
+		ExpandSequences(hwnd, tunnel, mysql, tvi->hItem, database, checkstate, isrefreshnode);
 		TreeView_SortChildren(hwnd, tvi->hItem, TRUE);
 	}
 	else if(tvi->iImage == NTRIGGER && !(tvi->state & TVIS_EXPANDEDONCE))
@@ -3200,6 +3247,20 @@ InsertEvents(HWND hwnd, HTREEITEM hdatabase)
     InsertDummyNode(hwnd, htable);
 	SetCursor(LoadCursor(NULL, IDC_ARROW));
 	
+	return wyTrue;
+}
+
+// NGSA: Sequences folder (MariaDB 10.3+)
+wyBool
+InsertSequences(HWND hwnd, HTREEITEM hdatabase)
+{
+	HTREEITEM			htable;
+
+	SetCursor(LoadCursor(NULL, IDC_WAIT));
+	htable = InsertNode(hwnd, hdatabase, TXT_SEQUENCES, NSEQUENCES, NSEQUENCES, 0);
+    InsertDummyNode(hwnd, htable);
+	SetCursor(LoadCursor(NULL, IDC_ARROW));
+
 	return wyTrue;
 }
 
@@ -3601,6 +3662,60 @@ ExpandEvents(HWND hwnd, Tunnel* tunnel, PMYSQL mysql, HTREEITEM hevent, wyWChar 
 
 	return wyTrue;
 } 
+
+// NGSA: populate the Sequences folder
+wyBool
+ExpandSequences(HWND hwnd, Tunnel* tunnel, PMYSQL mysql, HTREEITEM hseq, wyWChar *dbname, wyBool checkstate, wyBool isrefresh)
+{
+	wyString            query, rowstr, dbnamestr;
+    wyWChar             database[SIZE_512] = {0};
+	wyBool				ismysql41 = IsMySQL41(tunnel, mysql);
+	HCURSOR				hcursor;
+	MYSQL_RES			*myres;
+	MYSQL_ROW			myrow;
+	MDIWindow			*wnd = NULL;
+	wyBool				ischeckbox = wyFalse;
+	VERIFY(wnd = GetActiveWin());
+
+	if(dbname)
+	{
+		wcscpy(database, dbname);
+		ischeckbox = wyTrue;
+	}
+	else
+	{
+		GetNodeText(hwnd, TreeView_GetParent(hwnd, hseq), database, SIZE_512);
+	}
+
+	hcursor	= GetCursor();
+	SetCursor(LoadCursor(NULL, IDC_WAIT));
+	ShowCursor(1);
+
+	DeleteChildNodes(hwnd, hseq, isrefresh);
+	dbnamestr.SetAs(database);
+	GetSelectSequenceStmt(dbnamestr.GetString(), query);
+
+    myres = ExecuteAndGetResult(wnd, tunnel, mysql, query);
+    if(!myres)
+    {
+		ShowMySQLError(hwnd, tunnel, mysql, query.GetString());
+		SetCursor(hcursor);
+		return wyFalse;
+    }
+
+	while(myrow = tunnel->mysql_fetch_row(myres))
+	{
+		rowstr.SetAs(myrow[0], ismysql41);
+		InsertNode(hwnd, hseq, rowstr.GetAsWideChar(), NSEQUENCEITEM, NSEQUENCEITEM, NULL, ischeckbox, checkstate);
+	}
+
+	tunnel->mysql_free_result(myres);
+
+	SetCursor(hcursor);
+	ShowCursor(1);
+
+	return wyTrue;
+}
 
 wyBool
 ExpandTriggers(HWND hwnd, Tunnel* tunnel, PMYSQL mysql, HTREEITEM htrigger, wyWChar *dbname, wyBool checkstate, wyBool isrefresh)
@@ -4105,7 +4220,7 @@ StoreDialogPersist(HWND hwnd, wyChar *dlgprfifix)
     if(!dlgprfifix)
 		return;
 
-	if(SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
+	if(SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
         return;
 	
 	dirstr.SetAs(directory);
@@ -4158,7 +4273,7 @@ SetDialogPos(HWND hwnd, wyChar *dlgprfifix)
 	if(!dlgprfifix)
 		return;
 
-    if(SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
+    if(SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
         return;
 
 	cxfull = GetSystemMetrics(SM_CXFULLSCREEN);
@@ -4488,19 +4603,29 @@ HandleIndexDlgsFlicker(HWND hwnddlg, HWND hwndgrid)
 void
 ShowValueResize(HWND hwnd, HWND hwndgrid)
 {
-	HWND	hwndok = NULL, hwndrefresh = NULL, hwndkill = NULL;
+	HWND	hwndok = NULL, hwndrefresh = NULL, hwndkill = NULL, hwndkillq = NULL;	// NGSA (B2): Kill Query
 	RECT	rctgrid, rctbutton, rctdlg, rcttemp;
 	wyInt32	buttonht = 0, buttonwd = 0;
 	wyInt32 top = 0, left = 0;
+	wyInt32 ngsafilterrow = 0, ngsasleep = 0, ngsarow = 0;	// NGSA (#2295)
 
 	hwndok = GetDlgItem(hwnd, IDOK);
 	hwndrefresh = GetDlgItem(hwnd, IDC_REFRESH);
 	hwndkill = GetDlgItem(hwnd, IDC_KILL);
+	hwndkillq = GetDlgItem(hwnd, IDC_NGSA_KILLQUERY);
 
 	GetClientRect(hwnd, &rctdlg);
 
 	//grid
-	MoveWindow(hwndgrid, 8, 8, rctdlg.right - 16, rctdlg.bottom - 50, TRUE); 
+	// NGSA (#2295): the filter row (Filter box with or without Hide sleeping) takes one button height under the grid
+	{
+		HWND hf = GetDlgItem(hwnd, IDC_NGSA_PLFILTER), hs = GetDlgItem(hwnd, IDC_NGSA_PLHIDESLEEP);
+		ngsafilterrow = (hf && (GetWindowLong(hf, GWL_STYLE) & WS_VISIBLE)) ? 1 : 0;
+		ngsasleep = (hs && (GetWindowLong(hs, GWL_STYLE) & WS_VISIBLE)) ? 1 : 0;
+		GetClientRect(hwndkill, &rctbutton);
+		ngsarow = ngsafilterrow ? rctbutton.bottom + 6 : 0;
+	}
+	MoveWindow(hwndgrid, 8, 8, rctdlg.right - 16, rctdlg.bottom - 50 - ngsarow, TRUE); 
 
 	GetClientRect(hwndkill, &rctbutton);
 
@@ -4521,11 +4646,28 @@ ShowValueResize(HWND hwnd, HWND hwndgrid)
 	left = rctbutton.left - buttonwd - 5;
 
 	MoveWindow(hwndkill, left, top, buttonwd, buttonht, TRUE);//kill process button
+	if(hwndkillq)	// NGSA (B2): Kill Query left of Kill Process
+		MoveWindow(hwndkillq, left - buttonwd - 5, top, buttonwd, buttonht, TRUE);
 
 	left = rctgrid.left;
 
     MoveWindow(hwndrefresh, left, top, buttonwd, buttonht, TRUE);//refresh button
 
+	// NGSA (#2295): Filter label + box and Hide sleeping on their own row above the buttons (the button row
+	// is full at the dialog's minimum width); the grid was shortened by that row above
+	{
+		HWND hlbl = GetDlgItem(hwnd, IDC_NGSA_PLFILTERTEXT), hedit = GetDlgItem(hwnd, IDC_NGSA_PLFILTER), hsleep = GetDlgItem(hwnd, IDC_NGSA_PLHIDESLEEP);
+		if(ngsafilterrow)
+		{
+			wyInt32 ftop = top - buttonht - 6, fleft = rctgrid.left, sleepwd = ngsasleep ? 100 : 0, editwd;
+			editwd = rctgrid.right - fleft - 32 - (sleepwd ? sleepwd + 8 : 0);
+			editwd = editwd < 60 ? 60 : (editwd > 320 ? 320 : editwd);
+			MoveWindow(hlbl, fleft, ftop + 3, 30, buttonht, TRUE);
+			MoveWindow(hedit, fleft + 32, ftop, editwd, buttonht, TRUE);
+			if(hsleep)
+				MoveWindow(hsleep, fleft + 32 + editwd + 8, ftop + 2, 100, buttonht, TRUE);
+		}
+	}
 	InvalidateRect(hwnd, NULL, FALSE);
 	UpdateWindow(hwnd);
 
@@ -4603,7 +4745,7 @@ GetChildMaximized()
 	else
 	{
 		//if there is no current active window then it will take value from ini file
-		SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+		SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 		dirstr.SetAs(directory);
 		
         ret = wyIni::IniGetInt(SECTION_NAME, "ChildMaximized", 1, dirstr.GetString());
@@ -4620,7 +4762,7 @@ SetChildMaximized(HWND hwnd)
 	wyWChar     directory[MAX_PATH + 1] = {0};
 	wyString	dirstr,value;
 
-	if(SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
+	if(SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
 	    return ;
 	
 	dirstr.SetAs(directory);
@@ -4680,14 +4822,14 @@ SetMTIColor(HWND hwnd)
     COLORREF selectionColor = DEF_TEXTSELECTION, bgColor = DEF_BKGNDEDITORCOLOR, fgColor = DEF_NORMALCOLOR;
     
     // Check if this is a dialog MTI tab in dark theme
-    if(wyTheme::IsDarkThemeActive() && !EditorFont::IsMainWindowEditor(hwnd))
+    if(wyFalse)   // NGSA (#2158): was IsDarkThemeActive() && !IsMainWindowEditor(hwnd); dialog text panes are dark too
     {
         SetMTIColorsForDarkThemeDialog(selectionColor, bgColor, fgColor);
     }
     else
     {
         // For main window MTI tabs or light theme, use custom colors and theme colors
-        if(SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport) == wyTrue)
+        if(SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport) == wyTrue)
         {
             dirstr.SetAs(directory);
             selectionColor   =   wyIni::IniGetInt(GENERALPREFA, "MTISelectionColor",   DEF_TEXTSELECTION, dirstr.GetString());
@@ -4713,7 +4855,7 @@ SetScintillaModes(HWND hwndeditor, wyString &keywordstring,
 				  wyString &functionstring, wyBool formini, wyBool ireadonly, wyChar* lexlanguage)
 {
     //set the lexer language 
-	SendMessage(hwndeditor, SCI_SETLEXERLANGUAGE, 0, (LPARAM)lexlanguage);
+	NgsaScintilla::SetLexer(hwndeditor, lexlanguage);	// NGSA (M13): "MySQL" / "LineMySQL" -> Lexilla mysql
 
 	EditorFont::FormatEditor(hwndeditor, formini, keywordstring, functionstring);
 	
@@ -4751,7 +4893,7 @@ DrawSizeGripOnPaint(HWND hdlg)
 	rectdlg.top = rectdlg.bottom-GetSystemMetrics(SM_CYVSCROLL);
 				
 	//Draws the gripper
-	DrawFrameControl(hdc, &rectdlg, DFC_SCROLL, DFCS_SCROLLSIZEGRIP);
+	NgsaDark::FrameControl(hdc, &rectdlg, DFC_SCROLL, DFCS_SCROLLSIZEGRIP, NgsaDark::IsOn());
 
 	EndPaint(hdlg, &ps);
 }
@@ -4883,7 +5025,7 @@ GetOtherControlsFont(HWND hwnd)
     VERIFY(ReleaseDC(GetParent(hwnd), dc));	
 	
 	// Get the complete path.
-	ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 
 	if(ret == 0)
 		return NULL;
@@ -5014,10 +5156,10 @@ SaveColumnWidth(HWND hwndgrid, wyString *dbname, wyString *tblname, wyString *co
 	}
 
 	// to get application data path
-    else if(SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, path))) 
+    else if(SUCCEEDED(NgsaGetAppData(path))) 
 	{
 		fullpath.SetAs(path);
-		fullpath.Add("\\SQLyog");
+		fullpath.Add("\\" BRAND_CFG_DIR_A);
 	}
     else
         return;
@@ -5101,10 +5243,10 @@ GetColumnWidthFromFile(wyString *dbname, wyString *table,wyString *colname)
 	}
 
 	// to get application data path
-    else if(SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, path))) 
+    else if(SUCCEEDED(NgsaGetAppData(path))) 
 	{
 		fullpath.SetAs(path);
-		fullpath.Add("\\SQLyog");
+		fullpath.Add("\\" BRAND_CFG_DIR_A);
 	}
     else
         return 0;
@@ -5152,10 +5294,10 @@ HandleDatatabLimitPersistance(const wyChar *dbname, const wyChar *table, wyInt64
 		fullpath.SetAs(pGlobals->m_configdirpath);
 	}
 	// to get application data path
-    else if(SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, path))) 
+    else if(SUCCEEDED(NgsaGetAppData(path))) 
 	{
 		fullpath.SetAs(path);
-		fullpath.Add("\\SQLyog");
+		fullpath.Add("\\" BRAND_CFG_DIR_A);
 	}
     else
     {
@@ -5260,10 +5402,10 @@ HandleTableViewPersistance(const wyChar *dbname, const wyChar *table, wyInt32 vi
 	}
 
 	// to get application data path
-    else if(SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, path))) 
+    else if(SUCCEEDED(NgsaGetAppData(path))) 
 	{
 		fullpath.SetAs(path);
-		fullpath.Add("\\SQLyog");
+		fullpath.Add("\\" BRAND_CFG_DIR_A);
 	}
     else
         return 0;
@@ -5372,10 +5514,10 @@ HandleResulttabPagingQueryPersistance(wyUInt32 querycrc, wyInt32 *highlimit)
 	}
 
 	// to get application data path
-    else if(SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, path))) 
+    else if(SUCCEEDED(NgsaGetAppData(path))) 
 	{
 		fullpath.SetAs(path);
-		fullpath.Add("\\SQLyog");
+		fullpath.Add("\\" BRAND_CFG_DIR_A);
 	}
     else
         return 0;
@@ -5670,10 +5812,10 @@ FindTextOrReplace(MDIWindow * pcquerywnd, wyBool uIsReplace)
 
 	    //Replace dialog box will prompt only in query editor but not in result and table data tab.
 		if(GetFocus()== peditorbase->m_hwnd)
-			pGlobals->m_pcmainwin->m_finddlg	=	ReplaceText(&fr);
+			pGlobals->m_pcmainwin->m_finddlg	=	(NgsaDark::AcceptDialogs(wyTrue), ReplaceText(&fr));   // NGSA (#2158): the Find dialog joins the dark dialogs
 	}
 	else
-		pGlobals->m_pcmainwin->m_finddlg	=	FindText(&fr);
+		pGlobals->m_pcmainwin->m_finddlg	=	(NgsaDark::AcceptDialogs(wyTrue), FindText(&fr));   // NGSA (#2158): the Find dialog joins the dark dialogs
 
     //subclass the FindText dialog
     if(!pGlobals->m_pcmainwin->m_findproc)
@@ -6611,8 +6753,8 @@ CreateInitFileInApplData()
 		path[MAX_PATH] = '\0';
 	}
 	
-    else if(SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, path)))
-        wcscat(path, L"\\SQLyog");
+    else if(SUCCEEDED(NgsaGetAppData(path)))
+        wcscat(path, L"\\" BRAND_CFG_DIR_W);
 	
 	else
 		return wyFalse;
@@ -6626,7 +6768,7 @@ CreateInitFileInApplData()
 	}
 
 	wcscat(path, L"\\");
-	wcscat(path, L"sqlyog.ini");
+	wcscat(path, BRAND_CFG_STEM_W L".ini");
 
 	hfile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL,
 						OPEN_EXISTING, NULL, NULL);
@@ -6650,7 +6792,7 @@ CreateInitFileInApplData()
     return wyFalse;
 }
 
-// This function creates the sqlyog.ini file in the current directory.
+// This function creates the bonsql.ini file in the current directory.
 // So that we always have a ini file whenever we start the application.
 wyBool
 CreateInitFile()
@@ -6664,9 +6806,9 @@ CreateInitFile()
 		wcsncpy(path, pGlobals->m_configdirpath.GetAsWideChar(), MAX_PATH - 1);
 		path[MAX_PATH - 1] = '\0';
 	}	
-    else if(SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, path)))
+    else if(SUCCEEDED(NgsaGetAppData(path)))
 	{
-        wcscat(path, L"\\SQLyog");
+        wcscat(path, L"\\" BRAND_CFG_DIR_W);
 	}
 
 	//Check Appdata/SQLyog pth is present, if not present it creating it
@@ -6993,6 +7135,7 @@ ChColor(HWND hwnd, LPCOLORREF rgbcolor)
 	cc.rgbResult	=(DWORD)*rgbcolor;
 	cc.Flags		= CC_FULLOPEN | CC_RGBINIT;
  
+	NgsaDark::AcceptDialogs(wyTrue);	// NGSA (#2158): the Colour dialog joins the dark dialogs
 	ret = ChooseColor(&cc);
 
 	if(!ret){
@@ -7022,7 +7165,7 @@ OnDrawColorCombo(HWND hwnd, LPDRAWITEMSTRUCT lpds, COLORREF rgbcolor)
 	hdc = lpds->hDC;
     rc = lpds->rcItem;
 
-	hbrBackground = CreateSolidBrush(COLOR_WHITE);
+	hbrBackground = CreateSolidBrush(NgsaDark::IsOn() ? NgsaDark::kInput : COLOR_WHITE);   // NGSA (#2158)
 
 	conbase = pGlobals->m_pcmainwin->m_connection;
 
@@ -7038,7 +7181,10 @@ OnDrawColorCombo(HWND hwnd, LPDRAWITEMSTRUCT lpds, COLORREF rgbcolor)
 				
 				//fill the combobox with options
 				if(lpds->itemID == 11)
+				{
+					if(NgsaDark::IsOn()) { SetTextColor(hdc, NgsaDark::kText); SetBkColor(hdc, NgsaDark::kInput); }   // NGSA (#2158)
 					TextOut(hdc, rc.left, rc.top + 2, _(L" Other Colors..."), 16);
+				}
 				else
 				{
 					if(lpds->itemID == -1)
@@ -7059,11 +7205,13 @@ OnDrawColorCombo(HWND hwnd, LPDRAWITEMSTRUCT lpds, COLORREF rgbcolor)
 					else
 						cr = (COLORREF)lpds->itemData;
 
+					if(NgsaDark::IsOn() && cr == RGB(255, 255, 255))
+						cr = NgsaDark::kInput;		// NGSA (#2158): 'no colour' is white; an empty field in the dark theme, not a white block
 					FillRect(hdc, &rc, hbrBackground);
 					hbrush = CreateSolidBrush((COLORREF)cr);
 					FillRect(hdc, &rc, hbrush);
 					DeleteObject(hbrush);
-					FrameRect(hdc, &rc, (HBRUSH) GetStockObject(WHITE_BRUSH));
+					FrameRect(hdc, &rc, NgsaDark::IsOn() ? NgsaDark::PanelBrush() : (HBRUSH) GetStockObject(WHITE_BRUSH));   // NGSA (#2158)
 				}
 				break;
 				
@@ -7079,7 +7227,10 @@ OnDrawColorCombo(HWND hwnd, LPDRAWITEMSTRUCT lpds, COLORREF rgbcolor)
 		
 				if(lpds->itemID == 2)
 				{
+				{
+					if(NgsaDark::IsOn()) { SetTextColor(hdc, NgsaDark::kText); SetBkColor(hdc, NgsaDark::kInput); }   // NGSA (#2158)
 					TextOut(hdc, rc.left, rc.top + 2, _(L" Other Colors..."), 16);
+				}
 					
 				}
 				else
@@ -7105,7 +7256,7 @@ OnDrawColorCombo(HWND hwnd, LPDRAWITEMSTRUCT lpds, COLORREF rgbcolor)
 						FillRect(hdc, &temprect, hbrush);
 						DeleteObject(hbrush);
 						FrameRect(hdc, &temprect, (HBRUSH)GetStockObject(BLACK_BRUSH));
-						FrameRect(hdc, &rc, (HBRUSH) GetStockObject(WHITE_BRUSH));
+						FrameRect(hdc, &rc, NgsaDark::IsOn() ? NgsaDark::PanelBrush() : (HBRUSH) GetStockObject(WHITE_BRUSH));   // NGSA (#2158)
 					}
 					else
 					{
@@ -7126,7 +7277,7 @@ OnDrawColorCombo(HWND hwnd, LPDRAWITEMSTRUCT lpds, COLORREF rgbcolor)
 						FillRect(hdc, &temprect, hbrush);
 						DeleteObject(hbrush);
 						FrameRect(hdc, &temprect, (HBRUSH)GetStockObject(BLACK_BRUSH));
-						FrameRect(hdc, &rc, (HBRUSH) GetStockObject(WHITE_BRUSH));
+						FrameRect(hdc, &rc, NgsaDark::IsOn() ? NgsaDark::PanelBrush() : (HBRUSH) GetStockObject(WHITE_BRUSH));   // NGSA (#2158)
 					}
 				}
 				break;
@@ -7356,7 +7507,7 @@ SetInitPos(HWND hwnd, wyChar *dlgprfifix)
 	wyInt32		numberofmonitors;
     MDIWindow   *wnd;
 	
-    if(SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
+    if(SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
 	{
         return wyFalse;
 	}
@@ -7708,7 +7859,7 @@ SaveInitPos(HWND hwnd, wyChar *dlgprfifix)
     wyString     value, dirstr;
 	wyWChar      directory[MAX_PATH + 1] = {0};
 
-    if(SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
+    if(SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
         return wyFalse;
 	
 	VERIFY(GetWindowRect(hwnd, &rc));
@@ -8056,7 +8207,7 @@ OnDrawConnNameCombo(HWND hwndcombo, LPDRAWITEMSTRUCT lpds,  wyBool isconndbname)
 	wyInt32		topindex;
 	/*wyWChar     directory[MAX_PATH + 1], *lpfileport=0;
     
-	wyInt32 ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	wyInt32 ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	if(ret == 0)
 		return wyFalse;
 	dirstr.SetAs(directory);
@@ -8182,8 +8333,8 @@ OnDrawComboItem(HWND hwndcombo, LPDRAWITEMSTRUCT lpds, COLORREF cr, wyBool iscon
 	}
 	else
 	{
-		clrForeground = SetTextColor(hdc, GetSysColor(COLOR_WINDOWTEXT));
-		clrBackground = SetBkColor(hdc, GetSysColor(COLOR_WINDOW));
+		clrForeground = SetTextColor(hdc, NgsaDark::IsOn() ? NgsaDark::kText : GetSysColor(COLOR_WINDOWTEXT));   // NGSA (#2158)
+		clrBackground = SetBkColor(hdc, NgsaDark::IsOn() ? NgsaDark::kInput : GetSysColor(COLOR_WINDOW));   // NGSA (#2158)
 	}
 	
 	//write connection name
@@ -8214,13 +8365,19 @@ OnDrawComboItem(HWND hwndcombo, LPDRAWITEMSTRUCT lpds, COLORREF cr, wyBool iscon
 		{
 		hbrush = CreateSolidBrush((COLORREF)cr);
 		}
+		if(NgsaDark::IsOn() && (isconndbname == wyTrue ? pdiffcombo->info->m_rgbconn : cr) == RGB(255, 255, 255))
+		{
+			// NGSA (#2158): "no colour" is a white swatch; in the dark list show it as an empty field, not a white block
+			DeleteObject(hbrush);
+			hbrush = CreateSolidBrush(NgsaDark::kInput);
+		}
 		FillRect(hdc, &temprect, hbrush);
 		DeleteObject(hbrush);
 
-		FrameRect(hdc, &temprect, (HBRUSH)GetStockObject(BLACK_BRUSH));
+		FrameRect(hdc, &temprect, NgsaDark::IsOn() ? NgsaDark::PanelBrush() : (HBRUSH)GetStockObject(BLACK_BRUSH));   // NGSA (#2158)
 	}
 
-	FrameRect(hdc, &rc, (HBRUSH)GetStockObject(WHITE_BRUSH));
+	FrameRect(hdc, &rc, NgsaDark::IsOn() ? NgsaDark::PanelBrush() : (HBRUSH)GetStockObject(WHITE_BRUSH));   // NGSA (#2158)
 
 	return wyTrue;
 }
@@ -8369,7 +8526,7 @@ SetParanthesisHighlighting(HWND hwnd)
     wyWChar		*lpfileport = 0;
 	wyWChar		directory[MAX_PATH+1] = {0};
 
-    if(SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport) == wyTrue)
+    if(SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport) == wyTrue)
     {
         //Chnage line number margin color
         wyString	dirstr(directory);        
@@ -8399,7 +8556,7 @@ EnableFolding(HWND hwnd)
     wyWChar		*lpfileport = 0;
 	wyWChar		directory[MAX_PATH+1] = {0};
 
-    if(SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport) == wyTrue)
+    if(SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport) == wyTrue)
     {
 		//Chnage line number margin color
         wyString	dirstr(directory);
@@ -8649,10 +8806,13 @@ wyInt32	SetAsLink(HDC hdc)
 	fontheight = -MulDiv(8, GetDeviceCaps(hdc, LOGPIXELSY), 72);
 
 	 
-	pGlobals->m_pcmainwin->m_hfontlink = CreateFont(fontheight, 0, 0, 0, 0, 0, TRUE, 0, 0, 0, 0, 0, 0, L"Verdana");
+	// NGSA: create the font once (upstream created one on every WM_CTLCOLORSTATIC and never freed it: a GDI leak)
+	if(!pGlobals->m_pcmainwin->m_hfontlink)
+		pGlobals->m_pcmainwin->m_hfontlink = CreateFont(fontheight, 0, 0, 0, 0, 0, TRUE, 0, 0, 0, 0, 0, 0, L"Verdana");
 	SelectObject(hdc, pGlobals->m_pcmainwin->m_hfontlink);
 	SetBkMode(hdc, TRANSPARENT);
-	SetTextColor(hdc, RGB(0, 0, 255));
+	// NGSA (#2158): pure blue is unreadable on the Dark theme's panels; a light link blue there
+	SetTextColor(hdc, NgsaDark::IsOn() ? RGB(0x4D, 0xA3, 0xFF) : RGB(0, 0, 255));
 
 	return (wyInt32)GetStockObject(HOLLOW_BRUSH);
 }
@@ -8749,7 +8909,7 @@ SetWindowPositionFromINI(HWND hwnd, wyChar* sectionname, wyInt32 minwidth, wyInt
     MONITORINFO mi;
     HWND        hwndparent = GetParent(hwnd);
 
-    if(SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
+    if(SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
     {
         return wyFalse;
     }
@@ -9035,7 +9195,7 @@ GetTabOpenPersistence(wyInt32 tabimage, wyBool isset, wyBool valuetoset)
     const wyChar*   key = NULL;
     wyBool          isopen = wyFalse;
 
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
     dirstr.SetAs(directory);
 
     switch(tabimage)
@@ -9076,7 +9236,7 @@ EnableDisableExportMenuItem()
     wyWChar     directory[MAX_PATH + 1], *lpfileport=0;
     HMENU       hmenu = NULL;
     
-    ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+    ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
     if(ret == 0)
     {
         EnableMenuItem(hmenu, ID_EXPORT_EXPORTCONNECTIONDETAILS, MF_GRAYED | MF_BYCOMMAND);
@@ -9158,8 +9318,8 @@ CreateSessionFile()
 		path[MAX_PATH] = '\0';
 	}
 	
-    else if(SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, path)))
-        wcscat(path, L"\\SQLyog");
+    else if(SUCCEEDED(NgsaGetAppData(path)))
+        wcscat(path, L"\\" BRAND_CFG_DIR_W);
 	
 	else
 		return wyFalse;
@@ -9200,8 +9360,8 @@ GetSessionFile(wyWChar *path)
 		path[MAX_PATH] = '\0';
 	}
 	
-    else if(SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, path)))
-        wcscat(path, L"\\SQLyog");
+    else if(SUCCEEDED(NgsaGetAppData(path)))
+        wcscat(path, L"\\" BRAND_CFG_DIR_W);
 	
 	else
 		return wyFalse;
@@ -9377,7 +9537,7 @@ wyBool GetTabDetailsFromTable(wyWChar* path, wyInt32 id, List* temptablist)
 	//}
 	//else
 	//{
-	//	if(SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, directory)))
+	//	if(SUCCEEDED(NgsaGetAppData(directory)))
 	//	{
 	//		wcscat(directory, L"\\SQLyog\\");	
 	//		wcscat(directory, L"connrestore.db");

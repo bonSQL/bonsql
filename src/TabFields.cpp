@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -27,6 +28,9 @@
 #include "TableTabInterfaceTabMgmt.h"
 #include "TabIndexes.h"
 #include<iostream>
+#include "ngsa/NgsaServerOps.h"   // NGSA (M5): designer datatypes per server
+#include "ngsa/NgsaJson.h"        // NGSA (M1 part two): MariaDB JSON columns as json
+#include "ngsa/NgsaTrace.h"
 
 extern PGLOBALS		pGlobals;
 
@@ -111,6 +115,9 @@ FieldStructWrapper::~FieldStructWrapper()
 
 TabFields::TabFields(HWND hwnd, TableTabInterfaceTabMgmt* ptabmgmt)
 {
+	m_ngsaversioned = wyFalse;	// NGSA (M8)
+	m_ngsainvisiblecol = wyFalse;	// NGSA (M8b): set in InitGrid
+	m_ngsacompressedcol = wyFalse;
     m_hwnd              =   hwnd;
     m_ptabmgmt          =   ptabmgmt;
     m_hgridfields       =   NULL;
@@ -726,6 +733,10 @@ TabFields::TraverseEachFieldRow(MYSQL_RES *myfieldres,wyString createtable)
         /// Zerofill value
 		if(strstr(myrowstr.GetString(), "zerofill"))
             fieldattr->m_zerofill = wyTrue;
+
+		// NGSA (M8): MariaDB reports a compressed column as "text /*M!100301 COMPRESSED*/"
+		if(strstr(myrowstr.GetString(), "COMPRESSED"))
+            fieldattr->m_compressed = wyTrue;
 		
         /// Comment value
 		if(m_ismysql41 && (i = GetFieldIndex(myfieldres, "comment", m_mdiwnd->m_tunnel, &(m_mdiwnd->m_mysql))) != -1 &&
@@ -746,6 +757,9 @@ TabFields::TraverseEachFieldRow(MYSQL_RES *myfieldres,wyString createtable)
 		if((i = GetFieldIndex(myfieldres, "extra", m_mdiwnd->m_tunnel, &(m_mdiwnd->m_mysql))) != -1 && myfieldrow[i])
 		{
 			myrowstr.SetAs(myfieldrow[i], m_ismysql41);
+			// NGSA (M8): INVISIBLE (MariaDB 10.3.3, MySQL 8.0.23) must survive a CHANGE of the column
+			if(strstr(myrowstr.GetString(), "INVISIBLE"))
+				fieldattr->m_invisible = wyTrue;
 			if(strstr(myrowstr.GetString(), "auto_increment"))
 			{
                 fieldattr->m_autoincr = wyTrue;
@@ -834,6 +848,19 @@ TabFields::TraverseEachFieldRow(MYSQL_RES *myfieldres,wyString createtable)
 
 			}
 		//}
+
+		// NGSA (M1 part two): MariaDB stores a JSON column as longtext + CHECK (json_valid(`col`)); show it as
+		// json and emit it as json. The JSON alias refuses CHARSET/COLLATE clauses (measured on 11.8), so the
+		// charset and collation are blanked; the server forces utf8mb4_bin itself.
+		if(m_mdiwnd->m_ngsacaps.jsonIsCheckConstraint == wyTrue && fieldattr->m_datatype.CompareI("longtext") == 0 &&
+		   NgsaJson::IsJsonValidCheck(fieldattr->m_mycheckexpression.GetString(), fieldattr->m_name.GetString()))
+		{
+			fieldattr->m_datatype.SetAs("json");
+			datatype.SetAs("json");
+			fieldattr->m_mycheckexpression.Clear();
+			fieldattr->m_charset.Clear();
+			fieldattr->m_collation.Clear();
+		}
 		
         /// Extracting the len value
         tempstr[0] = NULL;
@@ -934,6 +961,7 @@ TabFields::FetchInitData()
     dbname.SetAs(m_ptabmgmt->m_tabinterfaceptr->m_dbname);
     dbname.FindAndReplace("`", "``");
     
+	m_ngsaversioned = wyFalse;	// NGSA (M8): re-read with the table
 	// get the field information.
     query.Sprintf("show full fields from `%s`.`%s`", dbname.GetString(), tblname.GetString());
 	
@@ -959,6 +987,8 @@ TabFields::FetchInitData()
 	else
 	{
 	myfieldrow = m_mdiwnd->m_tunnel->mysql_fetch_row(myfieldresmariadb);
+	if(myfieldrow && myfieldrow[1] && strstr(myfieldrow[1], "WITH SYSTEM VERSIONING"))	// NGSA (M8)
+		m_ngsaversioned = wyTrue;
 
 	TraverseEachFieldRow(myfieldres,myfieldrow[1]);	
 	 m_mdiwnd->m_tunnel->mysql_free_result(myfieldresmariadb);
@@ -1011,6 +1041,8 @@ TabFields::InitFieldAttribs(FIELDATTRIBS* value)
     value->m_autoincr = wyFalse;
     value->m_zerofill = wyFalse;
     value->m_onupdate =   wyFalse;
+    value->m_invisible = wyFalse;	// NGSA (M8)
+    value->m_compressed = wyFalse;
 
     value->m_next = NULL;
 }
@@ -1080,6 +1112,10 @@ TabFields::FillInitData()
         CustomGrid_SetBoolValue(m_hgridfields, rowno, UNSIGNED + addcol, temp->m_unsigned ? GV_TRUE : GV_FALSE);
         CustomGrid_SetBoolValue(m_hgridfields, rowno, BINARY, temp->m_binary ? GV_TRUE : GV_FALSE);
         CustomGrid_SetBoolValue(m_hgridfields, rowno, ZEROFILL + addcol, temp->m_zerofill ? GV_TRUE : GV_FALSE);
+        if(m_ngsainvisiblecol)	// NGSA (M8b)
+            CustomGrid_SetBoolValue(m_hgridfields, rowno, INVISIBLE_, temp->m_invisible ? GV_TRUE : GV_FALSE);
+        if(m_ngsacompressedcol)
+            CustomGrid_SetBoolValue(m_hgridfields, rowno, COMPRESSED_, temp->m_compressed ? GV_TRUE : GV_FALSE);
         CustomGrid_SetText(m_hgridfields, rowno, COMMENT_, temp->m_comment.GetString());
         CustomGrid_SetBoolValue(m_hgridfields, rowno, NOTNULL + addcol, temp->m_notnull ? GV_TRUE : GV_FALSE);
         CustomGrid_SetBoolValue(m_hgridfields, rowno, AUTOINCR + addcol, temp->m_autoincr ? GV_TRUE : GV_FALSE);
@@ -1126,46 +1162,17 @@ TabFields::InitGrid()
     wyInt32			counter,index;		// normal counter
 	wyInt32			num_cols;		// number of columns
 	GVCOLUMN		gvcol;			// structure used to create columns for grid
-	wyWChar type[36][20] = { L"tinyint",L"smallint", L"mediumint", L"int", L"bigint", L"real", L"bit", L"bool", L"boolean",
-		L"float", L"double", L"decimal", L"date", L"datetime", L"timestamp", L"numeric", L"time", L"year", L"char",
-		L"varchar", L"tinyblob", L"tinytext", L"text", L"blob", L"mediumblob", L"mediumtext", L"longblob", L"longtext",
-		L"enum", L"set", L"binary", L"varbinary"};
+	// NGSA (M5): datatypes per engine/version from include/ngsa/NgsaServerOps.h (replaces the
+	// hand-patched array: json, inet6, inet4, uuid and now vector appear when the server has them)
+	wyWChar			type[NGSA_DESIGNER_TYPES_MAX][20];
+	const wyChar*	typenames[NGSA_DESIGNER_TYPES_MAX];
+	wyInt32			typecount = NgsaDesignerTypes(m_mdiwnd->m_ngsacaps, typenames, NGSA_DESIGNER_TYPES_MAX);
 
-	//set visiblity off for new data types based on maria db versions.
-	index = 31;
+	for(index = 0; index < typecount; index++)
+		mbstowcs(type[index], typenames[index], 20);
 
-	if (m_ismysql578)
-	{
-		index++;
-		type[index][0] = 'j';
-		type[index][1] = 's';
-		type[index][2] = 'o';
-		type[index][3] = 'n';
-		
-	}
-	if (m_ismariadb105) {
-		index++;
-		type[index][0] = 'i';
-		type[index][1] = 'n';
-		type[index][2] = 'e';
-		type[index][3] = 't';
-		type[index][4] = '6';
-	}
-	if (m_ismariadb1010) {
-		index++;
-		type[index][0] = 'i';
-		type[index][1] = 'n';
-		type[index][2] = 'e';
-		type[index][3] = 't';
-		type[index][4] = '4';
-	}
-	if (m_ismariadb107) {
-		index++;
-		type[index][0] = 'u';
-		type[index][1] = 'u';
-		type[index][2] = 'i';
-		type[index][3] = 'd';
-	}
+	NgsaTrace("DesignerTypes: %d types, last five: %s %s %s %s %s", typecount, typenames[typecount-5], typenames[typecount-4], typenames[typecount-3], typenames[typecount-2], typenames[typecount-1]);
+	index = typecount - 1;	// the grid takes index + 1 entries
 
 	wyWChar virtuallity[3][20]= {  L"(none)", L"VIRTUAL",NULL};
 	if (m_ismariadb10309)
@@ -1175,16 +1182,18 @@ TabFields::InitGrid()
 	else 
 		mbstowcs (virtuallity[2], "STORED", strlen("STORED")+1);
 
+	// NGSA (M8b): Invisible? and Compressed? bool columns after Check Constraint (INVISIBLE_ 16, COMPRESSED_ 17),
+	// inserted only when the server has them (caps.invisibleColumns / caps.compressedColumns)
 	wyChar		    *heading[] = {_("Column Name"), _("Data Type"), _("Length"), _("Default"),  _("PK?"), _("Binary?"), _("Not Null?"), 
-		                          _("Unsigned?"), _("Auto Incr?"), _("Zerofill?"), _("Charset"), _("Collation"), _("On Update"), _("Comment"),  _("Virtuality"),_("Expression"),_("Check Constraint")};
+		                          _("Unsigned?"), _("Auto Incr?"), _("Zerofill?"), _("Charset"), _("Collation"), _("On Update"), _("Comment"),  _("Virtuality"),_("Expression"),_("Check Constraint"), _("Invisible?"), _("Compressed?")};
 	
 	wyInt32			mask[] = {GVIF_TEXT, GVIF_LIST, GVIF_TEXT, GVIF_TEXT,  GVIF_BOOL, GVIF_BOOL, GVIF_BOOL, GVIF_BOOL, 
-		                      GVIF_BOOL, GVIF_BOOL, GVIF_LIST, GVIF_LIST, GVIF_BOOL, GVIF_TEXT,GVIF_LIST,GVIF_TEXT,GVIF_TEXT };
+		                      GVIF_BOOL, GVIF_BOOL, GVIF_LIST, GVIF_LIST, GVIF_BOOL, GVIF_TEXT,GVIF_LIST,GVIF_TEXT,GVIF_TEXT, GVIF_BOOL, GVIF_BOOL };
 	
-    wyInt32			cx[] = { 125, 95, 40, 80, 40, 60, 70, 70, 75, 70,  90, 140, 80, 150,20,95,140 };//default/min col width
+    wyInt32			cx[] = { 125, 95, 40, 80, 40, 60, 70, 70, 75, 70,  90, 140, 80, 150,20,95,140, 70, 85 };//default/min col width
 
 	wyInt32			format[] = { GVIF_LEFT, GVIF_LEFT, GVIF_LEFT, GVIF_LEFT, GVIF_CENTER, GVIF_CENTER, GVIF_CENTER, 
-		                         GVIF_CENTER, GVIF_CENTER, GVIF_CENTER, GVIF_CENTER, GVIF_CENTER, GVIF_CENTER, GVIF_LEFT, GVIF_CENTER,GVIF_LEFT,GVIF_LEFT,GVIF_LEFT };
+		                         GVIF_CENTER, GVIF_CENTER, GVIF_CENTER, GVIF_CENTER, GVIF_CENTER, GVIF_CENTER, GVIF_LEFT, GVIF_CENTER,GVIF_LEFT,GVIF_LEFT,GVIF_LEFT, GVIF_CENTER, GVIF_CENTER };
 
 	wyInt32			width = 0;
 	wyString		colname, dbname(RETAINWIDTH_DBNAME), tblname("__create_table");
@@ -1195,9 +1204,12 @@ TabFields::InitGrid()
 	cx[1] = GetTextSize(L"mediumblob ", m_hgridfields, hfont).right + 15; //default min size for datatype col
 	num_cols = sizeof (heading)/sizeof(heading[0]);
 	
-	VOID		    *listtype[] = {NULL, (VOID*)type, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, (void*)virtuallity,NULL,NULL};
-	wyInt32			elemsize[] = {  0, sizeof(type[0]), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,sizeof(virtuallity[0]),0,0};
-	wyInt32			elemcount[] = {0, index + 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,0, 0, sizeof(virtuallity)/sizeof(virtuallity[0]),0,0};
+	VOID		    *listtype[] = {NULL, (VOID*)type, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, (void*)virtuallity,NULL,NULL, NULL, NULL};
+	wyInt32			elemsize[] = {  0, sizeof(type[0]), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,sizeof(virtuallity[0]),0,0, 0, 0};
+	wyInt32			elemcount[] = {0, index + 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,0, 0, sizeof(virtuallity)/sizeof(virtuallity[0]),0,0, 0, 0};
+
+	m_ngsainvisiblecol = (m_mdiwnd->m_ngsacaps.invisibleColumns == wyTrue) ? wyTrue : wyFalse;	// NGSA (M8b)
+	m_ngsacompressedcol = (m_ngsainvisiblecol && m_mdiwnd->m_ngsacaps.compressedColumns == wyTrue) ? wyTrue : wyFalse;
 	
 	
 	for (counter=0; counter < num_cols ; counter++ )
@@ -1232,10 +1244,12 @@ TabFields::InitGrid()
 		{
 		continue;
 		}
+		if((counter == INVISIBLE_ + 1 && !m_ngsainvisiblecol) || (counter == COMPRESSED_ + 1 && !m_ngsacompressedcol))	// NGSA (M8b): heading index = grid column + 1 (Binary? is skipped)
+			continue;
 		// if the column being entered is last and the mysql version is < 4.1, then
 		// we exit as the last column is for column level comments which is only supported
 		// in v4.1
-		if((counter==(num_cols-1)) && (m_ismysql41) == 0)
+		if((counter==COMMENT_ + 1) && (m_ismysql41) == 0)	// NGSA (M8b): was num_cols-1, no longer the comment column (heading index = grid column + 1)
         {
 			break;
         }
@@ -1655,6 +1669,16 @@ TabFields::GetNewAndModifiedColumns(wyString &columnsstr)
 				}
             }
 
+            // NGSA (#2367): a generated (virtual/stored) column is dropped and re-added, which put it
+            // at the end of the table; keep its place with an explicit position
+            if(!reorderstr.GetLength() && IsDropAndRecreateRequired(cwrapobj, wyFalse))
+            {
+                if(prevcwrap && prevcwrap->m_newval)
+                    reorderstr.Sprintf(" after %s%s%s", m_backtick, prevcwrap->m_newval->m_name.GetString(), m_backtick);
+                else
+                    reorderstr.SetAs(" first");
+            }
+
             if(reorderstr.GetLength())
             {
                 coldef.AddSprintf(" %s", reorderstr.GetString());
@@ -1753,6 +1777,9 @@ void
 	else
 		newcolumns.Add(" ");
 
+	if(fieldattr->m_compressed)	// NGSA (M8): MariaDB wants COMPRESSED directly after the type, before CHARACTER SET
+		newcolumns.Add("COMPRESSED ");
+
 	if(m_ismysql41 && !skip)
 	{
 		/// adding charset and collation if the user has specified
@@ -1833,6 +1860,9 @@ void
 
 	}
 	
+	if(fieldattr->m_invisible)	// NGSA (M8): before COMMENT (SHOW CREATE TABLE order)
+		newcolumns.Add("INVISIBLE ");
+
 	GetCommentValue(_comment, fieldattr);
 
 	if(_comment.GetLength())
@@ -1979,6 +2009,9 @@ void
 	{
 		query.Add("AUTO_INCREMENT ");
 	}
+
+	if(pfieldattribs->m_invisible)	// NGSA (M8)
+		query.Add("INVISIBLE ");
 }
 
 void
@@ -2189,6 +2222,8 @@ TabFields::GetColumnAndDataType(wyString &query, FIELDATTRIBS*   pfieldattribs)
         query.AddSprintf("(%s)", pfieldattribs->m_len.GetString());
     }
     query.Add(" ");
+    if(pfieldattribs->m_compressed)	// NGSA (M8b): MariaDB wants COMPRESSED directly after the type
+        query.Add("COMPRESSED ");
     return wyFalse;
 }
 
@@ -2966,7 +3001,7 @@ TabFields::OnGVNEndLabelEdit(WPARAM wParam, LPARAM lParam)
 	if(m_ismariadb52||m_ismysql57)
     { //for virtual/persistent columns go till column 14
 		// Added check constraint column so now it will go till column 15
-		if(!(col >= 0 && col <= 15))
+		if(!(col >= 0 && col <= 15 + (m_ngsainvisiblecol ? 1 : 0) + (m_ngsacompressedcol ? 1 : 0)))	// NGSA (M8b): Invisible?/Compressed? are columns 16/17
         return 1;
 	}
 	else
@@ -3207,6 +3242,10 @@ TabFields::ResetRowValues(wyUInt32 row)
     CustomGrid_SetBoolValue(m_hgridfields, row, UNSIGNED + addcol, GV_FALSE);
     CustomGrid_SetBoolValue(m_hgridfields, row, AUTOINCR + addcol, GV_FALSE);
     CustomGrid_SetBoolValue(m_hgridfields, row, ZEROFILL + addcol, GV_FALSE);
+    if(m_ngsainvisiblecol)	// NGSA (M8b)
+        CustomGrid_SetBoolValue(m_hgridfields, row, INVISIBLE_, GV_FALSE);
+    if(m_ngsacompressedcol)
+        CustomGrid_SetBoolValue(m_hgridfields, row, COMPRESSED_, GV_FALSE);
     
     if(m_ismysql41)
     {
@@ -3252,6 +3291,8 @@ TabFields::GetDuplicateFieldAttribsStruct(FIELDATTRIBS* original)
     newstruct->m_autoincr = original->m_autoincr;
     newstruct->m_zerofill = original->m_zerofill;
     newstruct->m_onupdate = original->m_onupdate;
+    newstruct->m_invisible = original->m_invisible;	// NGSA (M8)
+    newstruct->m_compressed = original->m_compressed;
 
     newstruct->m_charset.SetAs(original->m_charset);
     newstruct->m_collation.SetAs(original->m_collation);
@@ -3385,6 +3426,14 @@ TabFields::SetValueToStructure(wyUInt32 row, wyUInt32 col, wyChar* data)
 	{
 		if (m_ismariadb52)
 			cwrap->m_newval->m_mycheckexpression.SetAs(data);
+	}
+	else if(col == INVISIBLE_ && m_ngsainvisiblecol)	// NGSA (M8b)
+	{
+		cwrap->m_newval->m_invisible = (stricmp(data, GV_TRUE) == 0) ? wyTrue : wyFalse;
+	}
+	else if(col == COMPRESSED_ && m_ngsacompressedcol)
+	{
+		cwrap->m_newval->m_compressed = (stricmp(data, GV_TRUE) == 0) ? wyTrue : wyFalse;
 	}
     if(m_ismysql41 && data)
     {
@@ -3610,6 +3659,20 @@ TabFields::ScanEntireRow(wyUInt32  currentrow, wyInt32 currentcol, wyString& cur
 		case CHECKCONSTRAINT:
 			origtext.SetAs(fldattr->m_mycheckexpression);
 			newtext.SetAs(cwrapobj->m_newval->m_mycheckexpression);
+			break;
+
+		case INVISIBLE_:	// NGSA (M8b)
+			if(i == col && !currentdata.GetLength())
+				currentdata.SetAs(GV_FALSE);
+			origtext.SetAs(fldattr->m_invisible ? GV_TRUE : GV_FALSE);
+			newtext.SetAs(cwrapobj->m_newval->m_invisible ? GV_TRUE : GV_FALSE);
+			break;
+
+		case COMPRESSED_:
+			if(i == col && !currentdata.GetLength())
+				currentdata.SetAs(GV_FALSE);
+			origtext.SetAs(fldattr->m_compressed ? GV_TRUE : GV_FALSE);
+			newtext.SetAs(cwrapobj->m_newval->m_compressed ? GV_TRUE : GV_FALSE);
 			break;
         }
 
@@ -4800,6 +4863,8 @@ TabFields::SetValidation(wyUInt32 row, wyChar* datatype)
     else
         index = 0;
 
+	NgsaSetCompressedReadOnly(row, datatype);	// NGSA (M8b)
+
 	if ((stricmp (datatype , "tinyint" ) == 0 ) )
 	   return HandleTinyIntValidation(hwndgrid, row, index);
 	
@@ -5414,6 +5479,22 @@ TabFields::ExchangeRowValues(wyInt32 row1, wyInt32 row2)
 
     cwrapobj1 = (FieldStructWrapper *) m_listwrapperstruct.GetFirst();
 
+    // NGSA (M8b): the bool loop above stops before the new columns
+    if(m_ngsainvisiblecol)
+    {
+        GetGridCellData(m_hgridfields, row1, INVISIBLE_, data1);
+        GetGridCellData(m_hgridfields, row2, INVISIBLE_, data2);
+        CustomGrid_SetBoolValue(m_hgridfields, row1, INVISIBLE_, data2.Compare(GV_TRUE) == 0 ? GV_TRUE : GV_FALSE);
+        CustomGrid_SetBoolValue(m_hgridfields, row2, INVISIBLE_, data1.Compare(GV_TRUE) == 0 ? GV_TRUE : GV_FALSE);
+    }
+    if(m_ngsacompressedcol)
+    {
+        GetGridCellData(m_hgridfields, row1, COMPRESSED_, data1);
+        GetGridCellData(m_hgridfields, row2, COMPRESSED_, data2);
+        CustomGrid_SetBoolValue(m_hgridfields, row1, COMPRESSED_, data2.Compare(GV_TRUE) == 0 ? GV_TRUE : GV_FALSE);
+        CustomGrid_SetBoolValue(m_hgridfields, row2, COMPRESSED_, data1.Compare(GV_TRUE) == 0 ? GV_TRUE : GV_FALSE);
+    }
+
     SetValidation(row1, (wyChar*)datatype2.GetString());
     SetValidation(row2, (wyChar*)datatype1.GetString());
 }
@@ -5555,4 +5636,42 @@ TabFields::SelectColumn(wyString &colname)
     }
 
     return wyFalse;
+}
+
+// NGSA (M8b): MariaDB accepts COMPRESSED on text, blob, varchar and varbinary columns only (INT gives 1064,
+// measured on 11.8, 10/10/2026)
+wyBool
+TabFields::NgsaTypeCanBeCompressed(const wyChar* datatype)
+{
+    static const wyChar* ok[] = { "tinytext", "text", "mediumtext", "longtext", "tinyblob", "blob", "mediumblob",
+                                  "longblob", "varchar", "varbinary", "json", NULL };
+    if(!datatype || !*datatype)
+        return wyFalse;
+    for(wyInt32 i = 0; ok[i]; i++)
+        if(stricmp(datatype, ok[i]) == 0)
+            return wyTrue;
+    return wyFalse;
+}
+
+void
+TabFields::NgsaSetCompressedReadOnly(wyUInt32 row, const wyChar* datatype)
+{
+    FieldStructWrapper* cwrapobj;
+
+    if(!m_ngsacompressedcol || !datatype || !*datatype)
+        return;
+    /* FillInitData also calls SetValidation with the virtuality text; that is not a type change */
+    if(stricmp(datatype, "(none)") == 0 || stricmp(datatype, "VIRTUAL") == 0 ||
+       stricmp(datatype, "STORED") == 0 || stricmp(datatype, "PERSISTENT") == 0)
+        return;
+    if(NgsaTypeCanBeCompressed(datatype))
+    {
+        CustomGrid_SetColumnReadOnly(m_hgridfields, row, COMPRESSED_, wyFalse);
+        return;
+    }
+    CustomGrid_SetColumnReadOnly(m_hgridfields, row, COMPRESSED_, wyTrue);
+    CustomGrid_SetBoolValue(m_hgridfields, row, COMPRESSED_, GV_FALSE);
+    cwrapobj = (FieldStructWrapper*)CustomGrid_GetRowLongData(m_hgridfields, row);
+    if(cwrapobj && cwrapobj->m_newval)
+        cwrapobj->m_newval->m_compressed = wyFalse;
 }

@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -18,12 +19,13 @@
 
 #define CRTDBG_MAP_ALLOC
 #include <stdlib.h>
+#include "ngsa/NgsaDark.h"   // NGSA (#2158)
 #include <crtdbg.h>
 //#include <vld.h>
 #include "Scintilla.h"
 #include "FrameWindowHelper.h"
 #include "ExportMultiFormat.h"
-#include "htmlayout.h"
+// bonSQL: no HTMLayout
 #include "Global.h"
 #include "CommonHelper.h"
 #include "GUIHelper.h"
@@ -37,6 +39,7 @@
 #include <gdiplus.h>
 #include <GdiPlusGraphics.h> 
 #include <olectl.h>
+#include "ngsa/NgsaScintilla.h"   // NGSA (M13): Scintilla 5 lexer selection
 #endif
 
 #define STATUS_BAR_SECTIONS 7
@@ -71,7 +74,7 @@ wyInt32 WINAPI WinMain(HINSTANCE hinstance, HINSTANCE hprevinstance,
 	//DEBUG_ENTER("WinMain");
 	//call mysql_library_init to avoid crash
 	if (mysql_library_init(0, NULL, NULL)) {
-    DisplayErrorText(1, _("could not initialize MySQL library"));
+    DisplayErrorText(1, _("could not initialize the database client library"));
     return 0;
   }
 	// First clear every stuff in the pglobals variable.
@@ -97,7 +100,12 @@ wyInt32 WINAPI WinMain(HINSTANCE hinstance, HINSTANCE hprevinstance,
 	if(GetConfigDetails(cmdline) == wyFalse)
 		return 0;
 
+	// bonSQL: first start, offer SQLyog's settings before bonsql.ini is created (src/ngsa/NgsaConfig.cpp)
+	NgsaOfferSqlyogImport();
+
 	CreateInitFile();
+	// bonSQL: the installer's "check for new versions" tick, applied once the ini exists (NgsaConfig.cpp)
+	NgsaApplyInstallDefaults();
 
 #ifndef  _WIN64
 	OSVERSIONINFOEX osvi;
@@ -114,7 +122,7 @@ wyInt32 WINAPI WinMain(HINSTANCE hinstance, HINSTANCE hprevinstance,
 #ifdef _DEBUG
     HANDLE          hlogfile = NULL;
     
-    hlogfile = CreateFile(L"SQLyog_debug_log.txt", GENERIC_WRITE, FILE_SHARE_WRITE, 
+    hlogfile = CreateFile(L"bonsql_debug_log.txt", GENERIC_WRITE, FILE_SHARE_WRITE, 
                            NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 
 #else
@@ -148,12 +156,11 @@ wyInt32 WINAPI WinMain(HINSTANCE hinstance, HINSTANCE hprevinstance,
    _CrtSetDbgFlag ( _CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF );
 
 
-	VERIFY(hsci = ::LoadLibrary(L"SciLexer.dll"));
+	VERIFY(hsci = NgsaScintilla::Load());	// NGSA (M13): Scintilla.dll + Lexilla.dll (SciLexer.dll retired)
 	
     if(!hsci)
 	{
-		DisplayErrorText(GetLastError(), _("Error loading SciLexer.dll"));
-		VERIFY(FreeLibrary(hsci));
+		DisplayErrorText(GetLastError(), _("Error loading Scintilla.dll / Lexilla.dll"));
         return 0;
 	}
 
@@ -206,6 +213,7 @@ wyInt32 WINAPI WinMain(HINSTANCE hinstance, HINSTANCE hprevinstance,
 
     SetLanguage(NULL, wyTrue);
     wyTheme::Init();
+    NgsaDark::InstallHook();   // NGSA (#2158): dark standard controls in the main window
 
     // Create the mainwindow.
 	mainwin = new FrameWindow(pGlobals->m_hinstance);

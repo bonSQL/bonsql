@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -22,6 +23,7 @@
 #include "GUIHelper.h"
 #include "FrameWindowHelper.h"
 #include "MySQLVersionHelper.h"
+#include "ngsa/NgsaServerOps.h"   // NGSA (#2152): BIT values
 
 #define UTF8    "utf8"
 #define SHEET1	"Sheet1"
@@ -362,7 +364,16 @@ ExportToExcel::WriteData(ExportExcelData *exceldata)
 			GetMySqlDataType(&m_datatype, myres->fields, count);
             
 			//if myrow[count] is NULL or if myrow[count] is "(NULL)" then we will write empty data
-			if((myrow[count] && stricmp(myrow[count], STRING_NULL)) && (m_datatype.m_exceltype.GetString() != 0))
+			if(myres->fields[count].type == MYSQL_TYPE_BIT && myrow[count])	// NGSA (#2152): BIT bytes as a number
+			{
+				NgsaBitToDecimal((const unsigned char*)myrow[count], NGSA_BIT_BYTES(myres->fields[count]), value);
+				VERIFY(WriteCellHeader(wyFalse) == wyTrue);
+				VERIFY(WriteDataHeader("Number") == wyTrue);
+				VERIFY(WriteToFile(value, wyTrue) == wyTrue);
+				VERIFY(CloseDataHeader() == wyTrue);
+				VERIFY(CloseCellHeader() == wyTrue);
+			}
+			else if((myrow[count] && stricmp(myrow[count], STRING_NULL)) && (m_datatype.m_exceltype.GetString() != 0))
 				WriteNotEmptyData(exceldata, myrow, count, value);
 			else
 				WriteEmptyData(value);

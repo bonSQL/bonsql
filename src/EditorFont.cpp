@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -18,8 +19,10 @@
 
 
 #include "EditorFont.h"
+#include "ngsa/NgsaDark.h"   // NGSA (#2158)
 #include "CommonHelper.h"
 #include "wyTheme.h"
+#include "ngsa/NgsaScintilla.h"   // NGSA (M13): Scintilla 5 lexer selection
 
 #define BOLD_DEFINED  700
 #define DEF_FONT_SIZE 9
@@ -39,7 +42,7 @@ EditorFont::SetFont(HWND hwndedit, wyChar tabname[], wyBool fromini)
 	wyInt32		fontsize = 0;
 
 	//Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	
 	dirstr.SetAs(directory);
 
@@ -176,7 +179,7 @@ EditorFont::SetColor(HWND hwndedit, wyBool fromini, wyBool isinfotab)
 	wyWChar		directory[MAX_PATH+1] = {0};
 
 	//Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 
 	if (fromini) 
 		SetColorFromIni(hwndedit, directory, isinfotab);
@@ -195,7 +198,7 @@ EditorFont::SetThemeColor(HWND hwndedit, wyBool fromini, wyBool isinfotab)
 	EDITORCOLORINFO editorcolors;
 
 	//Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 
 	if (fromini)
 		GetColorFromIni(hwndedit, directory, &editorcolors, isinfotab);
@@ -366,7 +369,7 @@ EditorFont::SetCase(HWND hwndedit)
 	wyString	keywordcase, functioncase;
 
 	//Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	
 	//Keyword case
@@ -425,8 +428,7 @@ EditorFont::ApplyEditorThemeColors(HWND hwndedit, wyBool isinfotab)
 {
 	EDITORCOLORINFO editorcolors;
 	if (!wyTheme::GetEditorColors(&editorcolors) ||
-		!wyTheme::IsDarkThemeActive() ||
-		!IsMainWindowEditor(hwndedit))
+		!wyTheme::IsDarkThemeActive())	// NGSA (#2158): was also '|| !IsMainWindowEditor(hwndedit)'; dialog editors are dark too
 		return;
 	// Apply basic editor colors
 	if (editorcolors.m_mask & EDITORCF_BACKGROUND)
@@ -536,8 +538,7 @@ EditorFont::ApplyEditorThemeColors(HWND hwndedit, EDITORCOLORINFO *pDefColors, w
 {
 	EDITORCOLORINFO themeeditorcolors;
 
-	if (wyTheme::IsDarkThemeActive() &&
-		IsMainWindowEditor(hwndedit))
+	if (wyTheme::IsDarkThemeActive())	// NGSA (#2158): was '&& IsMainWindowEditor(hwndedit)'
 
 		if (wyTheme::GetEditorColors(&themeeditorcolors)) {
 			if (themeeditorcolors.m_mask & EDITORCF_BACKGROUND)
@@ -674,12 +675,13 @@ void
 EditorFont::ApplyDialogEditorDefaultColors(HWND hwndedit, wyBool isinfotab)
 {
     // Only apply to dialog editors in dark theme
+    return;     // NGSA (#2158): dialog editors follow the Dark theme too (13.3.1 forced them white)
     if (!wyTheme::IsDarkThemeActive() || IsMainWindowEditor(hwndedit))
         return;
 
     SendMessage(hwndedit, SCI_STYLECLEARALL, 0, 0);
 
-    SendMessage(hwndedit, SCI_SETLEXERLANGUAGE, 0, (LPARAM)"MySQL");
+    NgsaScintilla::SetLexer(hwndedit, "MySQL");	// NGSA (M13)
 
     SendMessage(hwndedit, SCI_STYLESETBACK, STYLE_DEFAULT, COLOR_WHITE); 
     SendMessage(hwndedit, SCI_STYLESETFORE, STYLE_DEFAULT, RGB_DIFFBLACK); 
@@ -793,7 +795,7 @@ EditorFont::IsMainWindowEditor(HWND hwndedit)
 	// TabPreview editors should NOT get dark theme
 	if (editorInfo.isTabPreviewEditor)
 	{
-		return wyFalse;
+		return wyTrue;	// NGSA (#2158): the SQL preview follows the theme wherever the designer lives
 	}
 
 	HWND hwndCurrent = hwndedit;

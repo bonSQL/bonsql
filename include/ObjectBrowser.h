@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc.
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -506,6 +507,9 @@ public:
     */
 	wyInt32		DropEvents(HWND hwnd, Tunnel * tunnel, PMYSQL mysql, const wyChar *db);
 
+	/// NGSA: drops every sequence of the database (Empty Database)
+	wyInt32		DropSequences(HWND hwnd, Tunnel * tunnel, PMYSQL mysql, const wyChar *db);
+
     /// Creates a view with the given name.
     /**
     @param hwnd        : Window HANDLE.
@@ -651,6 +655,9 @@ public:
     @param ptvdi    : Tree view display info.
     */
 	wyBool      EndRenameEvent(LPNMTVDISPINFO ptvdi);
+
+	/// NGSA: renames a sequence (RENAME TABLE)
+	wyBool      EndRenameSequence(LPNMTVDISPINFO ptvdi);
 
     /// Handles the procedure naming process.
     /**
@@ -1253,6 +1260,13 @@ public:
 
     /// Columns.
     wyInt32          m_pcol;
+    /* NGSA (#2295): the last result is kept so the Filter box and Hide sleeping refill the grid without a re-query */
+    MYSQL_RES*       m_ngsares;
+    wyString         m_ngsafilter;
+    wyBool           m_ngsahidesleep;
+    void             NgsaAddRows(MYSQL_RES* myres);
+    void             NgsaRefill();
+    wyBool           NgsaKillQuery();   /* B2: KILL QUERY <id> of the selected row */
 };
 
 

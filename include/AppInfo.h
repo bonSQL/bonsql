@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc.
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -44,9 +45,9 @@
 #define STRFILEVER                                  MAJOR_VERSION "." MINOR_VERSION "." STRINGIZE(UPDATE_VERSION_INT) "." STRINGIZE(RELEASE_VERSION_INT)
 
 #ifdef WIN64
-#define FILEDESCSTR									"SQLyog - MySQL GUI - 64 bit"
+#define FILEDESCSTR									"bonSQL - MySQL and MariaDB client"
 #else
-#define FILEDESCSTR									"SQLyog - MySQL GUI"
+#define FILEDESCSTR									"bonSQL - MySQL and MariaDB client"
 #endif
 
 

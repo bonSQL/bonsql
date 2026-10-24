@@ -52,6 +52,8 @@
 #define MYSQL_AUTODETECT_CHARSET_NAME "auto"
 #define BINCMP_FLAG       131072
 
+enum Item_result {STRING_RESULT,REAL_RESULT,INT_RESULT,ROW_RESULT,DECIMAL_RESULT};
+
 enum mysql_enum_shutdown_level
 {
   SHUTDOWN_DEFAULT = 0,
@@ -168,7 +170,7 @@ enum enum_server_command
 #define CLIENT_SSL_VERIFY_SERVER_CERT_OBSOLETE CLIENT_SSL_VERIFY_SERVER_CERT
 #define CLIENT_REMEMBER_OPTIONS  (1UL << 31)
 
-/* MariaDB specific capabilities */
+/* MariaDB-specific capabilities */
 #define MARIADB_CLIENT_FLAGS 0xFFFFFFFF00000000ULL
 #define MARIADB_CLIENT_PROGRESS (1ULL << 32)
 #define MARIADB_CLIENT_RESERVED_1 (1ULL << 33) /* Former COM_MULTI, don't use */
@@ -177,6 +179,8 @@ enum enum_server_command
 #define MARIADB_CLIENT_EXTENDED_METADATA (1ULL << 35)
 /* Do not resend metadata for prepared statements, since 10.6*/
 #define MARIADB_CLIENT_CACHE_METADATA (1ULL << 36)
+/* permit sending unit result-set for BULK commands */
+#define MARIADB_CLIENT_BULK_UNIT_RESULTS (1ULL << 37)
 
 #define IS_MARIADB_EXTENDED_SERVER(mysql)\
         (!(mysql->server_capabilities & CLIENT_MYSQL))
@@ -184,7 +188,8 @@ enum enum_server_command
 #define MARIADB_CLIENT_SUPPORTED_FLAGS (MARIADB_CLIENT_PROGRESS |\
                                        MARIADB_CLIENT_STMT_BULK_OPERATIONS|\
                                        MARIADB_CLIENT_EXTENDED_METADATA|\
-                                       MARIADB_CLIENT_CACHE_METADATA)
+                                       MARIADB_CLIENT_CACHE_METADATA|\
+                                       MARIADB_CLIENT_BULK_UNIT_RESULTS)
 
 #define CLIENT_SUPPORTED_FLAGS  (CLIENT_MYSQL |\
                                  CLIENT_FOUND_ROWS |\
@@ -205,11 +210,17 @@ enum enum_server_command
                                  CLIENT_MULTI_STATEMENTS |\
                                  CLIENT_MULTI_RESULTS |\
                                  CLIENT_PROGRESS |\
-		                 CLIENT_SSL_VERIFY_SERVER_CERT |\
+                                 CLIENT_SSL_VERIFY_SERVER_CERT |\
                                  CLIENT_REMEMBER_OPTIONS |\
                                  CLIENT_PLUGIN_AUTH |\
                                  CLIENT_SESSION_TRACKING |\
                                  CLIENT_CONNECT_ATTRS)
+#define CLIENT_ALLOWED_FLAGS     (CLIENT_SUPPORTED_FLAGS |\
+                                 CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA |\
+                                 CLIENT_CAN_HANDLE_EXPIRED_PASSWORDS |\
+                                 CLIENT_ZSTD_COMPRESSION |\
+                                 CLIENT_PS_MULTI_RESULTS |\
+                                 CLIENT_REMEMBER_OPTIONS)
 #define CLIENT_CAPABILITIES	    (CLIENT_MYSQL | \
                                  CLIENT_LONG_FLAG |\
                                  CLIENT_TRANSACTIONS |\
@@ -224,6 +235,9 @@ enum enum_server_command
 
 #define CLIENT_DEFAULT_FLAGS ((CLIENT_SUPPORTED_FLAGS & ~CLIENT_COMPRESS)\
                                                       & ~CLIENT_SSL)
+
+#define CLIENT_DEFAULT_EXTENDED_FLAGS (MARIADB_CLIENT_SUPPORTED_FLAGS &\
+                                 ~MARIADB_CLIENT_BULK_UNIT_RESULTS)
 
 #define SERVER_STATUS_IN_TRANS               1	/* Transaction has started */
 #define SERVER_STATUS_AUTOCOMMIT             2	/* Server in auto_commit mode */
@@ -285,10 +299,10 @@ typedef struct st_net {
   unsigned char reading_or_writing;
   char save_char;
   char unused_1;
-  my_bool unused_2;
+  unsigned char tls_verify_status;
   my_bool compress;
-  my_bool unused_3;
-  void *unused_4;
+  my_bool unused_2;
+  char *unused_3;
   unsigned int last_errno;
   unsigned char error;
   my_bool unused_5;
@@ -353,6 +367,7 @@ enum enum_field_types { MYSQL_TYPE_DECIMAL, MYSQL_TYPE_TINY,
                         MYSQL_TYPE_DATETIME2,
                         MYSQL_TYPE_TIME2,
                         /* --------------------------------------------- */
+                        MYSQL_TYPE_VECTOR=242,
                         MYSQL_TYPE_JSON=245,
                         MYSQL_TYPE_NEWDECIMAL=246,
                         MYSQL_TYPE_ENUM=247,
@@ -396,6 +411,7 @@ enum enum_field_types { MYSQL_TYPE_DECIMAL, MYSQL_TYPE_TINY,
 #define FIELD_TYPE_BIT MYSQL_TYPE_BIT
 
 extern unsigned long max_allowed_packet;
+extern unsigned long max_allowed_auth_packet;
 extern unsigned long net_buffer_length;
 
 #define net_new_transaction(net) ((net)->pkt_nr=0)
@@ -405,6 +421,7 @@ void	ma_net_end(NET *net);
 void	ma_net_clear(NET *net);
 int	ma_net_flush(NET *net);
 int	ma_net_write(NET *net,const unsigned char *packet, size_t len);
+int ma_net_write_buff(NET *net, const char *packet, size_t len);
 int	ma_net_write_command(NET *net,unsigned char command,const char *packet,
 			  size_t len, my_bool disable_flush);
 int	ma_net_real_write(NET *net,const char *packet, size_t len);
@@ -416,8 +433,6 @@ struct rand_struct {
 };
 
   /* The following is for user defined functions */
-
-enum Item_result {STRING_RESULT,REAL_RESULT,INT_RESULT,ROW_RESULT,DECIMAL_RESULT};
 
 typedef struct st_udf_args
 {
@@ -458,7 +473,7 @@ extern "C" {
 #endif
   
 char *ma_scramble_323(char *to,const char *message,const char *password);
-void ma_scramble_41(const unsigned char *buffer, const char *scramble, const char *password);
+int ma_scramble_41(const unsigned char *buffer, const char *scramble, const char *password);
 void ma_hash_password(unsigned long *result, const char *password, size_t len);
 void ma_make_scrambled_password(char *to,const char *password);
 

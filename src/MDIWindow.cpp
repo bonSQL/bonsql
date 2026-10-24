@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -43,6 +44,12 @@
 #include "TableTabInterfaceTabMgmt.h"
 #include "OtherDialogs.h"
 #include "List.h"
+#ifdef NGSA_SSH_SSL
+#include "ngsa/NgsaSshTunnel.h"   // NGSA: stock-plink tunnel restart on reconnect
+#include "ngsa/NgsaConnectionExt.h"   // NGSA: shared TLS rule for Stop query / reconnect connections
+#include "ngsa/NgsaServerOps.h"      // NGSA: Flush option table
+#include "ngsa/NgsaTrace.h"          // NGSA: NGSA_TRACE=<file> diagnostics
+#endif
 
 #ifndef COMMUNITY
 #include "ConnectionEnt.h"
@@ -53,6 +60,7 @@
 #include "DatabaseSearch.h"
 #else
 #include "CommunityRibbon.h"
+#include "ngsa/NgsaDark.h"   // NGSA (#2158)
 #endif
 
 extern	PGLOBALS		pGlobals;
@@ -63,11 +71,12 @@ extern	PGLOBALS		pGlobals;
 #define IDC_CTAB   WM_USER+116
 
 #define KEEP_ALIVE  300
+#define NGSA_RUN_TIMER  301	// NGSA (#2135): status-bar running time, 1 s
 
 void logtext1(wyChar *buff)
 {
 #ifdef _DEBUG
-    FILE	*fp = fopen ( "c:\\SQLyog_log.log", "a+");
+    FILE	*fp = fopen ( "c:\\" BRAND_CFG_DIR_A "_log.log", "a+");
 	fprintf(fp, "%s\n" , buff);
 	fclose ( fp );
 #endif
@@ -91,6 +100,7 @@ MDIWindow::MDIWindow(HWND hwnd, ConnectionInfo * conninfo, wyString &dbname, wyS
 	m_executing		= wyFalse;
 	m_pingexecuting = wyFalse;
 	m_isthreadbusy	= wyFalse;
+	m_ngsarunstart	= 0;	// NGSA (#2135)
 	m_execoption	= INVALID;
 	m_isobjbrowvis	= wyTrue;
 	m_bopenflag		= wyFalse;
@@ -540,6 +550,8 @@ MDIWindow::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
 			pcquerywnd->m_ismysql41 = wyTrue;
 		else
 			pcquerywnd->m_ismysql41 = wyFalse;
+		NgsaCapsCompute::FromConnection(pcquerywnd->m_mysql, pcquerywnd->m_ngsacaps);
+			NgsaTrace("Connected: engine=%s version=%u (%s) thread=%lu keepalive=%u", NgsaCapsCompute::EngineName(pcquerywnd->m_ngsacaps.engine), pcquerywnd->m_ngsacaps.version, pcquerywnd->m_ngsacaps.versionText, (unsigned long)pcquerywnd->m_mysql->thread_id, pcquerywnd->m_keepaliveinterval);	// NGSA: engine/version capabilities
 
 		pcquerywnd->OnWmCreate(hwnd);
 		if(pcquerywnd->m_postactivatemsg == wyTrue)
@@ -612,6 +624,9 @@ MDIWindow::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
 		break;
 
 	case WM_NOTIFY:
+		// NGSA (#2158): the object tree's selected row in the Dark theme (custom draw needs its own return value)
+		if(((LPNMHDR)lparam)->code == NM_CUSTOMDRAW && ((LPNMHDR)lparam)->idFrom == IDC_OBJECTTREE && NgsaDark::IsOn())
+			return NgsaDark::TreeCustomDraw((LPNMTVCUSTOMDRAW)lparam);
 		if(pcquerywnd->OnWmNotify(hwnd, wparam, lparam) == wyTrue)
             return 1;
 
@@ -641,7 +656,7 @@ MDIWindow::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
 		break;
 
 	case WM_HELP:
-		ShowHelp("http://sqlyogkb.webyog.com/category/22-getting-started");
+		ShowHelp("help:getting-started");
 		break;
 
 	case UM_TAGFILE_UPDATE_START:
@@ -696,6 +711,13 @@ MDIWindow::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
 		if(wparam == KEEP_ALIVE && pcquerywnd->m_executing == wyFalse && pcquerywnd->m_isthreadbusy == wyFalse)
 		{
            pcquerywnd->HandleKeepAliveTimer();
+		}
+		else if(wparam == NGSA_RUN_TIMER)	// NGSA (#2135)
+		{
+			if(pcquerywnd->m_executing == wyTrue && pcquerywnd->m_ngsarunstart && pcquerywnd->m_pcquerystatus)
+				pcquerywnd->m_pcquerystatus->NgsaShowRunning(GetHighPrecisionTickCount() - pcquerywnd->m_ngsarunstart);
+			else
+				KillTimer(hwnd, NGSA_RUN_TIMER);
 		}
         return wyTrue;
 
@@ -889,7 +911,7 @@ MDIWindow::OnWmClose(HWND hwnd)
 	{
 		if(pGlobals->m_pcmainwin->m_closealltrans == 1 && pGlobals->m_pcmainwin->m_intransaction > 0 && wnd->m_ptransaction && pGlobals->m_pcmainwin->m_topromptonclose == wyTrue)
 		{
-			presult = MessageBox(wnd->GetHwnd() , _(L"One or more session(s) have (a) transaction(s) running. Do you still want to close SQLyog? The transaction will be rolled back by the server."), 
+			presult = MessageBox(wnd->GetHwnd() , _(L"One or more session(s) have (a) transaction(s) running. Do you still want to close bonSQL? The transaction will be rolled back by the server."), 
                    _(L"Warning"), MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2); 
 			if(presult != 6)
 			{
@@ -1136,7 +1158,7 @@ MDIWindow::OnWmNotify(HWND hwnd, WPARAM wparam, LPARAM lparam)
 		image = m_pcqueryobject->GetSelectionImage();
 		
 		if(image != NTABLE && image != NVIEWSITEM && image != NSPITEM && 
-            image != NEVENTITEM &&	image != NFUNCITEM && image != NTRIGGERITEM)
+            image != NEVENTITEM &&	image != NFUNCITEM && image != NTRIGGERITEM && image != NSEQUENCEITEM)	// NGSA
 			return 1;
 
         if(!m_pcqueryobject->m_AllowRename)
@@ -1926,6 +1948,10 @@ MDIWindow::StopQuery()
 
 	SetMySQLOptions(&m_conninfo, m_tunnel, &mysql);
 
+#ifdef NGSA_SSH_SSL
+	NgsaConn::ApplyTlsOptions(&m_conninfo, m_tunnel, mysql);	// NGSA: same TLS rule as the main connection (Connector/C 3.4 defaults differ)
+#endif
+
 #ifndef COMMUNITY
 
 	//If CA-cert is not provided then m_no_ca = TRUE
@@ -2002,13 +2028,20 @@ MDIWindow::StopQuery()
 	else
 		thread_id = m_mysql->thread_id;
 
-	if(mysql_kill(mysql, thread_id))
-    {
-		ShowMySQLError(m_hwnd, m_tunnel, &mysql, NULL, wyTrue);
-		m_tunnel->mysql_close(temp);
-		ResetStopQueryExecution();
-        LeaveCriticalSection(&m_cs);
-		return wyFalse;
+	// NGSA: mysql_kill() sends COM_PROCESS_KILL, which MySQL 8.3 removed ("Unknown command", upstream
+	// #2363, the app then hung). KILL QUERY interrupts the statement on every server we support
+	// (MySQL 5.0+, all MariaDB) and leaves the old connection to be closed by the finish handler.
+	{
+		wyString killquery;
+		killquery.Sprintf("KILL QUERY %u", (wyUInt32)thread_id);
+		if(m_tunnel->mysql_real_query(mysql, killquery.GetString(), killquery.GetLength(), false))
+		{
+			ShowMySQLError(m_hwnd, m_tunnel, &mysql, NULL, wyTrue);
+			m_tunnel->mysql_close(temp);
+			ResetStopQueryExecution();
+			LeaveCriticalSection(&m_cs);
+			return wyFalse;
+		}
 	}
 
 	/* close the current connection and change the pointer to the new one */
@@ -3369,7 +3402,7 @@ MDIWindow::FlushWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
 		break;
 
 	case WM_HELP:
-		ShowHelp("http://sqlyogkb.webyog.com/article/133-flush");
+		ShowHelp("help:flush");
 		return wyTrue;	
 
 	case WM_DESTROY:
@@ -3447,236 +3480,156 @@ MDIWindow::OnFlushOK(HWND hwnd)
         return FlushSpecific(hwnd, hwndtext, writetobin);
 }
 
-wyInt32 
+wyInt32
 MDIWindow::FlushAll(HWND hwnd, HWND hwndtext, wyInt32 writetobin)
 {
-    wyInt32	    size, count;
-    wyString    query;
-    MYSQL_RES   *res;
-    wyBool      rc, success = wyTrue;
-    wyChar      flushquery[][SIZE_64] = {"logs", "hosts", "privileges", 
-			                             "tables", "status", "des_key_file",
-			                             "query cache", "user_resources",
-			                             "tables with read lock" };
-	wyInt32		isflush = 1;
+    // NGSA (M10, #2358): every option the connected server supports, from the table in
+    // include/ngsa/NgsaServerOps.h; the read-lock option comes last and is released.
+    wyInt32                 count = 0, i;
+    wyInt32                 isflush = 1;
+    const NgsaFlushOption*  opts = NgsaFlushOptionTable(&count);
 
-    size = sizeof(flushquery) / sizeof(flushquery[0]);
-
-    for(count = 0; count < size; count++)
+    for(i = 0; i < count; i++)
     {
-        rc = ExecuteFlush(flushquery[count], hwndtext, writetobin, hwnd, &isflush);
-        if(rc == wyFalse || isflush == 1)
-        {
-	        success = wyFalse;
-	        return 1;
-        }
+        if(NgsaFlushOptionAvailable(opts[i], m_ngsacaps) == wyFalse)
+            continue;
+
+        if(ExecuteFlush(opts[i].sql, hwndtext, writetobin, hwnd, &isflush) == wyFalse)
+            return 0;   // error shown, or an open transaction stopped us
+
+        if(opts[i].needsunlock && FlushUnlockTables(hwnd, hwndtext) == wyFalse)
+            return 0;
     }
 
-    /* if everything is ok then we need to unlock table for 
-    flush tables with read lock */
-    if(success == wyTrue)
-    {
-        query.SetAs("unlock tables");
-
-        res = ExecuteAndGetResult(this, m_tunnel, &m_mysql, query);
-        						
-        if(!res && m_tunnel->mysql_affected_rows(m_mysql)== -1)
-        {
-	       ShowMySQLError(hwnd, m_tunnel, &m_mysql, query.GetString());
-	        SendMessage(hwndtext, WM_SETTEXT, 0,(LPARAM)_(L"Error in operation."));
-	        return 0;
-        }
-
-        m_tunnel->mysql_free_result(res);
-    }
     return 1;
 }
 
-wyInt32 
+wyInt32
 MDIWindow::FlushSpecific(HWND hwnd, HWND hwndtext, wyInt32 writetobin)
 {
-    MYSQL_RES   *res;
-    wyString    query;
-	wyInt32		isflush = 1;
+    // NGSA (M10): the ticked options, in table order (read lock last, then released).
+    wyInt32                 count = 0, i;
+    wyInt32                 isflush = 1;
+    const NgsaFlushOption*  opts = NgsaFlushOptionTable(&count);
 
-    if((IsDlgButtonChecked(hwnd, IDC_FL_LOGS))== BST_CHECKED && isflush != -1)
-		ExecuteFlush("logs", hwndtext, writetobin, hwnd, &isflush);
+    for(i = 0; i < count; i++)
+    {
+        if(IsDlgButtonChecked(hwnd, opts[i].ctrlid) != BST_CHECKED ||
+           NgsaFlushOptionAvailable(opts[i], m_ngsacaps) == wyFalse)
+            continue;
 
-	if((IsDlgButtonChecked(hwnd, IDC_FL_HOSTS))== BST_CHECKED && isflush != -1)
-		ExecuteFlush("hosts", hwndtext, writetobin, hwnd, &isflush);
+        if(ExecuteFlush(opts[i].sql, hwndtext, writetobin, hwnd, &isflush) == wyFalse)
+            return 0;
 
-	if((IsDlgButtonChecked(hwnd, IDC_FL_PRIV))== BST_CHECKED && isflush != -1)
-		ExecuteFlush("privileges", hwndtext, writetobin, hwnd, &isflush);
-    
-    if((IsDlgButtonChecked(hwnd, IDC_FL_TABLES))== BST_CHECKED && isflush != -1)
-	    ExecuteFlush("tables", hwndtext, writetobin, hwnd, &isflush);
+        if(opts[i].needsunlock && FlushUnlockTables(hwnd, hwndtext) == wyFalse)
+            return 0;
+    }
 
-	if((IsDlgButtonChecked(hwnd, IDC_FL_STATUS))== BST_CHECKED && isflush != -1)
-		ExecuteFlush("status", hwndtext, writetobin, hwnd, &isflush);
-
-	if((IsDlgButtonChecked(hwnd, IDC_FL_DES))== BST_CHECKED && isflush != -1)
-        ExecuteFlush("des_key_file", hwndtext, writetobin, hwnd, &isflush);
-
-	if((IsDlgButtonChecked(hwnd, IDC_FL_CACHE))== BST_CHECKED && isflush != -1)
-        ExecuteFlush("query cache", hwndtext, writetobin, hwnd, &isflush);
-
-	if((IsDlgButtonChecked(hwnd, IDC_FL_RESOURCE))== BST_CHECKED && isflush != -1)
-        ExecuteFlush("user_resources", hwndtext, writetobin, hwnd, &isflush);
-
-	if((IsDlgButtonChecked(hwnd, IDC_FL_TABLESREAD))== BST_CHECKED && isflush != -1)
-	{
-		if(IsNewMySQL(m_tunnel, &m_mysql))
-        {
-			ExecuteFlush("tables with read lock", hwndtext, writetobin, hwnd, &isflush);
-
-			/* if everything is ok then we need to unlock table for 
-				flush tables with read lock */
-			query.SetAs("unlock tables");
-            res = ExecuteAndGetResult(this, m_tunnel, &m_mysql, query);
-
-            if(!res && m_tunnel->mysql_affected_rows(m_mysql)== -1)
-			{
-				ShowMySQLError(hwnd, m_tunnel, &m_mysql, query.GetString());
-				SendMessage(hwndtext, WM_SETTEXT, 0,(LPARAM)_(L"Error in operation."));
-				return 0;
-			}
-    		
-			m_tunnel->mysql_free_result(res);
-
-		} 
-        else 
-			ExecuteFlush("tables", hwndtext, BST_UNCHECKED, hwnd, &isflush);
-	}
     return 1;
+}
+
+// NGSA: UNLOCK TABLES after FLUSH TABLES WITH READ LOCK (shared by FlushAll / FlushSpecific).
+wyBool
+MDIWindow::FlushUnlockTables(HWND hwnd, HWND hwndtext)
+{
+    wyString    query("unlock tables");
+    MYSQL_RES*  res = ExecuteAndGetResult(this, m_tunnel, &m_mysql, query);
+
+    if(!res && m_tunnel->mysql_affected_rows(m_mysql) == -1)
+    {
+        ShowMySQLError(hwnd, m_tunnel, &m_mysql, query.GetString());
+        SendMessage(hwndtext, WM_SETTEXT, 0, (LPARAM)_(L"Error in operation."));
+        return wyFalse;
+    }
+
+    m_tunnel->mysql_free_result(res);
+    return wyTrue;
 }
 
 wyBool
 MDIWindow::EnableDisableFlushOptions(HWND hwnd, wyInt32 state)
 {
+    // NGSA (M10): "All" greys the individual options; options the server lacks stay greyed.
+    wyInt32                 count = 0, i, checked = 0;
+    const NgsaFlushOption*  opts = NgsaFlushOptionTable(&count);
 
-    wyInt32 counter, checkstate, uncheckcount = 0;
-	wyInt32	id[] = {	IDC_FL_LOGS, IDC_FL_HOSTS, IDC_FL_PRIV,
-							IDC_FL_STATUS, IDC_FL_TABLES, IDC_FL_TABLESREAD,
-							IDC_FL_DES, IDC_FL_CACHE, IDC_FL_RESOURCE };
-	wyInt32	ids[] = {   IDC_FLUSH_ALL, IDC_FL_BINLOG};
-	
-	wyInt32	size = sizeof(id)/sizeof(id[0]);
-	
+    for(i = 0; i < count; i++)
+    {
+        wyBool available = NgsaFlushOptionAvailable(opts[i], m_ngsacaps);
 
-	for(counter = 0; counter < size; counter++)
-	{
-		checkstate = SendMessage(GetDlgItem(hwnd, id[counter]), BM_GETCHECK, 0, 0);
+        if(available == wyTrue && opts[i].ctrlid == IDC_FL_TABLESREAD && m_conninfo.m_isreadonly == wyTrue)
+            available = wyFalse;
 
-		if(checkstate == BST_CHECKED)
-			EnableWindow(GetDlgItem(hwnd, IDOK), TRUE);
-		else
-			uncheckcount++;
-		if(GetActiveWin()->m_conninfo.m_isreadonly == wyTrue && id[counter] == IDC_FL_TABLESREAD)
-		{
-			EnableWindow(GetDlgItem(hwnd, id[counter]), wyFalse);
-			continue;
-		}
+        EnableWindow(GetDlgItem(hwnd, opts[i].ctrlid), (available == wyTrue && state) ? TRUE : FALSE);
 
-		EnableWindow(GetDlgItem(hwnd, id[counter]), state);
-	}
+        if(SendMessage(GetDlgItem(hwnd, opts[i].ctrlid), BM_GETCHECK, 0, 0) == BST_CHECKED)
+            checked++;
+    }
 
-	if(uncheckcount == size)
-	{
-		uncheckcount = 0;
-		size = sizeof(ids) / sizeof(ids[0]); 
+    if(checked == 0)
+        checked = (SendMessage(GetDlgItem(hwnd, IDC_FLUSH_ALL), BM_GETCHECK, 0, 0) == BST_CHECKED) ? 1 : 0;
 
-		for(counter = 0; counter < size; counter++)
-		{
-			checkstate = SendMessage(GetDlgItem(hwnd, ids[counter]), BM_GETCHECK, 0, 0);
-
-			if(checkstate == BST_CHECKED)
-			{
-				EnableWindow(GetDlgItem(hwnd, IDOK), TRUE);
-				break;
-			}
-			else
-				uncheckcount++;
-		}
-		if(uncheckcount == size)
-			EnableWindow(GetDlgItem(hwnd, IDOK), FALSE);
-	}
-	
-	return wyTrue;
+    EnableWindow(GetDlgItem(hwnd, IDOK), checked ? TRUE : FALSE);
+    return wyTrue;
 }
 wyBool
 MDIWindow::EnableDisableFlushButton(HWND hwnd)
 {
-	wyInt32 counter, checkstate, uncheckcount = 0;
-	wyInt32	id[] = {	IDC_FL_LOGS, IDC_FL_HOSTS, IDC_FL_PRIV,
-							IDC_FL_STATUS, IDC_FL_TABLES, IDC_FL_TABLESREAD,
-							IDC_FL_DES, IDC_FL_CACHE, IDC_FL_RESOURCE, IDC_FLUSH_ALL, IDC_FL_BINLOG };
-	
-	wyInt32	size = sizeof(id)/sizeof(id[0]);
-	
-	for(counter = 0; counter < size; counter++)
-	{
-		checkstate = SendMessage(GetDlgItem(hwnd, id[counter]), BM_GETCHECK, 0, 0);
+    // NGSA (M10): Flush is enabled when any available option or "All" is ticked.
+    wyInt32                 count = 0, i, checked = 0;
+    const NgsaFlushOption*  opts = NgsaFlushOptionTable(&count);
 
-		if(checkstate == BST_CHECKED)
-		{
-			EnableWindow(GetDlgItem(hwnd, IDOK), TRUE);
-			break;
-		}
-		else
-		{
-			uncheckcount++;
-		}
+    for(i = 0; i < count; i++)
+    {
+        if(NgsaFlushOptionAvailable(opts[i], m_ngsacaps) == wyTrue &&
+           SendMessage(GetDlgItem(hwnd, opts[i].ctrlid), BM_GETCHECK, 0, 0) == BST_CHECKED)
+            checked++;
+    }
 
-	}
-	if(uncheckcount == size)
-		EnableWindow(GetDlgItem(hwnd, IDOK), FALSE);
-	
-	return wyTrue;
+    if(SendMessage(GetDlgItem(hwnd, IDC_FLUSH_ALL), BM_GETCHECK, 0, 0) == BST_CHECKED)
+        checked++;
+
+    EnableWindow(GetDlgItem(hwnd, IDOK), checked ? TRUE : FALSE);
+    return wyTrue;
 }
 
 
 wyBool
 MDIWindow::AddFlushPersistence(HWND hwnd)
 {
-    wyInt32 ret;
-	
-	m_p_flush = new Persist;
-	m_p_flush->Create("FLUSH");
+    // NGSA (M10): persistence and availability from the option table; an option the connected
+    // server does not have is unticked and greyed (its saved state is kept for other servers).
+    wyInt32                 ret, count = 0, i;
+    const NgsaFlushOption*  opts = NgsaFlushOptionTable(&count);
 
-	m_p_flush->Add(hwnd, IDC_FL_LOGS, "FlushLogs", "0", CHECKBOX);
-	m_p_flush->Add(hwnd, IDC_FL_HOSTS, "FlushHosts", "0", CHECKBOX);
-	m_p_flush->Add(hwnd, IDC_FL_PRIV, "FlushPrivs", "0", CHECKBOX);
-	m_p_flush->Add(hwnd, IDC_FL_STATUS, "FlushStatus", "0", CHECKBOX);
-	m_p_flush->Add(hwnd, IDC_FL_TABLES, "FlushTables", "0", CHECKBOX);
-	m_p_flush->Add(hwnd, IDC_FL_TABLESREAD, "FlushRead", "0", CHECKBOX);
-	m_p_flush->Add(hwnd, IDC_FL_DES, "FlushDesKey", "0", CHECKBOX);
-	m_p_flush->Add(hwnd, IDC_FL_CACHE, "FlushCache", "0", CHECKBOX);
-	m_p_flush->Add(hwnd, IDC_FL_RESOURCE, "FlushResource", "0", CHECKBOX);
+    m_p_flush = new Persist;
+    m_p_flush->Create("FLUSH");
 
-	m_p_flush->Add(hwnd, IDC_FLUSH_ALL, "FlushAll", "0", CHECKBOX);
-	m_p_flush->Add(hwnd, IDC_FL_BINLOG, "FlushBinLog", "0", CHECKBOX);
-
-	#ifndef COMMUNITY
-	if(GetActiveWin() && GetActiveWin()->m_conninfo.m_isreadonly == wyTrue)
-	{
-		EnableWindow(GetDlgItem(hwnd, IDC_FL_TABLESREAD), wyFalse);
-	}
-#endif
-
-
-	
-	/* if all is selected then we need to disable everything */
-	ret = SendMessage(GetDlgItem(hwnd, IDC_FLUSH_ALL), BM_GETCHECK, 0, 0);
-    EnableDisableFlushOptions(hwnd, (ret)?wyFalse:wyTrue);
-
-	if(IsMySQL41(m_tunnel, &m_mysql) == wyFalse)
+    // bonSQL: an option the server lacks is left out of the persistence list, so that its saved state really is
+    // kept for other servers (Persist wrote every box back when the dialog closed, saving them as unticked;
+    // HELP-FINDINGS B3)
+    for(i = 0; i < count; i++)
     {
-        SendMessage(GetDlgItem(hwnd, IDC_FL_BINLOG), BM_SETCHECK, BST_UNCHECKED, 0);
-
-		EnableWindow(GetDlgItem(hwnd, IDC_FL_BINLOG), FALSE);
+        if(NgsaFlushOptionAvailable(opts[i], m_ngsacaps) == wyTrue)
+            m_p_flush->Add(hwnd, opts[i].ctrlid, (wyChar*)opts[i].persistkey, "0", CHECKBOX);   // Persist::Add takes non-const
+        else
+            SendMessage(GetDlgItem(hwnd, opts[i].ctrlid), BM_SETCHECK, BST_UNCHECKED, 0);
     }
 
-	return wyTrue;
+    m_p_flush->Add(hwnd, IDC_FLUSH_ALL, "FlushAll", "0", CHECKBOX);
+    m_p_flush->Add(hwnd, IDC_FL_BINLOG, "FlushBinLog", "0", CHECKBOX);
+
+    /* if all is selected then we need to disable everything */
+    ret = SendMessage(GetDlgItem(hwnd, IDC_FLUSH_ALL), BM_GETCHECK, 0, 0);
+    EnableDisableFlushOptions(hwnd, (ret) ? wyFalse : wyTrue);
+
+    if(IsMySQL41(m_tunnel, &m_mysql) == wyFalse)
+    {
+        SendMessage(GetDlgItem(hwnd, IDC_FL_BINLOG), BM_SETCHECK, BST_UNCHECKED, 0);
+        EnableWindow(GetDlgItem(hwnd, IDC_FL_BINLOG), FALSE);
+    }
+
+    return wyTrue;
 }
 
 // Function to execute the various commands.
@@ -3793,7 +3746,7 @@ MDIWindow::TemplateWndProc(HWND hwnd, UINT pMessage, WPARAM wparam, LPARAM lpara
 			break;
 
 		case WM_HELP:
-			ShowHelp("http://sqlyogkb.webyog.com/article/53-sql-templates");
+			ShowHelp("help:sql-templates");
 			return wyTrue;
 
 		case WM_DESTROY:
@@ -3899,7 +3852,10 @@ MDIWindow::InitListBox(HWND hwndlist, HWND hwndEdit)
 		{ IDM_EDIT_TEMP_DROPTRIGGER,	L"Drop Trigger", 0 },
 		{ IDM_EDIT_TEMP_CREATEEVENT,    L"Create Event", 1},
 		{ IDM_EDIT_TEMP_ALTEREVENT,     L"Alter Event", 0},
-		{ IDM_EDIT_TEMP_DROPEVENT,      L"Drop Event", 0}
+		{ IDM_EDIT_TEMP_DROPEVENT,      L"Drop Event", 0},
+		{ IDM_EDIT_TEMP_CREATESEQUENCE, L"Create Sequence", 0},	// NGSA
+		{ IDM_EDIT_TEMP_ALTERSEQUENCE,  L"Alter Sequence", 0},
+		{ IDM_EDIT_TEMP_DROPSEQUENCE,   L"Drop Sequence", 0}
 	};
 	wyInt32 size = sizeof(tmpvalue)/ sizeof(tmpvalue[0]);
 	wyInt64 templatecount, ret;
@@ -4072,6 +4028,8 @@ MDIWindow::SetQueryWindowTitle()
 	case IDI_ALTERTRIGGER:
 	case IDI_CREATEEVENT:
 	case IDI_ALTEREVENT:
+	case IDI_CREATESEQUENCE:	// NGSA
+	case IDI_ALTERSEQUENCE:
 	case IDI_CREATEFUNCTION:
 	case IDI_ALTERFUNCTION:
 	case IDI_CREATEPROCEDURE:
@@ -4368,8 +4326,16 @@ MDIWindow::GetScintillaKeyWordsAndFunctions(Tunnel *tunnel, MYSQL *mysql, wyBool
         return wyFalse;
 	}
 	
-    query.Sprintf("select distinct object_name as obj_name, object_type as obj_type from objects where object_version <= %d and object_type = %d  order by lower(obj_name)", 
-                    GetVersionNo(tunnel, &mysql), (bkeyword)?AC_PRE_KEYWORD:AC_PRE_FUNCTION);
+    // NGSA (M6): keywords and functions per engine and version (include/ngsa/NgsaServerOps.h)
+    {
+        NgsaCaps caps;
+        wyString where;
+        NgsaCapsCompute::FromConnection(mysql, caps);
+        NgsaKeywordFilter(caps, where);
+        query.Sprintf("select distinct object_name as obj_name, object_type as obj_type from objects where %s and object_type = %d  order by lower(obj_name)", 
+                        where.GetString(), (bkeyword)?AC_PRE_KEYWORD:AC_PRE_FUNCTION);
+        NgsaTrace("Keywords: %s -> %s", NgsaCapsCompute::EngineName(caps.engine), where.GetString());
+    }
 		
 	YogSqliteExec(hdb, query.GetString(), callback_tags, &buffer);
 		
@@ -4401,8 +4367,12 @@ MDIWindow::GetKeywords(wyInt32 *functioncount)
 	
     InitTagsArray(&tags, AC_PRE_KEYWORD, wyFalse);
 
-	query.Sprintf("select obj_name, obj_type from(select distinct object_name as obj_name, object_type as obj_type from objects where object_version <= %d)where obj_type = %d order by lower(obj_name)", 
-                    GetVersionNo(m_tunnel, &m_mysql), AC_PRE_FUNCTION);
+	{
+		wyString where;
+		NgsaKeywordFilter(m_ngsacaps, where);	// NGSA (M6)
+		query.Sprintf("select obj_name, obj_type from(select distinct object_name as obj_name, object_type as obj_type from objects where %s)where obj_type = %d order by lower(obj_name)", 
+		                where.GetString(), AC_PRE_FUNCTION);
+	}
 		
 	YogSqliteExec(hdb, query.GetString(), callback_tags2, &tags);
 	sqlite3_close(hdb);
@@ -4534,6 +4504,8 @@ MDIWindow::ReConnect(Tunnel * tunnel, PMYSQL mysql, wyBool isssh, wyBool isimpor
 	
 	newmysql = tunnel->mysql_init((MYSQL*)NULL);
 
+	NgsaTrace("ReConnect: isssh=%d errno=%u thread=%lu", (int)isssh, tunnel->mysql_errno(*mysql), (unsigned long)(*mysql)->thread_id);
+
 	if(isprofile == wyTrue)
 	{
 		pGlobals->m_pcmainwin->GetCurrentSelDB(curdb, SIZE_512 - 1);
@@ -4555,6 +4527,9 @@ MDIWindow::ReConnect(Tunnel * tunnel, PMYSQL mysql, wyBool isssh, wyBool isimpor
 		SetMySQLOptions(&m_conninfo, tunnel, &newmysql);
 
 		SetSslAuthentication(newmysql, &m_conninfo);
+#ifdef NGSA_SSH_SSL
+		NgsaConn::ApplyTlsOptions(&m_conninfo, tunnel, newmysql);	// NGSA: enforce/verify flags, not just mysql_ssl_set
+#endif
 		
 		newmysql = tunnel->mysql_real_connect(newmysql,(*mysql)->host, 
 			(*mysql)->user,(*mysql)->passwd, NULL, 
@@ -4573,6 +4548,7 @@ MDIWindow::ReConnect(Tunnel * tunnel, PMYSQL mysql, wyBool isssh, wyBool isimpor
 
 	
 	
+
 	if(isprofile == wyTrue && currentdb.GetLength() &&  UseDatabase(currentdb, *mysql, tunnel) == wyFalse)
 		return wyFalse;
 
@@ -4751,8 +4727,19 @@ MDIWindow::ReConnectSSH(ConnectionInfo *coninfo)
 	}
 
 
-	coninfo->m_hprocess      = pi.hProcess;	
+	coninfo->m_hprocess      = pi.hProcess;
 
+#elif defined(NGSA_SSH_SSL)
+	{	// NGSA: restart the stock-plink tunnel; Restart() terminates the old process first
+		wyString ngsaerr;
+		if(NgsaSsh::Restart(coninfo, m_hwnd, ngsaerr) == wyFalse)
+		{
+			if(ngsaerr.GetLength())
+				yog_message(m_hwnd, ngsaerr.GetAsWideChar(), pGlobals->m_appname.GetAsWideChar(), MB_OK | MB_ICONERROR);
+			coninfo->m_hprocess = INVALID_HANDLE_VALUE;
+			return wyFalse;
+		}
+	}
 #endif
 	
     return wyTrue;
@@ -4770,6 +4757,11 @@ MDIWindow::LoadQueryTabPlusMenu(LPARAM lparam)
     LocalizeMenu(hmenu);
 	htrackmenu = GetSubMenu(hmenu, 0);
 
+#ifdef COMMUNITY	// bonSQL: Ultimate-only items (docs/ngsa/UPSELLS.md)
+    DeleteMenu(htrackmenu, ID_QUERYBUILDER, MF_BYCOMMAND);
+    DeleteMenu(htrackmenu, ID_SCHEMADESIGNER, MF_BYCOMMAND);
+    DeleteMenu(htrackmenu, ID_DATASEARCH, MF_BYCOMMAND);
+#endif
     switch(pGlobals->m_pcmainwin->m_connection->m_enttype)
     {
         case ENT_PRO:
@@ -5382,7 +5374,15 @@ MDIWindow::KeepAliveThreadProc(LPVOID lpparam)
 		WaitForSingleObject(pmdi->m_hevtkeepalive, INFINITE);
 
 		time1 = GetHighPrecisionTickCount();
-        ret = pmdi->m_tunnel->mysql_ping(pmdi->m_mysql);
+		{
+			// NGSA (#2226): a keep-alive ping is where Connector/C usually reconnects after the server
+			// dropped the session. Its reconnect re-runs the init commands and then resets the charset,
+			// so when the connection id changed under the ping, run the user's Init Command(s) again
+			// here, while the execution event still holds the main thread off this handle.
+			unsigned long idbefore = pmdi->m_mysql ? (unsigned long)pmdi->m_mysql->thread_id : 0;
+			ret = pmdi->m_tunnel->mysql_ping(pmdi->m_mysql);
+			NgsaTrace("KeepAlive: ping rc=%d id %lu -> %lu", ret, idbefore, pmdi->m_mysql ? (unsigned long)pmdi->m_mysql->thread_id : 0);
+		}
 		time2 = GetHighPrecisionTickCount();
 
         memset(systime, 0, sizeof(systime));
@@ -5434,10 +5434,12 @@ MDIWindow::SetExecuting(wyBool isexecuting)
 		if(m_keepaliveinterval)
 			WaitForSingleObject(m_hevtexecution, INFINITE);
 		m_executing = wyTrue;
+		NgsaRunTimer(wyTrue);	// NGSA (#2135)
 	}
 	else
 	{
 		m_executing = wyFalse;
+		NgsaRunTimer(wyFalse);	// NGSA (#2135)
 		if(m_keepaliveinterval)
 			SetTimer(m_hwnd, KEEP_ALIVE, (m_keepaliveinterval*1000), NULL);
 		
@@ -5483,4 +5485,25 @@ MDIWindow::HandleQueryExecFinished(HWND hwndactive, MDIWindow *pcquerywnd, WPARA
 			FlashWindow(pGlobals->m_pcmainwin->m_hwndmain, TRUE);
 	}
     return;
+}
+
+// NGSA (#2135): the editor's query thread runs while the UI thread pumps messages, so a 1 s timer on the
+// window can show the elapsed time in the status bar until AddTickCount writes the final numbers.
+void
+MDIWindow::NgsaRunTimer(wyBool start)
+{
+	if(start == wyTrue)
+	{
+		m_ngsarunstart = GetHighPrecisionTickCount();
+		if(m_pcquerystatus)
+			m_pcquerystatus->NgsaShowRunning(0);
+		SetTimer(m_hwnd, NGSA_RUN_TIMER, 1000, NULL);
+	}
+	else
+	{
+		KillTimer(m_hwnd, NGSA_RUN_TIMER);
+		m_ngsarunstart = 0;
+		if(m_pcquerystatus)
+			m_pcquerystatus->NgsaClearRunning();
+	}
 }

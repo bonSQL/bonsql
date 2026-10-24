@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -26,9 +27,7 @@
  #include <unistd.h>
 #endif
 #include <iomanip>
-#include "modes.h"
-#include "aes.h"
-#include "filters.h"
+#include <openssl/evp.h>	// bonSQL: AES-CTR for the saved-password scrambling (was Crypto++)
 #include <string>
 #include <stddef.h>
 #include <assert.h>
@@ -75,8 +74,11 @@ extern	FILE	*logfilehandle;
 static wyChar table64[]=
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-static CryptoPP::byte AESKey[16] = {}; //Provide any Key
-static CryptoPP::byte AESiv[16] = {}; //Provide any IV
+/* Upstream scrambles saved passwords with AES-128-CTR under an all-zero key and IV (the key was never
+   filled in). Kept exactly so that existing bonsql.ini / sqlyog.ini entries still decode; this is
+   obfuscation, not protection, and the ini says so by its Isencrypted flag only. */
+static const unsigned char AESKey[16] = {0};
+static const unsigned char AESiv[16] = {0};
 
 Tunnel * 
 CreateTunnel(wyBool istunnel)
@@ -119,7 +121,7 @@ void YogDebugLog(int errcode, const char* msg, char* file, int line)
 	wyWChar		*lpfileport;
 	wyBool		ret;
         
-	ret = SearchFilePath(L"sqlyog_logx", L".log", MAX_PATH, directory, &lpfileport);
+	ret = SearchFilePath(BRAND_CFG_STEM_W L"_logx", L".log", MAX_PATH, directory, &lpfileport);
 
 	if(ret != wyTrue) 
 	{
@@ -188,10 +190,10 @@ SearchFilePath(wyWChar *filename, wyWChar *extension, wyInt32 bufferlength,
 
 		if(isdefaultconfigpath == wyFalse)
 		{
-			if(SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, fullpath)))
+			if(SUCCEEDED(NgsaGetAppData(fullpath)))
 			{
 				fullpathstr.SetAs(fullpath);
-				fullpathstr.Add("\\SQLyog");
+				fullpathstr.Add("\\" BRAND_CFG_DIR_A);
 
 				if(extension && !wcsicmp(extension, L".ini"))
 				{					
@@ -273,9 +275,9 @@ SearchFilePath(wyWChar *filename, wyWChar *extension, wyInt32 bufferlength,
 				path[MAX_PATH] = '\0';
 			}
             			
-		    else if(SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, path)))
+		    else if(SUCCEEDED(NgsaGetAppData(path)))
 		    {
-			    wcscat(path, L"\\SQLyog");
+			    wcscat(path, L"\\" BRAND_CFG_DIR_W);
 			}
 #endif
         		
@@ -312,9 +314,9 @@ SearchFilePath(wyWChar *filename, wyWChar *extension, wyInt32 bufferlength,
 		    if(fp == NULL)
 		    {
 			    /* if the file with the specified condition doesn't exists?*/
-			    if(SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, path)))
+			    if(SUCCEEDED(NgsaGetAppData(path)))
 			    {
-				    wcscat(path, L"\\SQLyog");
+				    wcscat(path, L"\\" BRAND_CFG_DIR_W);
         		
 				    if(!SearchPath(path, filename, extension, bufferlength, buffer, lpfileport))
 				    {
@@ -351,9 +353,9 @@ SearchFilePath(wyWChar *filename, wyWChar *extension, wyInt32 bufferlength,
 		if(fp == NULL)
 		{
 			/* if the file with the specified condition doesn't exists?*/
-			if(SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, path)))
+			if(SUCCEEDED(NgsaGetAppData(path)))
 			{
-				wcscat(path, L"\\SQLyog");
+				wcscat(path, L"\\" BRAND_CFG_DIR_W);
     		
 				if(!SearchPath(path, filename, extension, bufferlength, buffer, lpfileport))
 				{
@@ -376,6 +378,7 @@ wyBool
 CheckSQLyogFiles(const wyWChar *filename)
 {
      if((wcsicmp(filename, L"sja.exe")== 0)||
+	    (wcsicmp(filename, BRAND_EXE_W)== 0)||
 	    (wcsicmp(filename, L"sqlyog.exe")== 0)||
 	    (wcsicmp(filename, L"sqlyogent.exe")== 0))
 				return wyTrue;
@@ -1349,6 +1352,14 @@ GetSelectEventStmt(const wyChar *db, wyString &selectstmt, wyBool iscollate)
 	return len;
 }
 
+// NGSA: MariaDB lists sequences through SHOW FULL TABLES (Table_type = 'SEQUENCE'); row[0] is the name
+wyInt32 
+GetSelectSequenceStmt(const wyChar *db, wyString &selectstmt)
+{
+	wyString dbnamestr(db);
+	return selectstmt.Sprintf("show full tables from `%s` where table_type = 'SEQUENCE'", dbnamestr.GetString());
+}
+
 wyInt32 
 GetSelectTriggerStmt(const wyChar *db, wyString &selectstmt)
 {
@@ -1496,12 +1507,12 @@ void WriteLog(const wyChar* str)
 	wyInt32		ret = 0;
 	FILE*		log;
 
-	ret = SearchFilePath(L"sqlyog", L".log", MAX_PATH, path, &lpfileport);	/* Failed to retreive the Application folder path*/
+	ret = SearchFilePath(BRAND_CFG_STEM_W, L".log", MAX_PATH, path, &lpfileport);	/* Failed to retreive the Application folder path*/
 
 	if(ret == wyFalse)
 	{
 		wyStr.SetAs(path);
-		wyStr.Add("\\sqlyog.log");		/* Creates the full file path */
+		wyStr.Add("\\" BRAND_CFG_STEM_A ".log");		/* Creates the full file path */
 
    logfile = CreateFile ( wyStr.GetAsWideChar(), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, NULL, NULL ); 
 
@@ -1862,7 +1873,7 @@ GetChunkLimit(wyInt32 *chunksize)
 	wyString	dirstr;
 		
 	// Get the complete path.
-	SearchFilePath( L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	
 	*chunksize = wyIni::IniGetInt("GENERALPREF", "RowLimit", 1000, dirstr.GetString());
@@ -1890,7 +1901,7 @@ IsChunkInsert()
 	wyInt32		ischunkinsert;	
 		
 	// Get the complete path.
-	SearchFilePath( L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	
 	ischunkinsert = wyIni::IniGetInt("GENERALPREF", "SetMaxRow", 1, dirstr.GetString());
@@ -3803,7 +3814,7 @@ commonlog(const char * buff)
 	////wyString	filenamestr, extensionstr;
 	////wyWChar      path[MAX_PATH + 1], fullpath[MAX_PATH + 1];
 	////
-	/////*if(SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, fullpath)))
+	/////*if(SUCCEEDED(NgsaGetAppData(fullpath)))
  ////   {
 	////	//wsprintf(path, L"%s\\SQLyog\\8.1_NEW.log\0", fullpath);
 
@@ -3841,7 +3852,7 @@ WriteToLogFile(wyChar *message)
 	errfile.SetAs(message);
 	MessageBox(NULL, errfile.GetAsWideChar(), pGlobals->m_appname.GetAsWideChar(), MB_ICONERROR | MB_OK | MB_TASKMODAL);         
 
-	SearchFilePath(L"sqlyog", L".err", MAX_PATH, (wyWChar*)filepath, &lpFilePort);
+	SearchFilePath(BRAND_CFG_STEM_W, L".err", MAX_PATH, (wyWChar*)filepath, &lpFilePort);
 	errfile.SetAs(filepath);
 	err = _wfopen(errfile.GetAsWideChar(), L"a");
 	if(!err)
@@ -4145,7 +4156,7 @@ LockPlinkLockFile(wyFile *plinklock)
 	if(plinklock->GetTempFilePath(&tempfile) == wyFalse)
 		return wyFalse;
 	    
-	tempfile.Add("SQLyog_session.tmp");
+	tempfile.Add(BRAND_CFG_STEM_A "_session.tmp");
 	
 	// make sure you are setting file before calling any common function
 	plinklock->SetFilename(&tempfile);
@@ -4593,51 +4604,61 @@ RemoveBrackets(wyString &text, const wyChar* pattern)
 //        fclose(fp);
 //}
 
+/* AES-128-CTR: the same transform both ways (XOR with the keystream), so one helper serves both. */
+static wyBool
+AesCtrZeroKey(wyString &text)
+{
+	EVP_CIPHER_CTX  *ctx;
+	std::string     out;
+	int             len = 0, outlen = 0;
+
+	if(text.GetLength() <= 0)
+		return wyFalse;
+
+	ctx = EVP_CIPHER_CTX_new();
+	if(!ctx)
+		return wyFalse;
+
+	out.resize(text.GetLength() + 16);
+
+	if(EVP_EncryptInit_ex(ctx, EVP_aes_128_ctr(), NULL, AESKey, AESiv) == 1 &&
+	   EVP_EncryptUpdate(ctx, (unsigned char*)&out[0], &len, (const unsigned char*)text.GetString(), text.GetLength()) == 1)
+	{
+		outlen = len;
+
+		if(EVP_EncryptFinal_ex(ctx, (unsigned char*)&out[0] + outlen, &len) == 1)
+		{
+			outlen += len;
+			text.SetAsDirect(out.data(), outlen);
+			EVP_CIPHER_CTX_free(ctx);
+			return wyTrue;
+		}
+	}
+
+	EVP_CIPHER_CTX_free(ctx);
+	return wyFalse;
+}
+
 wyBool
 EncodePassword(wyString &text)
 {
-	wyString ciphertext, plaintext("");
-	wyString temptext("");
-
-	plaintext.SetAs(text);
-	// create an encrypted object
-	CryptoPP::CTR_Mode<CryptoPP::AES>::Encryption enc;
-	enc.SetKeyWithIV(AESKey, sizeof(AESKey), AESiv);
-
-	std::string encText;
-	CryptoPP::StreamTransformationFilter encFilter(enc, new CryptoPP::StringSink(encText));
-
-	//encryption
-	encFilter.Put(reinterpret_cast<const CryptoPP::byte*>(plaintext.GetString()), plaintext.GetLength());
-	encFilter.MessageEnd();
-	text.SetAsDirect(encText.data(), encText.length());
-	
-	return wyTrue;
+	return AesCtrZeroKey(text);
 }
 
 wyBool
 DecodePassword(wyString &text)
 {
-	wyString ciphertext(""), decryptedtext("");
+	wyString ciphertext;
 
-	if (text.GetLength() <= 0)
-	{
+	if(text.GetLength() <= 0)
 		return wyFalse;
-	}
 
 	ciphertext.SetAsDirect(text.GetString(), text.GetLength());
 
-	CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption dec;
-	dec.SetKeyWithIV(AESKey, sizeof(AESKey), AESiv);
+	if(AesCtrZeroKey(ciphertext) == wyFalse)
+		return wyFalse;
 
-	// Conversion filter for decryption
-	std::string decText;
-	CryptoPP::StreamTransformationFilter decFilter(dec, new CryptoPP::StringSink(decText));
-	decFilter.Put(reinterpret_cast<const CryptoPP::byte*>(ciphertext.GetString()), ciphertext.GetLength());
-	decFilter.MessageEnd();
-
-	text.SetAs(decText.c_str());
-
+	text.SetAs(ciphertext.GetString());	// as before: the decoded text is taken up to its first NUL
 	return wyTrue;
 }
 

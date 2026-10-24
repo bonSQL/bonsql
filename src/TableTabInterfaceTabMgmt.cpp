@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -16,6 +17,7 @@
 
 */
 #include "TabCheck.h"
+#include "ngsa/NgsaDark.h"   // NGSA (#2158)
 #include "TableTabInterface.h"
 #include "TabFields.h"
 #include "TabAdvancedProperties.h"
@@ -365,12 +367,12 @@ TableTabInterfaceTabMgmt::SubTabsCommonWndProc(HWND hwnd, UINT message, WPARAM w
             if(tabmgmt->m_isbuffereddraw == wyTrue)
             {
                 DoubleBuffer db(hwnd, hdc);	
-                db.EraseBackground(RGB(255, 255, 255));
+                db.EraseBackground(NgsaDark::Panel(RGB(255, 255, 255)));
                 db.PaintWindow();
             }
             else
             {
-                DoubleBuffer::EraseBackground(hwnd, hdc, NULL, RGB(255, 255, 255));
+                DoubleBuffer::EraseBackground(hwnd, hdc, NULL, NgsaDark::Panel(RGB(255, 255, 255)));
             }
 
             EndPaint(hwnd, &ps);
@@ -382,6 +384,8 @@ TableTabInterfaceTabMgmt::SubTabsCommonWndProc(HWND hwnd, UINT message, WPARAM w
         return 1;
         
     case WM_CTLCOLORSTATIC:
+        if(NgsaDark::IsOn())   // NGSA (#2158): light label text on the dark panel
+            SetTextColor((HDC)wParam, NgsaDark::kText);
         SetBkMode((HDC)wParam, TRANSPARENT);
         return (LRESULT)GetStockObject(NULL_BRUSH);
 
@@ -405,31 +409,31 @@ TableTabInterfaceTabMgmt::SubTabsCommonWndProc(HWND hwnd, UINT message, WPARAM w
             case IDI_COLUMN:
                 {
                 if(tabmgmt->m_tabinterfaceptr->m_isaltertable)
-                    ShowHelp("http://sqlyogkb.webyog.com/article/88-alter-table-in-database");
+                    ShowHelp("help:alter-table-in-database");
                 else
-                   ShowHelp("http://sqlyogkb.webyog.com/article/85-create-table");
+                   ShowHelp("help:create-table");
                 }
                 break;
 
             case IDI_MANINDEX_16:
                 {
                     if(tabmgmt->m_tabinterfaceptr->m_isaltertable)
-                        ShowHelp("http://sqlyogkb.webyog.com/article/92-alter-index");
+                        ShowHelp("help:alter-index");
                     else
-                        ShowHelp("http://sqlyogkb.webyog.com/article/91-create-index");
+                        ShowHelp("help:create-index");
                 }
                 break;
 
             case IDI_MANREL_16:
-                ShowHelp("http://sqlyogkb.webyog.com/article/90-fk-in-mysql-and-sqlyog");
+                ShowHelp("help:foreign-keys");
                 break;
 
             case IDI_TABPREVIEW:
-                ShowHelp("http://sqlyogkb.webyog.com/article/97-preview");
+                ShowHelp("help:preview");
                 break;
 
             case IDI_TABLEOPTIONS:
-                ShowHelp("http://sqlyogkb.webyog.com/article/96-advanced-tab");
+                ShowHelp("help:table-options");
                 break;
             }
             return 1;
@@ -598,6 +602,7 @@ TableTabInterfaceTabMgmt::OnWMCommand(HWND hwnd, UINT message, WPARAM wParam, LP
     case IDC_ROWFORMAT:
     case IDC_DELAYKEY:
     case IDC_CHECKSUM:
+    case IDC_NGSA_VERSIONING:   // NGSA (M8b)
         {
             switch(HIWORD(wParam))
             {

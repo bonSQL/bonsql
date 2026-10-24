@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -235,7 +236,9 @@ SQLTokenizer::GetQuery(wyUInt32 * len, wyUInt32 * linenum,
             break;
    
    		/* if the line is a single line comment we ignore it */
-   		if(IsFile(m_srctype)&& !m_instring &&(m_line[0] == '#' || 
+   		/* NGSA (#2143): only between statements; inside one (a routine body read with Execute SQL
+   		   Script) comment and blank lines belong to the text the server stores */
+   		if(IsFile(m_srctype)&& !m_instring && m_strsize == 0 &&(m_line[0] == '#' || 
                 (m_line[0] == '-' && m_line[1] == '-')|| m_line[0] == 0))
    			continue;		
    

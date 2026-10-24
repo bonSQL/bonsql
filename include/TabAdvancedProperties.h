@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc.
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -78,6 +79,8 @@ public:
     HWND                        m_hstatchecksum;
 
     HWND                        m_hcmbchecksum;
+    HWND                        m_hstatversioning;      // NGSA (M8b): MariaDB system versioning (WITH/ADD/DROP SYSTEM VERSIONING)
+    HWND                        m_hcmbversioning;
 
     HWND                        m_hlastfocusedwnd;
 
@@ -98,6 +101,7 @@ public:
     WNDPROC                     m_wporigchecksum;
 
     WNDPROC                     m_wporigdelaykey;
+    WNDPROC                     m_wporigversioning;     // NGSA (M8b)
 
     wyString                    m_origchecksum;
 
@@ -114,6 +118,8 @@ public:
     wyString                    m_origdelay;
     
     wyString                    m_origrowformat;
+    wyString                    m_origversioning;       // NGSA (M8b): "1" when the table is SYSTEM VERSIONED, else "0"
+    wyBool                      m_ngsaversioningcol;    // NGSA (M8b): the row exists (caps.systemVersioning)
 
     wyString                    m_prevval;
 
@@ -176,6 +182,7 @@ public:
 	@returns void
     */    
 	void                        InitRowFormatValues(wyBool includedefault=wyTrue);
+	void                        NgsaInitVersioningValues();   // NGSA (M8b): "0" / "1"
 
     /// Initializes All Windows
     /**

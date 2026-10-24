@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -16,6 +17,7 @@
 
 */
 #include <Shlwapi.h>
+#include "ngsa/NgsaDark.h"   // NGSA (#2158)
 #include "ExportMultiFormat.h"
 #include "FrameWindowHelper.h"
 #include "MySQLVersionHelper.h"
@@ -162,7 +164,7 @@ CopyDatabase::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 		break;
 
 	case WM_HELP:
-		ShowHelp("http://sqlyogkb.webyog.com/article/105-copy-table-to-different-host");
+		ShowHelp("help:copy-table-to-different-host");
 		return TRUE;
 
 	case UM_COPYDATABASE:
@@ -356,7 +358,7 @@ CopyDatabase::OnUmCopydatabase(HWND hwnd)
 	// first see if any objects are selected.
 	if(IsObjectsSelected(hwndtree) == wyFalse)
 	{ 
-		yog_message(hwndtree, _(L"Please select atleast one object"), pGlobals->m_appname.GetAsWideChar(),MB_OK|MB_ICONINFORMATION | MB_HELP);
+		yog_message(hwndtree, _(L"Please select at least one object"), pGlobals->m_appname.GetAsWideChar(),MB_OK|MB_ICONINFORMATION | MB_HELP);
 		EnableDlgWindows(wyTrue);
         m_copying   = wyFalse;
 		return;
@@ -561,7 +563,7 @@ CopyDatabase::ExecuteCopyThread(LPVOID lpparam)
     {
 		
 		//Shows number of rows copied
-		msg.Sprintf(_("Error occured while copying "));
+		msg.Sprintf(_("Error occurred while copying "));
 
 		if( GetForegroundWindow() != copydb->m_lpParam->m_hwnddlg )
 			FlashWindow(pGlobals->m_pcmainwin->m_hwndmain, TRUE);
@@ -4103,7 +4105,8 @@ CopyDatabase::CreateImageList()
 		
 	wyInt32		imgres[] = {IDI_SERVER, IDI_DATABASE, IDI_OPEN, IDI_TABLE, IDI_COLUMN, 
 							IDI_INDEX, IDI_OPEN,IDI_PROCEDURE, IDI_OPEN, IDI_FUNCTION,
-							IDI_OPEN, IDI_VIEW, IDI_OPEN, IDI_TRIGGER, IDI_OPEN, IDI_EVENT, IDI_OPEN};
+							IDI_OPEN, IDI_VIEW, IDI_OPEN, IDI_TRIGGER, IDI_OPEN, IDI_EVENT, IDI_OPEN,
+							IDI_PRIMARYKEY, IDI_PRIMARYKEY, IDI_OVERLAYFILTER, IDI_SEQUENCE, IDI_SEQUENCE};	// NGSA: same slots as the object browser
 
 
 	VERIFY(m_himl = ImageList_Create(16, 16, ILC_COLOR32 | ILC_MASK , 6, 0));
@@ -4348,12 +4351,12 @@ CopyDatabase::OnPaint(HWND hwnd)
 	RECT temp;
 	
 	VERIFY(hdc = BeginPaint(hwnd, &ps));
-	DoubleBuffer::EraseBackground(hwnd, hdc, NULL, GetSysColor(COLOR_3DFACE));
+	DoubleBuffer::EraseBackground(hwnd, hdc, NULL, NgsaDark::Panel(GetSysColor(COLOR_3DFACE)));
 	EndPaint(hwnd, &ps);
 
 	//To paint the resize grip
 	VERIFY(hdc = BeginPaint(hwndstat, &ps));
     GetClientRect(hwndstat, &temp);
-    DrawFrameControl(hdc, &temp, DFC_SCROLL, DFCS_SCROLLSIZEGRIP);
+    NgsaDark::FrameControl(hdc, &temp, DFC_SCROLL, DFCS_SCROLLSIZEGRIP, NgsaDark::IsOn());
     EndPaint(hwnd, &ps);
 }

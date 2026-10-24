@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -17,7 +18,8 @@
 */
 
 #include "Global.h"
-#include "htmlayout.h"
+#include "HtmlView.h"       // bonSQL: HtmlView (litehtml) replaces HTMLayout
+#include "Htmlrender.h"
 #include "QueryAnalyzerBase.h"
 #include "htmlrender.h"
 
@@ -179,49 +181,30 @@ QueryAnalyzerBase::CreateHtmlEditor(wyString *htmlbuffer)
 	
 
 	//INSERT_UPDATE_WINDOW_CLASS_NAME_STR
-	VERIFY(m_hwndscieditor = ::CreateWindowEx(exstyles, PQA_RESULT_WINDOW, 
-										L"Source", styles, 
-										0, 0, 0, 0,
-										m_hwnd, (HMENU)NULL, 
-										hinst, 
-										this));
+	VERIFY(m_hwndscieditor = HtmlView::Create(m_hwnd, 0, styles));
 
 	if(!m_hwndscieditor)
 		return wyFalse;
 
 	
-	htmlayout::attach_event_handler(m_hwndscieditor, &DOMEventsHandler);
 		 
 	//Processing the html code 
-	HTMLayoutLoadHtml(m_hwndscieditor, (PBYTE)htmlbuffer->GetString(), htmlbuffer->GetLength());
+	HtmlView::SetLinkHandler(m_hwndscieditor, HtmlViewLinkHandler, this);
+	ApplyHtmlViewTheme(m_hwndscieditor);
+	HtmlView::SetDocument(m_hwndscieditor, htmlbuffer->GetString(), NULL);
 
-	 //html page Selection mode
-	HTMLayoutSetMode(m_hwndscieditor, HLM_SHOW_SELECTION);
     return wyTrue;
 }
 
 LRESULT	CALLBACK
 QueryAnalyzerBase::PQAHtmlWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-	LRESULT lResult;
-	BOOL    bHandled;
-    // HTMLayout +
-    // HTMLayout could be created as separate window 
-    // using CreateWindow API.
-    // But in this case we are attaching HTMLayout functionality
-    // to the existing window delegating windows message handling to 
-    // HTMLayoutProcND function.
-    lResult = HTMLayoutProcND(hwnd,message,wParam,lParam, &bHandled);
-    
-    if(bHandled)
-    {
-        return lResult;
-    }
+    // bonSQL: was HTMLayout's window procedure; the page is an HtmlView window now
 
     switch(message)
     {		
     case WM_HELP:
-	    ShowHelp("http://sqlyogkb.webyog.com/article/84-query-profiler");
+	    ShowHelp("help:query-profiler");
 	    return 1;//On clicking help, profiler page should open			
     }
 

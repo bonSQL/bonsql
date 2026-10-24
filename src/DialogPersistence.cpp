@@ -48,7 +48,7 @@ DialogPersistence::ReadFromFile()
 	wyString	dirstr, lastvalstr;
 
 	// Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	wyIni::IniGetString(m_section.GetString(), m_attribute.GetString(), m_defvalue.GetString(), &lastvalstr, dirstr.GetString());
 
@@ -93,7 +93,7 @@ DialogPersistence::WriteToFile()
 	wyString	lastvalstr, dirstr;
 
 	// Get the complete path.
-	ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 
 	if(ret == 0)
 		return ;
@@ -178,7 +178,7 @@ Persist::DeleteFromSection(wyWChar * attribute)
 	wyString	attributestr(attribute), dirstr;
 
 	// Get the complete path.
-	ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	
 	if(ret == 0)
 		return ;

@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc.
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -44,6 +45,8 @@
 #define     VIRTUALITY              13
 #define     EXPRESSION              14
 #define		CHECKCONSTRAINT			15
+#define		INVISIBLE_				16	// NGSA (M8b): bool grid column, created when caps.invisibleColumns
+#define		COMPRESSED_				17	// NGSA (M8b): bool grid column, created when caps.compressedColumns (after INVISIBLE_)
 #define     MAXLENWITHBACKTICKS                         4
 #define		DEFAULTNUMROWS								6
 
@@ -68,6 +71,8 @@ struct FIELDATTRIBS
     wyBool                  m_autoincr;                 /// flag - auto increment
     wyBool                  m_zerofill;                 /// flag - zero fill
     wyBool                  m_onupdate;                 /// flag - (for timestamp)
+    wyBool                  m_invisible;                /// NGSA (M8): MariaDB/MySQL INVISIBLE column, kept across ALTER
+    wyBool                  m_compressed;               /// NGSA (M8): MariaDB COMPRESSED column, kept across ALTER
     wyString                m_charset;                  /// column charset
     wyString                m_collation;                /// column collation
     wyString                m_comment;                  /// column comment
@@ -209,6 +214,12 @@ public:
     
 	//to check whether control from save table or alter table
 	wyBool m_isalter;
+	wyBool m_ngsaversioned;	// NGSA (M8): the table's SHOW CREATE TABLE carries WITH SYSTEM VERSIONING
+	wyBool m_ngsainvisiblecol;	// NGSA (M8b): the grid has the Invisible? column (INVISIBLE_)
+	wyBool m_ngsacompressedcol;	// NGSA (M8b): the grid has the Compressed? column (COMPRESSED_)
+	/// NGSA (M8b): COMPRESSED is only legal on text/blob/varchar/varbinary; greys the cell otherwise
+	void						NgsaSetCompressedReadOnly(wyUInt32 row, const wyChar* datatype);
+	static wyBool				NgsaTypeCanBeCompressed(const wyChar* datatype);
 
     /// intializes m_mysql, m_tunnel and calls CreateGrid()
     /**

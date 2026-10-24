@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -257,6 +258,7 @@ TabModule::Create(MDIWindow * wnd)
 wyBool				
 TabModule::CreateCommunityTabHeader()
 {
+/*
 #ifdef COMMUNITY
 	m_cribbon = new CommunityRibbon();
 	if(m_cribbon->CreateRibbon(m_hwndparent) == wyTrue)
@@ -265,7 +267,8 @@ TabModule::CreateCommunityTabHeader()
 	else
 		return wyFalse;
 #endif
-	return wyTrue;
+*/
+	return wyFalse;
 }
 
 //Function to o create the TabControl & initialise the  'm_hwnd'
@@ -1754,15 +1757,19 @@ TabModule::Resize(wyBool issetredraw)
 		SendMessage(m_hwnd, WM_SETREDRAW, FALSE, NULL);
 
 #ifdef COMMUNITY
+	// bonSQL: the ad ribbon window is never created (CreateCommunityTabHeader is commented out), so no band
+	// is kept for it (docs/ngsa/UPSELLS.md)
+	if(m_hwndcommtytitle)
+	{
 	wyInt32 headvpos = 0;
-	
+
 	headvpos = vpos;
     headht = 20;
 	VERIFY(MoveWindow(m_hwndcommtytitle, hpos, headvpos, width, headht, TRUE));
     InvalidateRect(m_hwndcommtytitle, NULL, TRUE);
     UpdateWindow(m_hwndcommtytitle);
 	height = height - 20;
-	
+	}
 #endif
 
 	vpos = vpos + headht;

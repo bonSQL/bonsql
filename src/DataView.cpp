@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -35,6 +36,9 @@ Author: Vishal P.R, Janani SriGuha
 #include "EditorFont.h"
 #include "ClientMySQLWrapper.h"
 #include "jsoncpp.h"
+#include "ngsa/NgsaJson.h"       // NGSA (M1): MariaDB JSON columns
+#include "ngsa/NgsaTrace.h"
+static wyBool NgsaIsPlainNumber(const wyChar* s);   // NGSA (B11), defined before GenerateInsertQuery
 
 #define	DEFAULT_FIELD_SIZE  2
 #define	CHARSET_NUMBER      63
@@ -623,7 +627,7 @@ DataView::OnWMCommand(WPARAM wparam, LPARAM lparam)
 #ifndef COMMUNITY
             SwitchView(FORM);
 #else
-            pGlobals->m_pcmainwin->m_connection->GetSQLyogUltimateDialog();
+            // NGSA: Form view is Ultimate-only and its button/menu entry are hidden; no upsell dialog
 #endif
 		    break;
 
@@ -664,7 +668,7 @@ DataView::OnWMCommand(WPARAM wparam, LPARAM lparam)
         //click on filter button in toolbar or the reset filter menu command
         case ID_RESETFILTER:
             //we have to make sure that we have valid sort and filter
-            if(m_data->m_psortfilter)
+            if(m_data && m_data->m_psortfilter)   // NGSA: a posted command can arrive before any data is loaded
             {
                 //get the current button imgage, second parameter will tell us whether it is the original image
              /*   GetButtonImage(ID_RESETFILTER, &ret);*/
@@ -1059,6 +1063,18 @@ DataView::AddDataToQuery(MYSQL_ROW data, wyString &query, const wyChar* delimite
             //for not null data
             if(data[i] && strcmp(data[i], "NULL") != 0 && strcmp(data[i], "(NULL)") != 0)
 		    {	
+                // NGSA (B11): in a WHERE clause a FLOAT/DOUBLE compared with its printed value matches no row
+                // (measured on MariaDB 11.8 and MySQL 8.4); compare the server's own text of the column instead
+                if(!strcmp(nullcheck, "is null") && NgsaIsPlainNumber(data[i]) &&
+                   (m_data->m_datares->fields[i].type == MYSQL_TYPE_FLOAT || m_data->m_datares->fields[i].type == MYSQL_TYPE_DOUBLE))
+                {
+                    query.AddSprintf("%s%sCONCAT(%s%s%s) = '%s'", 
+                        isfirst == wyFalse ? " " : "",
+                        isfirst == wyFalse ? delimiter : "",
+                        m_backtick, colname.GetString(), m_backtick, data[i]);
+                }
+                else
+                {
                 query.AddSprintf("%s%s%s%s%s = ", 
                     isfirst == wyFalse ? " " : "",
                     isfirst == wyFalse ? delimiter : "",
@@ -1069,6 +1085,7 @@ DataView::AddDataToQuery(MYSQL_ROW data, wyString &query, const wyChar* delimite
                 {
                     //if it is not special data or we dont want to consider special data, then add the raw data to query
                     AppendDataToQuery(data, i, m_data->m_datares->field_count, query, isblob);
+                }
                 }
             }
 		    else
@@ -1127,6 +1144,18 @@ DataView::AddDataToQueryJSON(MYSQL_ROW data, wyString &query, const wyChar* deli
 			{
 				if(data[i] && strcmp(data[i], "NULL") != 0 && strcmp(data[i], "(NULL)") != 0)
 		    {	
+                // NGSA (B11): in a WHERE clause a FLOAT/DOUBLE compared with its printed value matches no row
+                // (measured on MariaDB 11.8 and MySQL 8.4); compare the server's own text of the column instead
+                if(!strcmp(nullcheck, "is null") && NgsaIsPlainNumber(data[i]) &&
+                   (m_data->m_datares->fields[i].type == MYSQL_TYPE_FLOAT || m_data->m_datares->fields[i].type == MYSQL_TYPE_DOUBLE))
+                {
+                    query.AddSprintf("%s%sCONCAT(%s%s%s) = '%s'", 
+                        isfirst == wyFalse ? " " : "",
+                        isfirst == wyFalse ? delimiter : "",
+                        m_backtick, colname.GetString(), m_backtick, data[i]);
+                }
+                else
+                {
                 query.AddSprintf("%s%s%s%s%s = ", 
                     isfirst == wyFalse ? " " : "",
                     isfirst == wyFalse ? delimiter : "",
@@ -1137,6 +1166,7 @@ DataView::AddDataToQueryJSON(MYSQL_ROW data, wyString &query, const wyChar* deli
                 {
                     //if it is not special data or we dont want to consider special data, then add the raw data to query
                     AppendDataToQuery(data, i, m_data->m_datares->field_count, query, isbin);
+                }
                 }
             }
 		    else
@@ -1197,9 +1227,101 @@ DataView::GenerateDuplicatesQuery(wyInt32 row, wyString &query)
 {
 	query.Sprintf("select count(*) from `%s`.`%s` where ", m_data->m_db.GetString(), m_data->m_table.GetString());
 
-    //here we supply nullcheck as 'IS NULL' and we dont want to check for special data
-    return AddDataToQuery(m_data->m_oldrow ? m_data->m_oldrow->m_row : m_data->m_rowarray->GetRowExAt(row)->m_row, 
-        query, "and ", "is null", -1);
+    // NGSA (B11): same identity as the UPDATE/DELETE this count protects
+    return NgsaAddRowIdentity(m_data->m_oldrow ? m_data->m_oldrow->m_row : m_data->m_rowarray->GetRowExAt(row)->m_row, query, NULL);
+}
+
+// NGSA (B11): true when the cell text is a plain number as the server printed it (digits, sign, point, exponent)
+static wyBool
+NgsaIsPlainNumber(const wyChar* s)
+{
+    if(!s || !*s)
+        return wyFalse;
+    return strspn(s, "0123456789.+-eE") == strlen(s) ? wyTrue : wyFalse;
+}
+
+// NGSA (B11): first unique index usable as a row identity. SHOW KEYS lists one row per column in
+// Seq_in_index order, keys grouped; a key is usable when Non_unique = 0, it is not PRIMARY, every
+// column is NOT NULL, present in the result set, from this table and not virtual.
+wyInt32
+DataView::NgsaUniqueKeyColumns(wyInt32* keycols, wyInt32 maxcols)
+{
+    MYSQL_ROW   row;
+    wyInt32     nonunique, keyname, colname, nullable, count = 0, i;
+    wyString    key, current, name, column;
+    wyBool      usable = wyFalse;
+
+    if(!m_data || !m_data->m_keyres || !m_data->m_datares)
+        return 0;
+
+    nonunique = GetFieldIndex(m_data->m_keyres, "non_unique", m_wnd->m_tunnel);
+    keyname   = GetFieldIndex(m_data->m_keyres, "key_name", m_wnd->m_tunnel);
+    colname   = GetFieldIndex(m_data->m_keyres, "column_name", m_wnd->m_tunnel);
+    nullable  = GetFieldIndex(m_data->m_keyres, "null", m_wnd->m_tunnel);
+    if(nonunique == -1 || keyname == -1 || colname == -1 || nullable == -1)
+        return 0;
+
+    m_wnd->m_tunnel->mysql_data_seek(m_data->m_keyres, 0);
+    while((row = m_wnd->m_tunnel->mysql_fetch_row(m_data->m_keyres)))
+    {
+        if(!row[keyname] || !row[colname])
+            continue;
+        key.SetAs(row[keyname]);
+        if(key.Compare(current) != 0)
+        {
+            if(usable && count)         // the previous key is complete and usable
+                break;
+            current.SetAs(key);
+            count = 0;
+            usable = (row[nonunique] && !strcmp(row[nonunique], "0") && key.CompareI("PRIMARY") != 0) ? wyTrue : wyFalse;
+        }
+        if(!usable)
+            continue;
+        if(row[nullable] && !stricmp(row[nullable], "YES"))
+        {
+            usable = wyFalse;           // a NULL in the key cannot identify a row
+            continue;
+        }
+        name.SetAs(row[colname]);
+        for(i = 0; i < m_data->m_datares->field_count; i++)
+        {
+            if(GetColumnName(column, i) && !column.CompareI(name) && IsColumnReadOnly(i) == wyFalse && IsColumnVirtual(i) != 1)
+                break;
+        }
+        if(i == m_data->m_datares->field_count || count >= maxcols)
+        {
+            usable = wyFalse;           // key column missing from the result set
+            continue;
+        }
+        keycols[count++] = i;
+    }
+
+    return (usable && count) ? count : 0;
+}
+
+// NGSA (B11): WHERE terms for one row on the no-primary-key path. The callers add LIMIT 1 and run the
+// duplicates check themselves; with a unique key the count is 1 and nothing is asked.
+wyBool
+DataView::NgsaAddRowIdentity(MYSQL_ROW data, wyString& where, wyBool* isunique)
+{
+    wyInt32     keycols[64], n, i;
+    wyBool      isfirst = wyTrue;
+
+    n = NgsaUniqueKeyColumns(keycols, 64);
+    if(isunique)
+        *isunique = n ? wyTrue : wyFalse;
+
+    if(n)
+    {
+        for(i = 0; i < n; i++)
+        {
+            if(AddDataToQuery(data, where, "and ", "is null", keycols[i], isfirst))
+                isfirst = wyFalse;
+        }
+        return isfirst ? wyFalse : wyTrue;
+    }
+
+    return AddDataToQueryJSON(data, where, "and ", "is null", -1);
 }
 
 //function to generate insert query
@@ -1334,13 +1456,14 @@ DataView::GenerateDeleteQuery(wyString& query, wyBool issetlimit, wyUInt32 row)
         tempstr.Clear();
 
         //if the row is modified but not saved, then we will consider the old data otherwise current data
+        // NGSA (B11): unique NOT NULL index when there is one, else every column
         if(m_data->m_modifiedrow >= 0 && row == m_data->m_modifiedrow)
         {
-            isfirst = AddDataToQueryJSON(m_data->m_oldrow->m_row, tempstr, "and ", "is null", -1) ? wyFalse : wyTrue;
+            isfirst = NgsaAddRowIdentity(m_data->m_oldrow->m_row, tempstr, NULL) ? wyFalse : wyTrue;
         }
         else
         {
-            isfirst = AddDataToQueryJSON(m_data->m_rowarray->GetRowExAt(row)->m_row, tempstr, "and ", "is null", -1) ? wyFalse : wyTrue;
+            isfirst = NgsaAddRowIdentity(m_data->m_rowarray->GetRowExAt(row)->m_row, tempstr, NULL) ? wyFalse : wyTrue;
         }
 
         //whether to delete only the current row or all its duplicates
@@ -1449,7 +1572,7 @@ DataView::GenerateUpdateQuery(wyString &query, wyBool issetlimit)
    //    if(m_data->m_datares->fields->type != MYSQL_TYPE_JSON)
 	//	AddDataToQuery(m_data->m_oldrow->m_row, tempstr, "and ", "is null", -1);
 	//   else
-		AddDataToQueryJSON(m_data->m_oldrow->m_row, tempstr, "and ", "is null", -1);
+		NgsaAddRowIdentity(m_data->m_oldrow->m_row, tempstr, NULL);	// NGSA (B11)
         //whether to update only the current row or all its duplicates
         if(issetlimit == wyTrue)
         {
@@ -1548,7 +1671,7 @@ DataView::SetGridFont()
 	height = GetDeviceCaps( hdc, LOGPIXELSY );
 
 	//get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	
 	dirstr.SetAs(directory);
 
@@ -1636,14 +1759,14 @@ DataView::SetColor()
 	
 	//Get the complete path.
     // Check if this is a dialog MTI tab in dark theme
-    if(wyTheme::IsDarkThemeActive() && !EditorFont::IsMainWindowEditor(m_hwndtext))
+    if(wyFalse)   // NGSA (#2158): was IsDarkThemeActive() && !IsMainWindowEditor(m_hwndtext); dialog text panes are dark too
     {
         //SetMTIColorsForDarkThemeDialog(selectioncolor, backcolor, color);
     }
     else
     {
         // For main window MTI tabs or light theme, use custom colors and theme colors
-        if(SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport) == wyTrue)
+        if(SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport) == wyTrue)
         {
             wyString	dirstr(directory);
 
@@ -1838,6 +1961,10 @@ DataView::OnQueryFinish(LPEXEC_INFO pexeinfo)
 
         //persist limit
         m_data->HandleLimitPersistence(wyTrue);
+
+        // NGSA (#2137): remember the server-side sort/filter of this table for the session (cleared ones too)
+        if(m_data->m_psortfilter && m_data->m_psortfilter->m_isclient == wyFalse && m_data->m_table.GetLength())
+            m_data->m_psortfilter->NgsaRemember(m_wnd, m_data->m_db.GetString(), m_data->m_table.GetString());
 
         //populate grid view
         FillDataGrid();
@@ -3221,10 +3348,20 @@ DataView::IsJSON(wyInt32 col)
 
     //get the field struct
 	myfield = m_wnd->m_tunnel->mysql_fetch_fields(m_data->m_datares);
+	NgsaTrace("IsJSON: col %d %s type=%d charsetnr=%u db=%s table=%s org=%s", col, myfield[col].name, (int)myfield[col].type, (unsigned)myfield[col].charsetnr, myfield[col].db ? myfield[col].db : "", myfield[col].org_table ? myfield[col].org_table : "", myfield[col].org_name ? myfield[col].org_name : "");
 
 	if(myfield[col].type == MYSQL_TYPE_JSON)
 	{
 			 return wyTrue;
+	}
+
+	// NGSA (M1): MariaDB's JSON is LONGTEXT utf8mb4_bin + CHECK(json_valid()); a column that looks like
+	// that is confirmed against information_schema.CHECK_CONSTRAINTS (cached, see NgsaJson)
+	if(m_wnd->m_ngsacaps.jsonIsCheckConstraint == wyTrue && myfield[col].type == MYSQL_TYPE_BLOB &&
+	   myfield[col].charsetnr != 63 /* not binary; the metadata shows the connection charset (192 seen), so the catalogue decides */ &&
+	   myfield[col].db && myfield[col].org_table && myfield[col].org_name)
+	{
+		return NgsaJson::IsCheckConstraintJsonColumn(m_wnd, myfield[col].db, myfield[col].org_table, myfield[col].org_name);
 	}
 	
     return wyFalse;
@@ -3529,9 +3666,14 @@ DataView::HandleBlobValue(WPARAM wparam, LPARAM lparam)
 	//to check whether it is a blob or text
 	pib.m_isblob = IsBlob(col);
 	pib.m_isJson = IsJSON(col);
+	{	// NGSA (M12): column key for the viewer's remembered Syntax choice
+		wyString ngsacol;
+		GetColumnName(ngsacol, col);
+		pib.m_ngsacolkey.Sprintf("%s.%s.%s", m_data->m_db.GetString(), m_data->m_table.GetString(), ngsacol.GetString());
+	}
 
 	// Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	jsonOpt = wyIni::IniGetInt(GENERALPREFA, "JsonFormat", 0, dirstr.GetString());
 
@@ -6604,7 +6746,7 @@ DataView::SetTextViewFont()
 	wyWChar		*lpfileport = 0;
 	wyString	fontnamestr, dirstr;	
 
-    if(SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
+    if(SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
     {
         return;
     }
@@ -8377,11 +8519,8 @@ DataView::ShowFormView(wyInt32 show, wyBool isprobe)
         return wyTrue;
     }
 #else
-    //with community we show the ad dialog
-    if(show != SW_HIDE && isprobe == wyFalse)
-    {
-        pGlobals->m_pcmainwin->m_connection->GetSQLyogUltimateDialog();
-    }
+    // NGSA: Community has no form view; upstream showed the upsell dialog here, we just report "not available"
+    (void)show; (void)isprobe;
 #endif
 
     return wyFalse;

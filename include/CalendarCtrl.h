@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc.
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -18,7 +19,9 @@
 
 
 #include "FrameWindowHelper.h"
-#include "htmlayout.h"
+#ifndef COMMUNITY
+#include "htmlayout.h"     // Ultimate's Form view only
+#endif
 
 #ifndef _CALENDARCTRL_H_
 #define _CALENDARCTRL_H_
@@ -115,7 +118,9 @@ class CalendarCtrl
 	@returns CalendarCtrl Handle
 	*/
 #ifndef COMMUNITY
+#ifndef COMMUNITY
 		HWND	CreateForm(htmlayout::dom::element hwndedit, FormView *pfv, wyBool isDate);
+#endif
 #endif
 	/// Creates the dialog box and subclasses the monthcalendarcontrol and datetimepicker
 	/*
@@ -156,10 +161,14 @@ class CalendarCtrl
 		HWND						m_hwndparent;
 #ifndef COMMUNITY
 	//Button element in the formview
+#ifndef COMMUNITY
 		htmlayout::dom::element		m_button;
+#endif
 
 	//Editbox element in the formview			
+#ifndef COMMUNITY
 		htmlayout::dom::element		m_edit;			
+#endif
 #endif
 	//Rectangle of the cell(grid) or button(form)
 		RECT						m_rectCell;
@@ -206,7 +215,9 @@ class CalendarCtrl
 };
 #ifndef COMMUNITY
 ///Public function to invoke the calendar from the grid
+#ifndef COMMUNITY
 HWND DisplayCalendarForm(htmlayout::dom::element hwndedit, FormView *pfv, wyBool isDate);
+#endif
 #endif
 
 HWND DisplayCalendarGrid(HWND hwndParent, DataView *dv, wyBool isDate, wyBool isResult);

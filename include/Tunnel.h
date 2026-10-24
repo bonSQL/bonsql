@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc.
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -25,6 +26,7 @@
 #include <winsock.h>
 #include <mysql.h>
 #include <crtdbg.h>
+#include "wyString.h"   // NGSA: m_ngsainitcommand
 
 #ifndef __TUNNEL__
 #define __TUNNEL__
@@ -80,6 +82,14 @@ public:
 	virtual MYSQL_FIELD		*mysql_fetch_field_direct( MYSQL_RES * res, unsigned int fieldnr ) = 0;
 	virtual int				mysql_next_result ( MYSQL * mysql, bool dontprofile, bool force ) = 0;
     virtual int             mysql_ping(MYSQL* mysql) = 0;
+
+    // NGSA (#2226): the connection's Init Command(s). Connector/C reconnects inside mysql_real_query /
+    // mysql_ping, re-runs these and then resets the charset, so the wrapper runs them again when it
+    // sees the connection id change. Set through NgsaConn::ApplyTlsOptions.
+    wyString                m_ngsainitcommand;
+    // set when a reconnect was seen under mysql_real_query (its result set is still pending, so the
+    // replay has to wait); consumed at the start of the next mysql_real_query or by mysql_ping
+    bool                    m_ngsareplaypending = false;
 
 	// tunnel flags
 	bool			IsTunnel() { return m_IsTunnel; }

@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc.
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -256,7 +257,7 @@ public:
     */
 	/**
     */
-	virtual wyBool		ExecuteAllQuery(wyInt32 * stop) { return wyFalse; };
+	virtual wyBool		ExecuteAllQuery(wyInt32 * stop, wyBool isedit = wyFalse) { return wyFalse; };	// NGSA (#2215): isedit
 	
 	/// Function to execute the selected query
 	/**
@@ -265,7 +266,7 @@ public:
     */
 	/**
     */
-	virtual wyBool		ExecuteSelQuery(wyInt32 * stop) { return wyFalse; };
+	virtual wyBool		ExecuteSelQuery(wyInt32 * stop, wyBool isedit = wyFalse) { return wyFalse; };	// NGSA (#2215): isedit
 
     /// Function to handle after query execution finish
 	/**
@@ -354,7 +355,7 @@ public:
 	@param  curline : IN Currentline
 	@returns 1 on success
 	*/
-	wyInt32     ExecuteQueryThread(wyString query, wyInt32 *stop, MDIWindow * wnd, wyInt32& curline, wyBool isanalyze = wyTrue);
+	wyInt32     ExecuteQueryThread(wyString query, wyInt32 *stop, MDIWindow * wnd, wyInt32& curline, wyBool isanalyze = wyTrue, wyBool isedit = wyFalse);
 	
 	// Function to set the 'TabEditor' pointer
 	VOID	SetTabEditorptr(TabEditor *te);

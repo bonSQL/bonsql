@@ -70,7 +70,7 @@ ESCAPECHAR::ReadFromFile(wyChar * escapesection)
 	wyString	escapestr, fescapestr, lescapestr, enclosedstr, nullcharstr;
 
 	//Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 
 	dirstr.SetAs(directory);
 	escapesectionstr.SetAs(escapesection);
@@ -163,7 +163,7 @@ ESCAPECHAR::WriteToFile(wyChar * escapesection)
 	wyString	newnullreplacementcharstr;
 
 	//Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini",MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini",MAX_PATH, directory, &lpfileport);
 
 	if(m_towrite == wyFalse) 
     {
@@ -248,7 +248,7 @@ ESCAPECHAR::RemoveEscapeChars(wyChar *in, wyChar *out)
 		{
 			case C_BACK_SLASH:
 				out[j++] = '\\';
-				if(in[i+1]==NULL)//if we eliminate the one backslash in processchar we should add it back before wriritng to sqlyog.ini.
+				if(in[i+1]==NULL)//if we eliminate the one backslash in processchar we should add it back before wriritng to bonsql.ini.
 				out[j++] = '\\';
 				break;
 			

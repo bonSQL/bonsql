@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc.
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -675,7 +676,26 @@ class UserManager
 
         void                    SetResetDBContext(wyBool isset);
 
-		wyBool                  CheckHiddenPrivelegeMariaDB100502(wyChar* priv);
+		// NGSA (M2): privilege-name helpers, see UserManager.cpp
+		static void             NormalizePrivilegeName(wyString& name);
+		wyBool                  ColumnToPrivilege(wyString& column, wyString& privilege);
+		wyBool                  PrivilegeToColumn(wyString& privilege, wyString& column);
+		wyBool                  IsDynamicPrivilege(const wyChar* name);
+		// NGSA (M3): roles. MariaDB roles are mysql.user rows with an empty host and is_role = Y and are
+		// addressed by bare name; MySQL roles are locked password-less accounts addressed as 'r'@'h'.
+		void                    AccountLiteral(wyString& out);                       // 'u'@'h' or 'role' for the selection
+		void                    RoleLiteral(const wyChar* key, wyString& out);        // key = name (MariaDB) or name@host (MySQL)
+		wyBool                  IsRoleAccount(const wyChar* user, const wyChar* host);
+		void                    LoadGrantedRoles();
+		void                    PopulateRoles();
+		void                    FillRoles();
+		void                    UpdateRolesWorking();
+		wyBool                  ProcessRoleChanges();
+		wyBool                  m_isrole;               // the selected account is a role
+		wyString                m_rolekeys;             // |user@host| of every role account on the server
+		wyString                m_rolesgrantedorig;     // |key| roles granted to the selection when loaded
+		wyString                m_rolesgranted;         // working copy edited through the Roles node
+		wyString                m_roleitems;            // |key| of the Roles list in display order
 
     private:
 
@@ -687,11 +707,6 @@ class UserManager
         //static array to hold the mysql privileges and currusponding column names till date
         static wyChar*          m_privmapping[];
 
-		//static array to hold new mariadb privileges introduced in version 10.5.2
-		static wyChar*          m_mariadb_100502_priv[];
-
-		//static array to hold mariadb privileges that are renamed or divided from version 10.5.2
-		static wyChar*          m_mariadb_100502_hide_priv[];
 
         //dialog handle
         HWND                    m_hwnd;

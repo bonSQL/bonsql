@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -212,9 +213,9 @@ TabCheck::GridWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case GVN_HELP:
 	{
 		//if (ptabind->m_ptabmgmt->m_tabinterfaceptr->m_isaltertable)
-			//ShowHelp("http://sqlyogkb.webyog.com/article/92-alter-index");
+			//ShowHelp("help:alter-index");
 		//else
-			ShowHelp("https://sqlyogkb.webyog.com/article/192-check-constraint");
+			ShowHelp("help:check-constraint");
 	}
 	}
 	return 1;
@@ -563,7 +564,7 @@ TabCheck::GetNewAndModifiedChecks(wyString &query, wyBool  execute)
 			}
 			else if (namestr.GetLength() && exprstr.GetLength())
 			{
-				addck.AddSprintf("\r\n  add constraint %s%s%s CHECK %s", m_backtick, namestr.GetString(), m_backtick, exprstr.GetString());
+				addck.AddSprintf("\r\n  add constraint %s%s%s CHECK (%s)", m_backtick, namestr.GetString(), m_backtick, exprstr.GetString());	// bonSQL: brackets, as for a new constraint
 			}
 			if (row<count-1)
 			addck.AddSprintf(",");
@@ -576,7 +577,7 @@ TabCheck::GetNewAndModifiedChecks(wyString &query, wyBool  execute)
 			}
 			else if (namestr.GetLength() && exprstr.GetLength())
 			{
-				addck.AddSprintf("\r\n  add constraint %s%s%s CHECK %s", m_backtick, namestr.GetString(), m_backtick, exprstr.GetString());
+				addck.AddSprintf("\r\n  add constraint %s%s%s CHECK (%s)", m_backtick, namestr.GetString(), m_backtick, exprstr.GetString());	// bonSQL: brackets, as for a new constraint
 			}
 			if (row<count - 1)
 				addck.AddSprintf(",");

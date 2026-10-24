@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -61,6 +62,8 @@
 #endif
 
 #include "ExportAsSQL.h"
+#include "ngsa/NgsaServerOps.h"   // NGSA (#2152): BIT literals
+#include "ngsa/NgsaCaps.h"        // NGSA: sequences
 #include "Tunnel.h"
 #include "ClientMySQLWrapper.h"
 #include "MySQLVersionHelper.h"
@@ -116,6 +119,7 @@ MySQLDump::MySQLDump()
 	m_allprocedures = wyFalse;
 	m_allfunctions = wyFalse;
 	m_allEvents  = wyFalse;
+	m_allsequences = wyFalse;	// NGSA
 	m_alltables = wyFalse;
     m_filemodetimestamp = wyFalse; 
     m_utf8charset = wyFalse;
@@ -553,6 +557,12 @@ MySQLDump::SetAllEvents(wyBool val)
 }
 
 void
+MySQLDump::SetAllSequences(wyBool val)	// NGSA
+{
+	m_allsequences = val;
+}
+
+void
 MySQLDump::SetCreateViews(wyBool val)
 {
 	m_createviews	=	val;
@@ -615,6 +625,13 @@ MySQLDump::SelectedEvents(SelectedObjects *names)
 {
 	if(names)
 		m_selevents.Insert(names);
+}
+
+void
+MySQLDump::SelectedSequences(SelectedObjects *names)	// NGSA
+{
+	if(names)
+		m_selsequences.Insert(names);
 }
 
 void
@@ -2269,6 +2286,9 @@ MySQLDump::DumpAlldbsToSingleFile(wyString * buffer, MYSQL_RES *dbres)
 	m_tunnel->SetDB(dbname.GetString());
 #endif
 
+		if(DumpSequences(buffer, dbname.GetString()) == wyFalse)	// NGSA
+			return wyFalse;
+
 		//dump tables and view table strucures of db
 		if(ismysql41 == wyTrue)
 			ret = DumpTableAndViewTableStructure(buffer, dbname.GetString());
@@ -2402,7 +2422,7 @@ MySQLDump::DumpTableAndViewTableStructure(wyString * buffer, const wyChar *db)
 				return wyFalse;
 			}
 
-			if(!(strcmp(row[1], "VIEW")))
+			if(!(strcmp(row[1], "VIEW")) || !(strcmp(row[1], "SEQUENCE")))	// NGSA: sequences are dumped by DumpSequences
 				continue;
 		}
        
@@ -2453,7 +2473,7 @@ MySQLDump::DumpTableAndViewTableStructure(wyString * buffer, const wyChar *db)
 			return wyFalse;
 		}		
 
-		if(!(strcmp(row[1], "BASE TABLE")))
+		if(!(strcmp(row[1], "BASE TABLE")) || !(strcmp(row[1], "SEQUENCE")))	// NGSA
 			continue;		
 
 		view.SetAs(row[0]);
@@ -2560,6 +2580,147 @@ MySQLDump::FreeMemory()
 	ReleaseMemory(&m_selprocedures);
 	ReleaseMemory(&m_seltriggers);
 	ReleaseMemory(&m_selevents);
+	ReleaseMemory(&m_selsequences);	// NGSA
+}
+
+// NGSA: sequences go before tables (a column DEFAULT may use NEXTVAL); the current position is restored with
+// DO SETVAL(seq, next_not_cached_value, 0) exactly as mariadb-dump writes it (measured 09/10/2026 on 11.8)
+wyBool
+MySQLDump::DumpSequences(wyString * buffer, const wyChar *db)
+{
+	MYSQL_RES	*res = NULL;
+	MYSQL_ROW	row = NULL;
+	wyString	query, name;
+    wyInt32     err = 0;
+	wyBool		ismysql41 = IsMySQL41(m_tunnel, &m_mysql);
+
+	if(NgsaCapsCompute::HasSequences(&m_mysql) == wyFalse || m_dataonly == wyTrue)
+		return wyTrue;
+
+	m_routine(m_lpparam, "sequences", 0, FETCHDATA);
+	GetSelectSequenceStmt(db, query);
+    res = SjaExecuteAndGetResult(m_tunnel, &m_mysql, query); 
+	if(!res)
+		return OnError();
+
+	m_routine(m_lpparam, m_db.GetString(), res->row_count , SETOBJECTCOUNT);
+
+	while(row = sja_mysql_fetch_row(m_tunnel, res))
+	{
+		name.SetAs(row[0], ismysql41);
+		if(!DumpSequence(buffer, db, name.GetString(), &err))
+		{
+			if(err) 
+				m_error.SetAs(m_fileerr.GetString());
+			else if(m_error.GetLength() == 0)
+                OnError();
+
+			if(m_abortonerr == wyTrue || IsExportingStopped() == wyTrue || err) 
+			{
+				sja_mysql_free_result(m_tunnel, res);
+				return wyFalse;
+			}
+		}
+
+		if(WriteBufferToFile(buffer) == wyFalse)
+		{
+			sja_mysql_free_result(m_tunnel, res);
+			return wyFalse;
+		}
+	}
+
+	sja_mysql_free_result(m_tunnel, res);
+	return wyTrue;
+}
+
+wyBool
+MySQLDump::DumpSelectedSequences(wyString * buffer)
+{
+	SelectedObjects  *seq;
+
+	if(NgsaCapsCompute::HasSequences(&m_mysql) == wyFalse || m_dataonly == wyTrue)
+		return wyTrue;
+
+	m_routine(m_lpparam, m_db.GetString(), m_selsequences.GetCount() , SETOBJECTCOUNT);
+
+	for(seq = (SelectedObjects*)m_selsequences.GetFirst(); seq; seq = (SelectedObjects*)seq->m_next)
+	{
+		if(DumpSequence(buffer, m_db.GetString(), seq->m_selobject.GetString()) == wyFalse)
+		{
+			if(m_abortonerr == wyTrue || IsExportingStopped() == wyTrue)
+				return wyFalse;
+		}
+
+		if(WriteBufferToFile(buffer) == wyFalse)
+			return wyFalse;
+	}
+
+	return wyTrue;
+}
+
+wyBool
+MySQLDump::DumpSequence(wyString * buffer, const wyChar * db, const wyChar * sequence, wyInt32 * fileerr)
+{
+	wyString	query, strseq, nextval;
+	MYSQL_RES	*res;
+	MYSQL_ROW	row;
+	wyInt32     index = 0;
+
+	if(m_individualtablefiles == wyTrue)
+    {
+        if(OnIndividualFiles(buffer, sequence, fileerr) == wyFalse)
+            return wyFalse;
+    }
+
+	m_routine(m_lpparam, sequence, 0, SEQUENCESTART);
+
+	if(m_flushlog == wyTrue) 
+	{
+        if(OnFlushLog() == wyFalse)
+			return wyFalse;
+	}
+
+	query.Sprintf("show create sequence `%s`.`%s`", db, sequence);
+	CHECKSTOP()
+    res = ExecuteQuery(query);
+	if(!res)
+		return OnError();
+	row	= sja_mysql_fetch_row(m_tunnel, res);
+	index = GetFieldIndex(m_tunnel, res, "Create Table");
+	if(!row || index == -1 || !row[index])
+	{
+		sja_mysql_free_result(m_tunnel, res);
+		return wyFalse;
+	}
+	strseq.SetAs(row[index]);
+	sja_mysql_free_result(m_tunnel, res);
+
+	query.Sprintf("select `next_not_cached_value` from `%s`.`%s`", db, sequence);
+    res = ExecuteQuery(query);
+	if(res)
+	{
+		row = sja_mysql_fetch_row(m_tunnel, res);
+		if(row && row[0])
+			nextval.SetAs(row[0]);
+		sja_mysql_free_result(m_tunnel, res);
+	}
+
+	buffer->AddSprintf("%s/* Sequence structure for sequence `%s` */%s", m_strnewline.GetString(), sequence, m_strnewline.GetString());
+	if(m_dropobjects == wyTrue)
+		buffer->AddSprintf("%sDROP SEQUENCE IF EXISTS `%s`;%s", m_strnewline.GetString(), sequence, m_strnewline.GetString());
+	buffer->AddSprintf("%s%s;%s", m_strnewline.GetString(), strseq.GetString(), m_strnewline.GetString());
+	if(nextval.GetLength())
+		buffer->AddSprintf("DO SETVAL(`%s`, %s, 0);%s", sequence, nextval.GetString(), m_strnewline.GetString());
+
+	if(m_individualtablefiles == wyTrue)
+	{
+		if(Footer(buffer) == wyFalse)
+			return wyFalse;
+		if(WriteBufferToFile(buffer, wyTrue) == wyFalse)
+			return wyFalse;
+	}
+
+	return wyTrue;
 }
 
 
@@ -2648,6 +2809,9 @@ MySQLDump::DumpDatabaseStart(wyString * buffer)
 	// if all objects are selected 
    	if(m_allobjects == wyTrue || m_dumpalldbs == wyTrue)
 	{
+		if(DumpSequences(buffer, m_db.GetString()) == wyFalse)	// NGSA: before the tables
+			return wyFalse;
+
 		if(DumpAllTables(buffer, m_db.GetString()) == wyFalse)
 			return wyFalse;	
 
@@ -2669,6 +2833,18 @@ MySQLDump::DumpDatabaseStart(wyString * buffer)
 		return wyTrue;
 	}		
 	
+	// NGSA: sequences first, a table DEFAULT may reference NEXTVAL()
+	if(m_allsequences == wyTrue)
+	{
+		if(DumpSequences(buffer, m_db.GetString()) == wyFalse)
+			return wyFalse;
+	}
+	else if(m_selsequences.GetFirst())
+	{
+		if(DumpSelectedSequences(buffer) == wyFalse)
+			return wyFalse;
+	}
+
 	// if all tables are selected
 	if(m_alltables == wyTrue)
 	{
@@ -3859,6 +4035,13 @@ MySQLDump::PrintFieldValue(wyString * buffer, MYSQL_RES *res, MYSQL_ROW row, wyI
 		if(!row[count]) 
 			buffer->Add("NULL"); 
 			
+		else if(field->type == MYSQL_TYPE_BIT)
+		{
+			// NGSA (#2152): a BIT value is bytes, not text; dump it as a bit literal
+			wyString bitlit;
+			NgsaBitToLiteral((const unsigned char*)row[count], lengths[count], bitlit);
+			buffer->Add(bitlit.GetString());
+		}
 		else if(!IS_NUM_FIELD(field)) 
         {
 			if(m_tunnel->IsTunnel())

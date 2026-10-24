@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -47,6 +48,7 @@ MySQLTableDataEx::MySQLTableDataEx(MDIWindow* pmdi) : MySQLDataEx(pmdi)
 
     //create server side sort/filtering
     m_psortfilter = new SortAndFilter(wyFalse, this);
+    m_psortfilter->NgsaRecall(pmdi, m_db.GetString(), m_table.GetString());   // NGSA (#2137): the table's last sort/filter of this session
 }
 
 //function to handle limit persistence
@@ -222,12 +224,14 @@ TableView::AddToolButtons()
 
 	for(j = 0, k = 0; j < size; j++)	
 	{
-#ifndef COMMUNITY
+#ifdef COMMUNITY
+        if(command[j] == ID_VIEW_FORMVIEW)	// NGSA: Community never has a form view; hide the button instead of showing an upsell
+#else
         if(command[j] == ID_VIEW_FORMVIEW && !m_formview)
+#endif
         {
             continue;
         }
-#endif
 		hicon = (HICON)LoadImage(pGlobals->m_hinstance, MAKEINTRESOURCE(imgres[j]), IMAGE_ICON, ICON_SIZE, ICON_SIZE, LR_DEFAULTCOLOR);
 		i = ImageList_AddIcon(m_himglist, hicon);
 		DestroyIcon(hicon);
@@ -344,7 +348,13 @@ TableView::GetQuery(wyString& query)
 	GetFilterInfo(query);
 
 	//get sort info
-	GetSortInfo(query);
+	{
+		wyString sortinfo;
+		GetSortInfo(sortinfo);
+		if(!sortinfo.GetLength() && NgsaIsTableDataDescending() == wyTrue)	// NGSA (#2369)
+			NgsaDefaultOrderBy(sortinfo);
+		query.Add(sortinfo.GetString());
+	}
 
 	//get limits
 	GetLimits(query);
@@ -520,7 +530,7 @@ TableView::GetFieldResultIndexOfColumn(wyInt32 col)
 void
 TableView::ShowHelpFile()
 {
-    ShowHelp("http://sqlyogkb.webyog.com/article/102-data-manipulation");
+    ShowHelp("help:data-manipulation");
 }
 
 //get the database name
@@ -587,4 +597,47 @@ TableView::GetAutoIncrIndex()
 	}
 
 	return -1;
+}
+
+// NGSA (#2369): " order by `pk1` desc, `pk2` desc" from SHOW KEYS (PRIMARY, else the first unique index);
+// empty when the table has neither. Runs on the query thread like the SELECT itself.
+void
+TableView::NgsaDefaultOrderBy(wyString& orderby)
+{
+	wyString	query, keyname, best;
+	MYSQL_RES*	keys;
+	MYSQL_ROW	row;
+	wyInt32		nonunique, name, column, seq;
+	wyBool		bestisprimary = wyFalse;
+
+	orderby.Clear();
+	query.Sprintf("show keys from `%s`.`%s`", m_mydata->m_db.GetString(), m_mydata->m_table.GetString());
+	keys = ExecuteQuery(query);
+	if(!keys)
+		return;
+	nonunique = GetFieldIndex(keys, "non_unique", m_wnd->m_tunnel);
+	name      = GetFieldIndex(keys, "key_name", m_wnd->m_tunnel);
+	column    = GetFieldIndex(keys, "column_name", m_wnd->m_tunnel);
+	seq       = GetFieldIndex(keys, "seq_in_index", m_wnd->m_tunnel);
+	while(nonunique >= 0 && name >= 0 && column >= 0 && (row = m_wnd->m_tunnel->mysql_fetch_row(keys)))
+	{
+		if(!row[nonunique] || strcmp(row[nonunique], "0") != 0 || !row[name] || !row[column])
+			continue;
+		if(bestisprimary && strcmp(row[name], "PRIMARY") != 0)
+			continue;
+		if(strcmp(row[name], "PRIMARY") == 0 && !bestisprimary)
+		{
+			best.Clear();
+			bestisprimary = wyTrue;
+			keyname.SetAs(row[name]);
+		}
+		else if(!best.GetLength())
+			keyname.SetAs(row[name]);
+		else if(keyname.Compare(row[name]) != 0)
+			continue;		/* a second unique index: keep the first one */
+		best.AddSprintf("%s`%s` desc", best.GetLength() ? ", " : "", row[column]);
+	}
+	m_wnd->m_tunnel->mysql_free_result(keys);
+	if(best.GetLength())
+		orderby.Sprintf(" order by %s", best.GetString());
 }

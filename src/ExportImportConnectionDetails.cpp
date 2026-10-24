@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -23,6 +24,7 @@ Author: Shubhansh
 *********************************************/
 
 #include "ExportImportConnectionDetails.h"
+#include "ngsa/NgsaDark.h"   // NGSA (#2158)
 
 //Constructor. isimport used to determine whether dialog is Export/Import Connection Dialog
 ExportImportConnection::ExportImportConnection(bool isimport)
@@ -171,7 +173,7 @@ ExportImportConnection::OnInitConnectionManagerDialog(HWND hwnd,WPARAM wParam,LP
     HICON       hicon = NULL;
 
     GetWindowRect(hwnd,&m_wndrect);
-    ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+    ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
     if(ret == 0)
         return;
     
@@ -786,14 +788,14 @@ ExportImportConnection::ProcessCustomDraw (LPARAM lParam)
     case CDDS_ITEMPREPAINT: //Before an item is drawn
         if (((int)lplvcd->nmcd.dwItemSpec%2)==0)
         {
-            lplvcd->clrText   = RGB(0,0,0);
-            lplvcd->clrTextBk = RGB(230,230,230);
+            lplvcd->clrText   = NgsaDark::IsOn() ? NgsaDark::kText : RGB(0,0,0);   // NGSA (#2158)
+            lplvcd->clrTextBk = NgsaDark::IsOn() ? RGB(0x2A, 0x2D, 0x2E) : RGB(230,230,230);
             return CDRF_NEWFONT;
         }
         else
         {
-            lplvcd->clrText   = RGB(0,0,0);
-            lplvcd->clrTextBk = RGB(255,255,255);
+            lplvcd->clrText   = NgsaDark::IsOn() ? NgsaDark::kText : RGB(0,0,0);   // NGSA (#2158)
+            lplvcd->clrTextBk = NgsaDark::IsOn() ? NgsaDark::kBase : RGB(255,255,255);
             return CDRF_NEWFONT;
         }
         break;
@@ -888,10 +890,10 @@ ExportImportConnection::OnInitConnectionImportDialog(HWND hwnd,WPARAM wParam,LPA
     EnableWindow(GetDlgItem(hwnd,IDOK),FALSE);
     EnableWindow(GetDlgItem(hwnd,IDC_CHKUNCHK),FALSE);
     
-    ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+    ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
     if(ret == 0)
     {
-        yog_message(hwnd,_(L"Can't find sqlyog.ini!!!"),pGlobals->m_appname.GetAsWideChar(),MB_ICONERROR|MB_OK);
+        yog_message(hwnd,_(L"Can't find bonsql.ini!"),pGlobals->m_appname.GetAsWideChar(),MB_ICONERROR|MB_OK);
         return;
     }
 
@@ -1082,7 +1084,7 @@ ExportImportConnection::UpdateArray(wyInt32 noOfConnection,ConDetails **arr,ConD
     arr[insertIndex]=cd;
 }
 
-//Function imports data to sqlyog.ini
+//Function imports data to bonsql.ini
 wyBool
 ExportImportConnection::ImportDataToIni(HWND hwnd, wyInt32& noOfConnection,ConDetails **arr_cdName, ConDetails **arr_cdSec)
 {
@@ -1484,7 +1486,7 @@ ExportImportConnection::OnMouseMove(HWND hwnd, LPARAM lParam)
 void
 ExportImportConnection::HandleHelp(wyBool ishelpclicked)
 {
-        ShowHelp("http://sqlyogkb.webyog.com/article/35-export-import-connection-details");    
+        ShowHelp("help:export-import-connection-details");    
 }
 
 //Function Called for resizing Import Connection Details Dialog
@@ -1671,7 +1673,7 @@ ExportImportConnection::OnPaint(HWND hwnd)
 	PAINTSTRUCT ps;
 
     VERIFY(hdc = BeginPaint(hwnd, &ps));
-    DoubleBuffer::EraseBackground(hwnd, hdc, NULL, GetSysColor(COLOR_3DFACE));
+    DoubleBuffer::EraseBackground(hwnd, hdc, NULL, NgsaDark::Panel(GetSysColor(COLOR_3DFACE)));
     EndPaint(hwnd, &ps);
 }
 
@@ -1770,7 +1772,7 @@ ExportImportConnection::SearchNameIfExisting(ConDetails **arr,wyWChar *name, wyI
     return(-1);
 }
 
-// Function loads data from sqlyog.ini for sorting and further finding conflicts with that to be imported.
+// Function loads data from bonsql.ini for sorting and further finding conflicts with that to be imported.
 wyInt32 
 ExportImportConnection::LoadSortedDataFromIni(HWND hwnd, ConDetails ***arr_cdName, ConDetails ***arr_cdSec)
 {

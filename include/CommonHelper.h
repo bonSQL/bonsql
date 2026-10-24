@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc.
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -59,13 +60,13 @@
 
 #define		FMT_SPACE_4 "    " 
 
-#define		REGKEY			"Provide any UUID here"
+#define		REGKEY			"Software\\bonSQL"	// bonSQL: Webyog shipped this placeholder as the key name
 
 
 #define		SSHTUNNELER 	  "plink.exe"
-#define     SQLYOG_MUTEX_NAME "SQLyogSSHMutex"
-#define     SQLYOG_SAVETIMER "SQLyogSaveTimer"
-#define		SQLYOG_NAMEDMUTEX "SQLyogNamedMutex"
+#define     SQLYOG_MUTEX_NAME "bonSQLSSHMutex"
+#define     SQLYOG_SAVETIMER "bonSQLSaveTimer"
+#define		SQLYOG_NAMEDMUTEX "bonSQLNamedMutex"
 
 #define	 BULK_SIZE           16*1024*1024
 
@@ -458,6 +459,9 @@ wyInt32 GetSelectFunctionStmt(const wyChar *db, wyString &selectstmt, wyBool isc
 @returns length
 */
 wyInt32 GetSelectEventStmt(const wyChar *db, wyString &selectstmt, wyBool iscollate = wyFalse);
+
+/// NGSA: SELECT stmt listing the MariaDB sequences of a database (row[0] = name)
+wyInt32 GetSelectSequenceStmt(const wyChar *db, wyString &selectstmt);
 
 /// Create the SELECT stmt to get all Triggeres for the given database
 /*

@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc.
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -95,6 +96,7 @@ public:
 
     ///flag to indicate that something is changed in the tab
     wyBool                                  m_dirtytab;
+    wyBool                                  m_ngsasaving;   // NGSA (B17): OnClickSave is running; the tab must not be closed (the save pumps messages)
 
     ///flag indicates not to process EN_CHANGE message
     wyBool                                  m_disableenchange;
@@ -243,6 +245,10 @@ public:
     @returns                    wyFalse, if any client-side validations fails, else wyTrue
     */
     wyBool                  GenerateQuery(wyString &query, wyBool showmsg = wyFalse);
+
+    /// NGSA (M8): "SET STATEMENT system_versioning_alter_history=KEEP FOR " when altering a MariaDB
+    /// system-versioned table (the server refuses the ALTER otherwise, error 4119), else ""
+    const wyChar*           NgsaAlterPrefix();
     
     /// Executes the Query
     /*

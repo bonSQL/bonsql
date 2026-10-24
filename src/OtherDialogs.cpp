@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -18,12 +19,14 @@
 
 
 #include "ExportMultiFormat.h"
+#include "ngsa/NgsaDark.h"   // NGSA (#2158)
 #include "FrameWindowHelper.h"
 #include "MySQLVersionHelper.h"
 #include "Global.h"
 #include "MDIWindow.h"
 #include "ExportMultiFormat.h"
 #include "OtherDialogs.h"
+#include "ngsa/NgsaCaps.h"   // NGSA: Empty Database drops sequences too
 #include "ClientMySQLWrapper.h"
 #include "CommonHelper.h"
 #include "FileHelper.h"
@@ -69,7 +72,7 @@ L"\nWhile all possible precautions are taken to ensure proper duplication of dat
 L"Do you still want to continue?")
 
 #define	PFERROR "Could not create Personal File. Possible reasons for error are -\n"\
-"1.)Personal Folder does not exist in the current path of SQLyog.exe\n"\
+"1.)Personal Folder does not exist in the folder of the bonSQL program\n"\
 "2.)Invalid characters were typed as Key Name\n"\
 "3.)You have entered a key name which already exists"
 
@@ -173,7 +176,7 @@ CAdvProp::AdvPropDialogProc(HWND hwnd, wyUInt32 message, WPARAM wparam, LPARAM l
 		return wyTrue;
 		
 	case WM_HELP:
-		ShowHelp("http://sqlyogkb.webyog.com/article/96-advanced-tab");
+		ShowHelp("help:table-options");
 		return wyTrue;
 
 	case WM_INITDLGVALUES:
@@ -347,11 +350,15 @@ CAdvProp::FillData()
 // Constructor.
 CShowValue::CShowValue()
 {
+	m_ngsares = NULL;		// NGSA (#2295)
+	m_ngsahidesleep = wyFalse;
 }
 
 // Destructor.
 CShowValue::~CShowValue()
 {
+	if(m_ngsares && m_tunnel)	// NGSA (#2295)
+		m_tunnel->mysql_free_result(m_ngsares);
 }
 
 // this function creates the actual dialog box and also initializes some values of the class
@@ -407,11 +414,15 @@ CShowValue::ShowValueDialogProc(HWND hwnd, wyUInt32 message, WPARAM wparam, LPAR
 		if(pcshowvalue->m_valtype == WARNINGS )
 		{
 			ShowWindow(GetDlgItem(hwnd, IDC_REFRESH), SW_HIDE);
+			ShowWindow(GetDlgItem(hwnd, IDC_NGSA_PLFILTER), SW_HIDE);	// NGSA (#2295): warnings are few, no filter
+			ShowWindow(GetDlgItem(hwnd, IDC_NGSA_PLFILTERTEXT), SW_HIDE);
 	                SetInitPos(hwnd, SHOWVALUE_WARNING_SECTION);
 		}
 		else if(pcshowvalue->m_valtype == PROCESSLIST)
 		{
 			ShowWindow(GetDlgItem(hwnd, IDC_KILL), SW_SHOW);
+			ShowWindow(GetDlgItem(hwnd, IDC_NGSA_PLHIDESLEEP), SW_SHOW);	// NGSA (#2295)
+			ShowWindow(GetDlgItem(hwnd, IDC_NGSA_KILLQUERY), SW_SHOW);	// NGSA (B2)
 #ifndef COMMUNITY
 	if(GetActiveWin()->m_conninfo.m_isreadonly == wyTrue)
 		EnableWindow(GetDlgItem(hwnd, IDC_KILL), FALSE); 
@@ -436,7 +447,7 @@ CShowValue::ShowValueDialogProc(HWND hwnd, wyUInt32 message, WPARAM wparam, LPAR
 		break;
 
 	case WM_HELP:
-		ShowHelp("http://sqlyogkb.webyog.com/article/132-environment-variables");
+		ShowHelp("help:environment-variables");
 		return 1;		
 	
 	case WM_CONTEXTMENU:
@@ -462,6 +473,10 @@ CShowValue::ShowValueDialogProc(HWND hwnd, wyUInt32 message, WPARAM wparam, LPAR
 		break;
 
 	case WM_SIZE:
+		// bonSQL: Hide sleeping belongs to the Processlist only; it was seen on the Variables and Status windows
+		// (HELP-FINDINGS B5), so it is hidden again here, where the filter row is laid out
+		if(pcshowvalue->m_valtype != PROCESSLIST)
+			ShowWindow(GetDlgItem(hwnd, IDC_NGSA_PLHIDESLEEP), SW_HIDE);
 		ShowValueResize(hwnd, pcshowvalue->m_hwndgrid);
 		break;
 
@@ -577,8 +592,19 @@ CShowValue::CreateColumnsWithProperLength(MYSQL_RES * result, PGVCOLUMN	gvcol, w
 
 		VERIFY(myrow = m_tunnel->mysql_fetch_row(result));
 		
-		//isretainedcolumnwidth is false or if it is not present the SQlite database we will calculate the width 
+		//isretainedcolumnwidth is false or if it is not present the SQlite database we will calculate the width
 		gvcol->cx   = (width > 0)? width : GetColWidth(m_hwndgrid, &fields[k], k);
+
+		// bonSQL: the name column of Variables and Status is sized to the longest name, which pushed the Value
+		// column off the right edge at the default window size (HELP-FINDINGS B5); keep 180 px for the value
+		if(width <= 0 && k == 0 && count == 2 && (m_valtype == VARIABLES || m_valtype == STATUS) && m_hwnddlg)
+		{
+			RECT    rcdlg = {0};
+
+			GetClientRect(m_hwnddlg, &rcdlg);
+			if(rcdlg.right > 300 && gvcol->cx > rcdlg.right - 16 - 180)
+				gvcol->cx = rcdlg.right - 16 - 180;
+		}
 
     	VERIFY((index = CustomGrid_InsertColumn(m_hwndgrid, gvcol)) != -1);
 
@@ -627,21 +653,9 @@ CShowValue::CreateColumns(MYSQL_RES *myres)
 
 	 //in older version here first process id (show full processlist result set)
 	//was missing at the time of adding result to grid		
-	while(myrow = mysql_fetch_row(myres))
-	{		
-		VERIFY((colcount = CustomGrid_InsertRow(m_hwndgrid))!= -1);
-		for(colcount = 0; colcount<numfields; colcount++)
-		{	
-			if(myrow[colcount])
-			{
-				myrowstr.SetAs(myrow[colcount], ismysql41);
-				CustomGrid_SetText(m_hwndgrid, rowcount, colcount,
-								  (LPSTR)(myrowstr.GetString() != NULL)?(myrowstr.GetString()):(STRING_NULL));
-			}
-		}
-		
-		rowcount++;
-	}
+	NgsaAddRows(myres);		// NGSA (#2295): the rows, filtered by the Filter box and Hide sleeping
+	colcount = numfields;	// the heading array is freed below with this count
+	(void)myrow; (void)rowcount; (void)myrowstr;
 
 	/// if still the row count is zero then disable the delete key & Edit key
 	if(m_valtype ==  PROCESSLIST)
@@ -710,9 +724,11 @@ CShowValue::FillData()
 		ShowMySQLError(m_hwnddlg, m_tunnel, m_mysql, query.GetString());
 		return wyFalse;
 	}
+	// NGSA (#2295): keep the result for refills (filter box, hide sleeping); freed on the next fill or in the destructor
+	if(m_ngsares)
+		m_tunnel->mysql_free_result(m_ngsares);
+	m_ngsares = myres;
 	CreateColumns(myres);
-	m_tunnel->mysql_free_result(myres);
-
 	return wyTrue;
 }
 
@@ -888,7 +904,7 @@ CSchema::SchemaDialogProc(HWND hwnd, wyUInt32 message, WPARAM wparam, LPARAM lpa
 		break;
 
 	case WM_HELP:
-		ShowHelp("http://sqlyogkb.webyog.com/article/119-database-schema");
+		ShowHelp("help:database-schema");
 		return wyTrue;
 
 	case UM_CREATESCHEMA:
@@ -1696,7 +1712,7 @@ CCopyTable::CopyTableDialogProc(HWND hwnd, wyUInt32 message, WPARAM wparam, LPAR
 		break;
 
 	case WM_HELP:
-		ShowHelp("http://sqlyogkb.webyog.com/article/105-copy-table-to-different-host");
+		ShowHelp("help:copy-table-to-different-host");
 		return wyTrue;
 
 	case WM_COMMAND:
@@ -1947,7 +1963,7 @@ CCopyTable::DoCopy()
 
 	if(isssel == wyFalse)
 	{
-		yog_message(m_hwnd, _(L"Please select atleast one field"), 
+		yog_message(m_hwnd, _(L"Please select at least one column"), 
             pGlobals->m_appname.GetAsWideChar(), MB_OK | MB_ICONINFORMATION);
 		return wyFalse;
 	}
@@ -2926,13 +2942,13 @@ CCopyTable::OnPaint(HWND hwnd)
 	RECT temp;
 	
 	VERIFY(hdc = BeginPaint(hwnd, &ps));
-	DoubleBuffer::EraseBackground(hwnd, hdc, NULL, GetSysColor(COLOR_3DFACE));
+	DoubleBuffer::EraseBackground(hwnd, hdc, NULL, NgsaDark::Panel(GetSysColor(COLOR_3DFACE)));
 	EndPaint(hwnd, &ps);
 
 	//To paint the resize grip    
 	VERIFY(hdc = BeginPaint(hwndstat, &ps));
     GetClientRect(hwndstat, &temp);
-    DrawFrameControl(hdc, &temp, DFC_SCROLL, DFCS_SCROLLSIZEGRIP);
+    NgsaDark::FrameControl(hdc, &temp, DFC_SCROLL, DFCS_SCROLLSIZEGRIP, NgsaDark::IsOn());
     EndPaint(hwnd, &ps);
 }
 
@@ -2994,7 +3010,7 @@ TableDiag::TableDlgProc(HWND phwnd, wyUInt32 pmessage, WPARAM pwparam, LPARAM pl
 		break;
 
 	case WM_HELP:
-		ShowHelp("http://sqlyogkb.webyog.com/article/109-table-diagnostics");
+		ShowHelp("help:table-diagnostics");
 		return wyTrue;		
 
 	case WM_COMMAND:
@@ -3387,7 +3403,8 @@ TableDiag::DiagAnalyze()
 	/* whether to issue write to bin log option */
 	binlog = SendMessage(GetDlgItem(m_hwnd, IDC_DIAG_ANALYZELOCAL), BM_GETCHECK, 0, 0);
 	
-	query.Sprintf("analyze %s table ", (BST_CHECKED==binlog)?("LOCAL"):("NO_WRITE_TO_BINLOG"));
+	// bonSQL: LOCAL and NO_WRITE_TO_BINLOG mean the same thing, so the box used to make no difference; unticked now sends neither
+	query.Sprintf("analyze %stable ", (BST_CHECKED==binlog)?("LOCAL "):(""));
 	
 	GetDBName(dbname);
 	
@@ -3697,7 +3714,7 @@ CShowInfo::DlgProc(HWND hwnd, wyUInt32 message, WPARAM wParam, LPARAM lparam)
 	
 	case WM_HELP:
 		if(csi->m_res)
-			ShowHelp("http://sqlyogkb.webyog.com/article/132-environment-variables");
+			ShowHelp("help:environment-variables");
 		return wyTrue;
 
 	case WM_COMMAND:
@@ -3953,7 +3970,7 @@ CShowWarning::WndProc(HWND hwnd, wyUInt32 message, WPARAM wparam, LPARAM lparam)
 		break;
 
 	case WM_HELP:
-		ShowHelp("http://sqlyogkb.webyog.com/article/100-import-csv-data-using-load-local");
+		ShowHelp("help:import-csv-data-using-load-local");
 		return wyTrue;
 
 	case WM_COMMAND:
@@ -4122,8 +4139,31 @@ CShowValue::ShowValueDialogProcCommand(CShowValue *pcshowvalue, HWND hwnd, WPARA
 		pcshowvalue->KillProcess();
 		break;
 
+	case IDC_NGSA_KILLQUERY:		// NGSA (B2)
+		pcshowvalue->m_prow = CustomGrid_GetCurSelRow(pcshowvalue->m_hwndgrid);
+		if(pcshowvalue->m_prow != -1)
+			pcshowvalue->NgsaKillQuery();
+		else
+			yog_message(hwnd, _(L"Please select a process from the list"), _(L"Cannot kill query..."), MB_OK | MB_ICONERROR);
+		break;
+
 	case IDC_REFRESH:
 		pcshowvalue->OnRefreshClick();
+		break;
+
+	case IDC_NGSA_PLFILTER:		// NGSA (#2295)
+		if(HIWORD(wparam) == EN_CHANGE)
+		{
+			wyWChar text[256] = {0};
+			GetDlgItemText(hwnd, IDC_NGSA_PLFILTER, text, 255);
+			pcshowvalue->m_ngsafilter.SetAs(text);
+			pcshowvalue->NgsaRefill();
+		}
+		break;
+
+	case IDC_NGSA_PLHIDESLEEP:
+		pcshowvalue->m_ngsahidesleep = (IsDlgButtonChecked(hwnd, IDC_NGSA_PLHIDESLEEP) == BST_CHECKED) ? wyTrue : wyFalse;
+		pcshowvalue->NgsaRefill();
 		break;
 	}
 	return wyFalse;
@@ -4464,13 +4504,13 @@ TableDiag::OnPaint(HWND hwnd)
 	RECT temp;
 	
 	VERIFY(hdc = BeginPaint(hwnd, &ps));
-	DoubleBuffer::EraseBackground(hwnd, hdc, NULL, GetSysColor(COLOR_3DFACE));
+	DoubleBuffer::EraseBackground(hwnd, hdc, NULL, NgsaDark::Panel(GetSysColor(COLOR_3DFACE)));
 	EndPaint(hwnd, &ps);
 
 	//To paint the resize grip
 	VERIFY(hdc = BeginPaint(hwndstat, &ps));
     GetClientRect(hwndstat, &temp);
-    DrawFrameControl(hdc, &temp, DFC_SCROLL, DFCS_SCROLLSIZEGRIP);
+    NgsaDark::FrameControl(hdc, &temp, DFC_SCROLL, DFCS_SCROLLSIZEGRIP, NgsaDark::IsOn());
     EndPaint(hwnd, &ps);
 }
 
@@ -4520,7 +4560,7 @@ EmptyDB::EmptyDBDialogProc(HWND hwnd, wyUInt32 message, WPARAM wparam, LPARAM lp
 		return wyTrue;
 		
 	case WM_HELP:
-		ShowHelp("http://sqlyogkb.webyog.com/article/118-empty-database");
+		ShowHelp("help:empty-database");
 		return wyTrue;
 
 	case WM_INITDLGVALUES:
@@ -4630,10 +4670,10 @@ void
 EmptyDB::FillList()
 {
     wyInt32     i = 0,ret;
-    wyWChar*    objects[] = {TXT_TABLES, TXT_VIEWS, TXT_PROCEDURES, TXT_FUNCTIONS, TXT_TRIGGERS, TXT_EVENTS};
+    wyWChar*    objects[] = {TXT_TABLES, TXT_VIEWS, TXT_PROCEDURES, TXT_FUNCTIONS, TXT_TRIGGERS, TXT_EVENTS, TXT_SEQUENCES};	// NGSA
     LVITEM	    lvi;
 
-    for(i = 0; i <= 5; i++)
+    for(i = 0; i <= 6; i++)
     {
 		//if < mysql 5.0 there is no views ,Procedures functions and triggers */
 		//i=0 means Tables. In the case of table no need for checking the mysql version
@@ -4642,6 +4682,10 @@ EmptyDB::FillList()
 	
 		//if < mysql 5.1.6 there is no events
         if(i == 5 && (IsMySQL516(m_tunnel, m_mysql) == wyFalse))
+            break;
+
+		// NGSA: sequences are MariaDB 10.3+
+        if(i == 6 && NgsaCapsCompute::HasSequences(m_mysql) == wyFalse)
             break;
 
         lvi.mask		=	LVIF_TEXT | LVIF_IMAGE ;
@@ -4708,7 +4752,7 @@ EmptyDB::EmptyDatabase()
 	
 	if(IsAnyItemSelected() == wyFalse)
 	{
-		yog_message(m_hwnddlg, _(L"Please select atleast one object"), 
+		yog_message(m_hwnddlg, _(L"Please select at least one object"), 
             pGlobals->m_appname.GetAsWideChar(), MB_OK | MB_ICONINFORMATION);
 		return wyFalse;
 	}	
@@ -4775,6 +4819,9 @@ EmptyDB::EmptyDatabase()
 			else if(count == 5)
 			/*Drop all Events*/
 				nodeleteobj +=	wnd->m_pcqueryobject->DropEvents(wnd->m_hwnd, m_tunnel, m_mysql, m_db.GetString());
+			else if(count == 6)	// NGSA
+			/*Drop all Sequences*/
+				nodeleteobj +=	wnd->m_pcqueryobject->DropSequences(wnd->m_hwnd, m_tunnel, m_mysql, m_db.GetString());
 		}
 	}
 
@@ -5695,7 +5742,7 @@ ConnColorDlg::ConnColorDlgProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lp
 		break;
 
 	case WM_HELP:
-		ShowHelp("http://sqlyogkb.webyog.com/article/33-advanced-connection-settings");
+		ShowHelp("help:advanced-connection-settings");
 		return 1;
 
 		
@@ -5930,4 +5977,104 @@ RenameTabDlg::OnWmColorCommand(HWND hwnd, WPARAM wparam, LPARAM lparam)
 	
 	
 	return;
+}
+
+// NGSA (#2295): add the rows of a result to the grid, skipping the ones the Filter box or Hide sleeping
+// exclude. The filter is a case-insensitive substring over every column; Hide sleeping drops rows whose
+// Command column is Sleep (processlist only).
+void
+CShowValue::NgsaAddRows(MYSQL_RES* myres)
+{
+	MYSQL_ROW	myrow;
+	MYSQL_FIELD*	fields;
+	wyInt32		numfields, col, rowcount = 0, cmdcol = -1;
+	wyString	cell, needle, hay;
+	wyBool		ismysql41 = ((GetActiveWin())->m_ismysql41);
+
+	if(!myres)
+		return;
+	numfields = myres->field_count;
+	fields = m_tunnel->mysql_fetch_fields(myres);
+	for(col = 0; fields && col < numfields; col++)
+		if(fields[col].name && stricmp(fields[col].name, "Command") == 0)
+			cmdcol = col;
+	needle.SetAs(m_ngsafilter);
+	needle.ToLower();
+	m_tunnel->mysql_data_seek(myres, 0);
+	while(myrow = m_tunnel->mysql_fetch_row(myres))
+	{
+		if(m_ngsahidesleep == wyTrue && m_valtype == PROCESSLIST && cmdcol >= 0 && myrow[cmdcol] && stricmp(myrow[cmdcol], "Sleep") == 0)
+			continue;
+		if(needle.GetLength())
+		{
+			wyBool hit = wyFalse;
+			for(col = 0; col < numfields && hit == wyFalse; col++)
+			{
+				if(!myrow[col])
+					continue;
+				hay.SetAs(myrow[col]);
+				hay.ToLower();
+				if(hay.Find(needle.GetString(), 0) != -1)
+					hit = wyTrue;
+			}
+			if(hit == wyFalse)
+				continue;
+		}
+		VERIFY(CustomGrid_InsertRow(m_hwndgrid) != -1);
+		for(col = 0; col < numfields; col++)
+		{
+			if(myrow[col])
+			{
+				cell.SetAs(myrow[col], ismysql41);
+				CustomGrid_SetText(m_hwndgrid, rowcount, col, (LPSTR)(cell.GetString() != NULL ? cell.GetString() : STRING_NULL));
+			}
+		}
+		rowcount++;
+	}
+}
+
+// NGSA (#2295): rebuild the rows from the retained result after a filter change
+void
+CShowValue::NgsaRefill()
+{
+	if(!m_ngsares || !m_hwndgrid)
+		return;
+	CustomGrid_DeleteAllRow(m_hwndgrid);
+	NgsaAddRows(m_ngsares);
+	if(m_valtype == PROCESSLIST)
+		EnableWindow(GetDlgItem(m_hwnddlg, IDC_KILL), CustomGrid_GetRowCount(m_hwndgrid) ? TRUE : FALSE);
+	InvalidateRect(m_hwndgrid, NULL, TRUE);
+}
+
+// NGSA (B2): KILL QUERY <id> stops the statement the selected thread is running and keeps its connection; Kill
+// Process (KILL <id>) drops the connection, after which SQLyog's reconnect runs the statement again (measured
+// 10/10/2026 with two SSH+SSL windows: the killed window re-tunnelled and re-ran SELECT SLEEP(30)).
+wyBool
+CShowValue::NgsaKillQuery()
+{
+	MYSQL_RES*	res;
+	wyWChar		process[512];
+	wyString	query, processstr;
+
+	if(m_prow == -1)
+		return wyFalse;
+	CustomGrid_GetItemText(m_hwndgrid, m_prow, 0, process);
+	processstr.SetAs(process);
+	if(_wtoi(process) == (wyInt32)(*m_mysql)->thread_id)
+	{
+		yog_message(m_hwnddlg, _(L"Cannot kill the query. \nIt is the current connections thread id"), pGlobals->m_appname.GetAsWideChar(), MB_ICONERROR | MB_OK);
+		return wyFalse;
+	}
+	query.Sprintf("kill query %s", processstr.GetString());
+	res = ExecuteAndGetResult(GetActiveWin(), m_tunnel, m_mysql, query);
+	if(!res && m_tunnel->mysql_affected_rows(*m_mysql) == -1)
+	{
+		ShowMySQLError(m_hwndparent, m_tunnel, m_mysql, query.GetString());
+		return wyFalse;
+	}
+	if(res)
+		m_tunnel->mysql_free_result(res);
+	OnRefreshClick();		/* the thread stays, its Info column changes */
+	m_prow = -1;
+	return wyTrue;
 }

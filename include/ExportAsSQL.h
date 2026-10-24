@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc.
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -162,6 +163,7 @@ typedef enum __export_state
 	FUNCTIONSTART,	
 	TRIGGERSTART,
 	EVENTSTART,
+	SEQUENCESTART,	// NGSA
 	ENDSTART,
     TABLEEXPORT,
     TABLEROWS,
@@ -456,6 +458,8 @@ private:
 	List                    m_seltriggers;
 	/* Linked list maintaing for storing selected events when  dumping*/
 	List                    m_selevents;
+	/* NGSA: selected sequences */
+	List                    m_selsequences;
 
 
 	/// HANDLE to export file
@@ -521,6 +525,7 @@ private:
 	wyBool			m_alltriggers;
 	/// Flag to dump all triggers
 	wyBool			m_allEvents;
+	wyBool			m_allsequences;	// NGSA
 	wyBool          m_iscommit;
 
 	/// Enables or disables create views option
@@ -743,6 +748,7 @@ public:
 	*/
 
 	void			SetAllEvents			(wyBool flag);	
+	void			SetAllSequences			(wyBool flag);	// NGSA
 
 
 	/// Sets flag for creation of views
@@ -809,6 +815,7 @@ public:
 	@returns void
 	*/
 	void            SelectedEvents(SelectedObjects *names);
+	void            SelectedSequences(SelectedObjects *names);	// NGSA
 
 	/// Sets to dump all databases
 	/**
@@ -1379,6 +1386,11 @@ private:
 	@returns wyTrue on success else wyFalse
 	*/
 	wyBool      DumpEvents   	(wyString * buffer, const wyChar * db);
+
+	/// NGSA: MariaDB sequences (CREATE SEQUENCE + DO SETVAL, as mariadb-dump does)
+	wyBool      DumpSequences	(wyString * buffer, const wyChar * db);
+	wyBool      DumpSequence 	(wyString * buffer, const wyChar * db, const wyChar * sequence, wyInt32 * fileerr = NULL);
+	wyBool      DumpSelectedSequences(wyString * buffer);
 
 	/// Dump triggers
 	/**

@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc.
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -28,11 +29,20 @@
 #define         OBFONT           "OBFont"
 #define			BLOBFONT		 "BlobFont"
 #define			TIMEOUT			 "TimeOut"
+#ifdef COMMUNITY
+// bonSQL: no Power Tools or SQL Formatter pages (Ultimate-only, docs/ngsa/UPSELLS.md); -1 never matches a page
+#define         GENERALPREF_PAGE    0
+#define         AC_PAGE             -1
+#define         FONT_PAGE           1
+#define			FORMATTER_PAGE		-1
+#define			OTHERS_PAGE         2
+#else
 #define         GENERALPREF_PAGE    0
 #define         AC_PAGE             1
 #define         FONT_PAGE           2
 #define			FORMATTER_PAGE		3
 #define			OTHERS_PAGE         4
+#endif
 
 
 

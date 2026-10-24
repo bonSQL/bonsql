@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc.
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -50,6 +51,7 @@ class tabdetailelem;
 #define		TXT_VIEWS			_(L"Views")
 #define		TXT_TABLES			_(L"Tables")
 #define		TXT_EVENTS			_(L"Events")
+#define		TXT_SEQUENCES		_(L"Sequences")	// NGSA
 #define		TXT_TRIGGERS		_(L"Triggers")
 
 //Colors for color combo box
@@ -809,6 +811,9 @@ wyBool		InsertViews(HWND hwnd, HTREEITEM hDatabase);
 */
 wyBool		InsertEvents(HWND hwnd, HTREEITEM hDatabase );
 
+/// NGSA: inserts the Sequences folder (MariaDB 10.3+)
+wyBool		InsertSequences(HWND hwnd, HTREEITEM hDatabase );
+
 
 /// Function to add all the triggers.
 /**
@@ -897,6 +902,9 @@ wyBool		ExpandViews(HWND hwnd, Tunnel *tunnel, PMYSQL mysql, HTREEITEM htable, w
 @param isrefresh : Flag sets wyTrue once the node(parent) is refreshing, this for avoiding flicker on refresh
 */
 wyBool		ExpandEvents(HWND hwnd, Tunnel *tunnel, PMYSQL mysql, HTREEITEM htable, wyWChar *dbname, wyBool checkstate, wyBool isrefresh);
+
+/// NGSA: populates the Sequences folder from SHOW FULL TABLES ... WHERE Table_type = 'SEQUENCE'
+wyBool		ExpandSequences(HWND hwnd, Tunnel *tunnel, PMYSQL mysql, HTREEITEM htable, wyWChar *dbname, wyBool checkstate, wyBool isrefresh);
 
 /// Expands the trigger view.
 /**
@@ -1312,7 +1320,7 @@ wyBool		IsQuerySELECT(const wyChar* query);
 */
 wyBool      CreateInitFileInApplData();
 
-/// This function creates the sqlyog.ini file in the current directory, if it not exists
+/// This function creates the bonsql.ini file in the current directory, if it not exists
 /** 
 @returns wyTrue if SUCCESS, otherwise wyFalse
 */

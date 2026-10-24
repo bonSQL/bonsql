@@ -1348,7 +1348,7 @@ TableMakerBase::SetFont()
 	height = GetDeviceCaps( hdc, LOGPIXELSY );
 
 	// Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	
 	dirstr.SetAs(directory);
 	// fill with default data.

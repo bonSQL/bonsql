@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -90,6 +91,9 @@ EditorProcs::CreateAdvEdit(MDIWindow *wnd, HWND hwnd, HTREEITEM hitem, wyString 
 	case NEVENTITEM:
 		m_nodeimage = NEVENTS;
 		break;
+	case NSEQUENCEITEM:	// NGSA
+		m_nodeimage = NSEQUENCES;
+		break;
 	case NSPITEM:
 		m_nodeimage = NSP;
 		break;
@@ -102,6 +106,7 @@ EditorProcs::CreateAdvEdit(MDIWindow *wnd, HWND hwnd, HTREEITEM hitem, wyString 
 	case NFOLDER:
 		break;
 	case NEVENTS:
+	case NSEQUENCES:
 	case NVIEWS:
 	case NSP:
 	case NFUNC:
@@ -121,7 +126,7 @@ EditorProcs::CreateAdvEdit(MDIWindow *wnd, HWND hwnd, HTREEITEM hitem, wyString 
   as it gets one.
 */
 wyBool
-EditorProcs::ExecuteAllQuery(wyInt32 * stop)
+EditorProcs::ExecuteAllQuery(wyInt32 * stop, wyBool isedit)
 {
 	wyInt32          curpos, curline;
 	wyString		 query;
@@ -192,7 +197,7 @@ EditorProcs::ExecuteCurrentQuery(wyInt32 * stop, wyBool isexecute)
    Logic same as above two functions.
  */
 wyBool
-EditorProcs::ExecuteSelQuery(wyInt32 * stop)
+EditorProcs::ExecuteSelQuery(wyInt32 * stop, wyBool isedit)
 {
     return ExecuteAllQuery(stop);
 }
@@ -247,7 +252,7 @@ EditorProcs::HandleQueryExecFinish(wyInt32 * stop, WPARAM wparam)
 
     EndExecute(wnd, hwnd, ALL);
 
-	SendMessage(pGlobals->m_pcmainwin->m_hwndtool, TB_SETSTATE, IDM_EXECUTE, TBSTATE_INDETERMINATE);
+	SendMessage(pGlobals->m_pcmainwin->m_hwndtool, TB_SETSTATE, IDM_EXECUTE, TBSTATE_ENABLED);	// NGSA (#2144)
 	SendMessage(pGlobals->m_pcmainwin->m_hwndtool, TB_SETSTATE, ACCEL_QUERYUPDATE, TBSTATE_INDETERMINATE);
 	/* set the focus to the correct control */
 	if(IsEditorFocus())

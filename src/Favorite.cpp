@@ -53,7 +53,7 @@ FavoriteBase::CreateFavoriteMenu(HMENU hmenu)
 	m_menuid = FAVORITEMENUID_START;
 	
 	// to get application data path
-	if(pGlobals->m_configdirpath.GetLength() || SUCCEEDED(::SHGetFolderPath (NULL, CSIDL_APPDATA, NULL, 0, foldpath)))
+	if(pGlobals->m_configdirpath.GetLength() || SUCCEEDED(NgsaGetAppData(foldpath)))
 	{
 		if(pGlobals->m_configdirpath.GetLength())
 		{
@@ -66,7 +66,7 @@ FavoriteBase::CreateFavoriteMenu(HMENU hmenu)
 		{
 			folderpathstr.SetAs(foldpath);
 			path.SetAs(folderpathstr.GetString());
-			path.Add("\\SQLyog\\Favorites\\");
+			path.Add("\\" BRAND_CFG_DIR_A "\\Favorites\\");
 		}
 
 		ret = AddMenu(hmenu, path);
@@ -302,10 +302,10 @@ FavoriteBase::SelItemPath(HWND htree, HTREEITEM  item, wyString &fullpath, wyBoo
 	// application data path //
 	if(!pGlobals->m_configdirpath.GetLength())
 	{
-		if(!SUCCEEDED(::SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, foldpath)))
+		if(!SUCCEEDED(NgsaGetAppData(foldpath)))
 			return OnError(_("Error in favorites"));
 
-		wcscat(foldpath ,L"\\SQLyog");
+		wcscat(foldpath ,L"\\" BRAND_CFG_DIR_W);
 	}
 
 	else

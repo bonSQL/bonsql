@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -33,6 +34,9 @@
 #include "Global.h"
 #include "GUIHelper.h"
 #include "ClientMySQLWrapper.h"
+#ifdef NGSA_SSH_SSL
+#include "ngsa/NgsaConnectionExt.h"   // NGSA: shared TLS rule for every connection
+#endif
 
 #define  FKCHKIMPORT_DEFAULT 1
 
@@ -207,11 +211,11 @@ ImportFromSQL::OnError(const wyChar * errmsg)
 		GetTimeString(timeString, ":");
 		
 		if(m_tunnel->IsTunnel())
-			fprintf(err, _("Query:\n%s\n\nError occured at:%s\nError Code: %d - %s\r\n\r\n"), 
+			fprintf(err, _("Query:\n%s\n\nError occurred at: %s\nError Code: %d - %s\r\n\r\n"), 
                                                     errmsg, timeString.GetString(), 
                                                     m_errno, m_error);
 		else
-			fprintf(err, _("Query:\n%s\n\nError occured at:%s\nLine no.:%d\nError Code: %d - %s\r\n\r\n"), 
+			fprintf(err, _("Query:\n%s\n\nError occurred at: %s\nLine no.:%d\nError Code: %d - %s\r\n\r\n"), 
                                                     errmsg, timeString.GetString(), 
                                                     m_line_number, m_errno, m_error);
 
@@ -273,6 +277,10 @@ ImportFromSQL::MySQLConnect()
                 wnd->m_conninfo.m_cipher.GetLength() ? wnd->m_conninfo.m_cipher.GetString() : NULL);
         }
     }
+
+#ifdef NGSA_SSH_SSL
+	NgsaConn::ApplyTlsOptions(&wnd->m_conninfo, m_tunnel, m_mysql);	// NGSA: same TLS rule as the main connection
+#endif
 
 	if(!m_tunnel->mysql_real_connect(m_mysql, m_host.GetString(), m_user.GetString(), m_pass.GetString(), NULL
                                          , m_port, NULL, CLIENT_MULTI_RESULTS, 
@@ -339,7 +347,7 @@ ImportFromSQL::StartImport(wyBool * stopquery, MDIWindow *wnd)
 	//As per preference, Set FK Check value for http during import
 	if(m_tunnel->IsTunnel() == wyTrue)
 	{
-		if(SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport) == wyTrue)
+		if(SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport) == wyTrue)
 		{	
 			dirstr.SetAs(directory);
 			fkcheck = wyIni::IniGetInt(GENERALPREFA, "FKcheckImport", FKCHKIMPORT_DEFAULT, dirstr.GetString());		

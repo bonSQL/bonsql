@@ -171,7 +171,7 @@ CFavoriteMenu::CreateFavoriteFolder()
     wyString fullpath;
 		
 	// get application data path //
-	if(pGlobals->m_configdirpath.GetLength() || SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, path)))
+	if(pGlobals->m_configdirpath.GetLength() || SUCCEEDED(NgsaGetAppData(path)))
 	{
 		if(pGlobals->m_configdirpath.GetLength())
 			fullpath.SetAs(pGlobals->m_configdirpath);
@@ -179,7 +179,7 @@ CFavoriteMenu::CreateFavoriteFolder()
 		else
 		{
 			fullpath.SetAs(path);
-			fullpath.Add("\\SQLyog");
+			fullpath.Add("\\" BRAND_CFG_DIR_A);
 		}
 
 		// Create SQLyog folder 

@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -19,11 +20,13 @@
 
 #include "Global.h"
 #include "BlobMgmt.h"
+#include "ngsa/NgsaDark.h"   // NGSA (#2158)
 #include "MDIWindow.h"
 #include "PreferenceBase.h"
 #include "CommonHelper.h"
 #include "GUIHelper.h"
 #include "EditorFont.h"
+#include "ngsa/NgsaFieldSyntax.h"   // NGSA (M12)
 
 #include <ole2.h>
 #include <mstask.h>
@@ -42,7 +45,7 @@ extern PGLOBALS	pGlobals;
 #define zero 0
 
 #define MAXHT 350
-#define MAXWD 660  
+#define MAXWD 850	// NGSA (M12/M14): room for the Syntax combo and the Format button
 #define	FIND_STR_LEN		256
 
 BlobMgmt::BlobMgmt()
@@ -63,6 +66,28 @@ BlobMgmt::~BlobMgmt()
 		DeleteObject(m_hfont);
 }
 
+// NGSA (#2261): the viewer is modal, so its message loop never routes keys to the modeless Find/Replace
+// box the way WinMain's loop does (IsDialogMessage on m_finddlg): Enter, Alt+F and Esc were dead there.
+// A thread-local WH_GETMESSAGE hook does that routing while the viewer is open.
+static HHOOK s_ngsafindhook = NULL;
+
+static LRESULT CALLBACK
+NgsaViewerFindHook(int code, WPARAM wParam, LPARAM lParam)
+{
+	if(code == HC_ACTION && wParam == PM_REMOVE && lParam)
+	{
+		MSG*	msg = (MSG*)lParam;
+		HWND	finddlg = pGlobals->m_pcmainwin ? pGlobals->m_pcmainwin->m_finddlg : NULL;
+
+		if(finddlg && IsWindow(finddlg) && msg->message >= WM_KEYFIRST && msg->message <= WM_KEYLAST &&
+		   (msg->hwnd == finddlg || IsChild(finddlg, msg->hwnd)) && IsDialogMessage(finddlg, msg))
+		{
+			msg->message = WM_NULL;
+		}
+	}
+	return CallNextHookEx(s_ngsafindhook, code, wParam, lParam);
+}
+
 wyBool 
 BlobMgmt::Create(HWND hwndParent, PINSERTUPDATEBLOB pib, wyBool edit)
 {
@@ -79,6 +104,9 @@ BlobMgmt::Create(HWND hwndParent, PINSERTUPDATEBLOB pib, wyBool edit)
 	m_hfont         =	NULL;
 	m_isblob		=   pib->m_isblob;
 	m_isJson		=	pib->m_isJson;
+	m_ngsasyntax	=	-1;	// NGSA (M12)
+	m_ngsacolkey.SetAs(pib->m_ngsacolkey);
+	m_hwndngsasyntax = m_hwndngsasyntaxtext = NULL;
 	donot_close_window = wyTrue;
 
 	//Post 8.01F
@@ -87,8 +115,14 @@ BlobMgmt::Create(HWND hwndParent, PINSERTUPDATEBLOB pib, wyBool edit)
     if(wnd)
         wnd->m_lastfocus = NULL;
 
+	s_ngsafindhook = SetWindowsHookEx(WH_GETMESSAGE, NgsaViewerFindHook, NULL, GetCurrentThreadId());	// NGSA (#2261)
 	ret = DialogBoxParam(pGlobals->m_hinstance, MAKEINTRESOURCE(IDD_INSERTUPDATEBLOB), hwndParent, 
                                                 BlobMgmt::DlgProc,(LPARAM)this);
+	if(s_ngsafindhook)	// NGSA (#2261)
+	{
+		UnhookWindowsHookEx(s_ngsafindhook);
+		s_ngsafindhook = NULL;
+	}
 	if(ret)
 		return wyTrue;
 
@@ -174,6 +208,11 @@ BlobMgmt::InitDlgVales()
 	VERIFY(m_hwndimage = GetDlgItem(m_hwnddlg, IDC_IMAGE));
 	VERIFY(m_hwndnull  = GetDlgItem(m_hwnddlg, IDC_SETNULL));
 	VERIFY(m_hwndcombo = GetDlgItem(m_hwnddlg, IDC_COMBO));
+	VERIFY(m_hwndngsasyntax = GetDlgItem(m_hwnddlg, IDC_NGSA_SYNTAX));	// NGSA (M12)
+	VERIFY(m_hwndngsasyntaxtext = GetDlgItem(m_hwnddlg, IDC_NGSA_SYNTAXTEXT));
+	VERIFY(m_hwndngsaformat = GetDlgItem(m_hwnddlg, IDC_NGSA_FORMAT));	// NGSA (M14)
+	for(wyInt32 ngsai = 0; ngsai < NGSA_SYNTAX_COUNT; ngsai++)
+		SendMessage(m_hwndngsasyntax, CB_ADDSTRING, 0, (LPARAM)NgsaFieldSyntax::Name(ngsai));
     
 	InsertTab(m_hwndtab, 0, _(L"Text"));
   
@@ -293,6 +332,15 @@ BlobMgmt::OnDlgProcWmCommand(WPARAM wparam, LPARAM lparam)
 				DisableAll(wyFalse);
 		}
 	break;	
+	case IDC_NGSA_SYNTAX:	// NGSA (M12)
+		if(HIWORD(wparam) == CBN_SELCHANGE)
+			NgsaApplySyntax((wyInt32)SendMessage(m_hwndngsasyntax, CB_GETCURSEL, 0, 0), wyTrue);
+		break;
+
+	case IDC_NGSA_FORMAT:	// NGSA (M14)
+		NgsaFormat();
+		break;
+
 	case IDC_COMBO:
 		{
 			if((HIWORD(wparam))== CBN_SELENDOK)
@@ -515,7 +563,7 @@ wyBool
 BlobMgmt::DisableAll(wyBool disable)
 {
 		
-	wyInt32 ids[] = { IDC_MAINTAB, IDC_IMPORT, IDC_TEXT, IDC_IMAGE, IDC_TEXT };
+	wyInt32 ids[] = { IDC_MAINTAB, IDC_IMPORT, IDC_TEXT, IDC_IMAGE, IDC_TEXT, IDC_NGSA_FORMAT };	// NGSA (M14): Format follows the text box
 	wyInt32 size = sizeof(ids)/ sizeof(ids[0]);
 	wyInt32 i;
 
@@ -565,6 +613,7 @@ BlobMgmt::ShowData(wyBool setsave)
 			SendMessage(m_hwndedit, SCI_SETSAVEPOINT, FALSE, 0);
 
 		ShowText();
+		NgsaInitSyntax();	// NGSA (M12)
 		SetFocus(m_hwndedit);
 
 		TabCtrl_SetCurSel(m_hwndtab, 0);
@@ -700,6 +749,8 @@ BlobMgmt::ShowBinary()
 {
 	ShowWindow(m_hwndedit, FALSE);
 	ShowWindow(m_hwndcombo, FALSE);
+	ShowWindow(m_hwndngsasyntax, FALSE);	// NGSA (M12)
+	ShowWindow(m_hwndngsasyntaxtext, FALSE);
 	ShowWindow(m_hwndimage, TRUE);
 	return wyTrue;
 }
@@ -708,6 +759,8 @@ wyBool
 BlobMgmt::ShowText()
 {	
 	ShowWindow(m_hwndedit, TRUE);
+	ShowWindow(m_hwndngsasyntax, TRUE);	// NGSA (M12)
+	ShowWindow(m_hwndngsasyntaxtext, TRUE);
 	
 	if(m_isblob == wyTrue)
 		ShowWindow(m_hwndcombo, TRUE);
@@ -716,6 +769,68 @@ BlobMgmt::ShowText()
 
     ShowWindow(m_hwndimage, FALSE);
 	return wyFalse;
+}
+
+// NGSA (M12): remembered choice for the column, else detected from the column type and the text
+void
+BlobMgmt::NgsaInitSyntax()
+{
+	wyInt32 syntax = m_ngsasyntax;
+
+	if(syntax < 0)
+		syntax = NgsaFieldSyntax::Load(m_ngsacolkey.GetString());
+	if(syntax < 0)
+		syntax = NgsaFieldSyntax::Detect(m_blobdata.GetString(), m_blobdata.GetLength(), m_isJson);
+	NgsaApplySyntax(syntax, wyFalse);
+}
+
+void
+BlobMgmt::NgsaApplySyntax(wyInt32 syntax, wyBool remember)
+{
+	if(syntax < 0 || syntax >= NGSA_SYNTAX_COUNT)
+		syntax = NGSA_SYNTAX_NONE;
+	m_ngsasyntax = syntax;
+	SendMessage(m_hwndngsasyntax, CB_SETCURSEL, syntax, 0);
+	NgsaFieldSyntax::Apply(m_hwndedit, syntax);
+	if(m_hwndngsaformat)	// NGSA (M14): only JSON and XML can be formatted
+		EnableWindow(m_hwndngsaformat, NgsaFieldSyntax::CanFormat(syntax) && IsWindowEnabled(m_hwndedit) ? TRUE : FALSE);
+	if(remember)
+		NgsaFieldSyntax::Save(m_ngsacolkey.GetString(), syntax);
+}
+
+// NGSA (M14): pretty-print the viewer text; a read-only viewer is formatted for display only
+void
+BlobMgmt::NgsaFormat()
+{
+	wyString	out, error, caption;
+	wyInt32		len = (wyInt32)SendMessage(m_hwndedit, SCI_GETTEXTLENGTH, 0, 0);
+	wyChar*		text = AllocateBuff(len + 1);
+	wyBool		readonly = SendMessage(m_hwndedit, SCI_GETREADONLY, 0, 0) ? wyTrue : wyFalse;
+
+	if(!text)
+		return;
+	SendMessage(m_hwndedit, SCI_GETTEXT, len + 1, (LPARAM)text);
+	if(!NgsaFieldSyntax::Format(m_ngsasyntax, text, len, out, error))
+	{
+		free(text);
+		if(error.GetLength())
+		{
+			caption.Sprintf("The text is not valid %s:\n\n%s", m_ngsasyntax == NGSA_SYNTAX_JSON ? "JSON" : "XML", error.GetString());
+			MessageBox(m_hwnddlg, caption.GetAsWideChar(), pGlobals->m_appname.GetAsWideChar(), MB_OK | MB_ICONINFORMATION);
+		}
+		return;
+	}
+	free(text);
+	if(readonly)
+		SendMessage(m_hwndedit, SCI_SETREADONLY, FALSE, 0);
+	SendMessage(m_hwndedit, SCI_SETTEXT, 0, (LPARAM)out.GetString());
+	if(readonly)
+		SendMessage(m_hwndedit, SCI_SETREADONLY, TRUE, 0);
+	SendMessage(m_hwndedit, SCI_COLOURISE, 0, -1);
+	ShowBlobSize(out.GetLength());	/* the Size line follows the formatted text */
+	/* editable: stays modified (Ctrl+Z undoes the format, OK saves it); read-only: display only, no 'lose changes' prompt */
+	if(readonly)
+		SendMessage(m_hwndedit, SCI_SETSAVEPOINT, 0, 0);
 }
 
 // The wndproc of the image so that we can get paint.
@@ -848,7 +963,7 @@ BlobMgmt::ShowImage()
 	/* clear the window */
 	PrepareScreen(ps.hdc);
 
-    if(pGlobals->m_configdirpath.GetLength() || SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, (LPWSTR)path)))
+    if(pGlobals->m_configdirpath.GetLength() || SUCCEEDED(NgsaGetAppData((LPWSTR)path)))
     {
 		if(pGlobals->m_configdirpath.GetLength())
 		{
@@ -860,7 +975,7 @@ BlobMgmt::ShowImage()
 		else
 		{
 			wcscat(path, L"\\");
-			wcscat(path, L"SQLyog");
+			wcscat(path, BRAND_CFG_DIR_W);
 		}
         
         VERIFY(GetTempFileName(path, L"img", 0, tempfilename));
@@ -1308,6 +1423,24 @@ BlobMgmt::Resize(LPARAM lParam)
 	MoveWindow(hwndchk, rctopt.left - rcttmp.right -  WIDTHBETBUTTON, rctopt.top, 
 		rcttmp.right, rctopt.bottom - rctopt.top, FALSE);
 
+	// NGSA (M12): Syntax combo and label to the left of Set Null
+	GetWindowRect(hwndchk, &rctopt);
+	MapWindowPoints(NULL, m_hwnddlg, (LPPOINT)&rctopt, 2);
+	GetClientRect(m_hwndngsasyntax, &rcttmp);
+	MoveWindow(m_hwndngsasyntax, rctopt.left - rcttmp.right - WIDTHBETBUTTON, rctopt.top, rcttmp.right, 200, FALSE);
+	GetWindowRect(m_hwndngsasyntax, &rctopt);
+	MapWindowPoints(NULL, m_hwnddlg, (LPPOINT)&rctopt, 2);
+	GetClientRect(m_hwndngsasyntaxtext, &rcttmp);
+	MoveWindow(m_hwndngsasyntaxtext, rctopt.left - rcttmp.right - 2, rctopt.top + 4, rcttmp.right, rcttmp.bottom, FALSE);
+
+	// NGSA (M14): Format button to the left of the Syntax label, same height as the other buttons
+	GetWindowRect(m_hwndngsasyntaxtext, &rctopt);
+	MapWindowPoints(NULL, m_hwnddlg, (LPPOINT)&rctopt, 2);
+	GetClientRect(m_hwndngsaformat, &rcttmp);
+	GetWindowRect(hwndchk, &rcttmp);
+	MapWindowPoints(NULL, m_hwnddlg, (LPPOINT)&rcttmp, 2);
+	MoveWindow(m_hwndngsaformat, rctopt.left - 54 - WIDTHBETBUTTON, rcttmp.top, 54, rcttmp.bottom - rcttmp.top, FALSE);
+
 	//Cancel
 	GetClientRect(hwndcancel, &rcttmp);
 	MoveWindow(hwndcancel, dlgwd - WIDTHBETBUTTON - rcttmp.right,  dlght- WIDTHBETBUTTON - rcttmp.bottom, 
@@ -1482,9 +1615,9 @@ BlobMgmt::FindOrReplace(HWND hwnd, wyBool uIsReplace)
 
 	// Call the appropriate function.
 	if(uIsReplace && (GetFocus() == hwnd))
-		pGlobals->m_pcmainwin->m_finddlg = ReplaceText(&fr);
+		pGlobals->m_pcmainwin->m_finddlg = (NgsaDark::AcceptDialogs(wyTrue), ReplaceText(&fr));   // NGSA (#2158): the Find dialog joins the dark dialogs
 	else
-		pGlobals->m_pcmainwin->m_finddlg = FindText(&fr);
+		pGlobals->m_pcmainwin->m_finddlg = (NgsaDark::AcceptDialogs(wyTrue), FindText(&fr));   // NGSA (#2158): the Find dialog joins the dark dialogs
 
     //subclass the FindText dialog
     if(!pGlobals->m_pcmainwin->m_findproc)
@@ -1546,8 +1679,14 @@ wyBool
 	VERIFY(wnd = GetActiveWin());
 	if(!wnd)
 		return wyFalse;
-	query.SetAs("SELECT JSON_VALID('");
-	query.AddSprintf(("%s')"),txt.GetString());
+	// NGSA (#2227): the text must be escaped as a SQL literal; a quote or backslash inside the JSON
+	// broke the probe and valid JSON was reported invalid (the UPDATE itself escapes correctly)
+	{
+		wyChar* esc = (wyChar*)calloc((size_t)txt.GetLength() * 2 + 1, 1);
+		wnd->m_tunnel->mysql_real_escape_string(wnd->m_mysql, esc, txt.GetString(), txt.GetLength());
+		query.Sprintf("SELECT JSON_VALID('%s')", esc);
+		free(esc);
+	}
 	myres	=	ExecuteAndGetResult(GetActiveWin(),wnd->m_tunnel,&wnd->m_mysql,query,wyFalse);
 	// wyFalse so that SELECT JSON_VALID is not displayed in the History tab
 	if(!myres && wnd->m_tunnel->mysql_affected_rows(wnd->m_mysql)== -1)

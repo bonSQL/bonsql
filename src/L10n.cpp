@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -291,7 +292,7 @@ L10n::InitDialog(HWND hwnd)
     m_plang = GetL10nLanguages(m_dbname);
     versionnew = GetL10nDBVersion(m_dbname);
     
-    if(SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport) == wyTrue)
+    if(SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport) == wyTrue)
     {
         temp.SetAs(directory);
         wyIni::IniGetString("UserInterface", "Language", "", &langcode, temp.GetString());
@@ -422,7 +423,7 @@ void L10n::Show()
         return;
     }
 
-    if((m_plang + i) && SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport) == wyTrue)
+    if((m_plang + i) && SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport) == wyTrue)
     {
         dirstr.SetAs(directory);
         wyIni::IniWriteString("UserInterface", "Language", (m_plang + i)->m_langcode.GetString(), dirstr.GetString());
@@ -436,7 +437,7 @@ void L10n::Show()
 
             if(str && (m_plang + i)->m_langcode.Compare(str))
             {
-                MessageBox(m_hwndparent, _(L"Please restart SQLyog for the language change to take effect"), pGlobals->m_appname.GetAsWideChar(), MB_OK | MB_ICONINFORMATION);
+                MessageBox(m_hwndparent, _(L"Please restart bonSQL for the language change to take effect"), pGlobals->m_appname.GetAsWideChar(), MB_OK | MB_ICONINFORMATION);
             }
         }
         else

@@ -29,19 +29,11 @@ Ctrl+Shift+L		Make Selection Lowercase
 Ctrl+Shift+C		Comment Selection In SQL Window
 Ctrl+Shift+R		Remove Comment From Selection
 Ctrl+Shift+T		Insert Templates
-Ctrl+Space		List All Tags
-Ctrl+Enter		List Matching Tags
-Ctrl+Shift+Space		List Function and Routine Parameters
 
 Query Execution
 F8			Execute Current Query And Edit Result
 F9			Execute Query (Default)
 Ctrl+F9			Execute All Query(s) (Default)
-
-SQL Formatter
-F12			Format Current Query
-Ctrl+F12			Format Selected Query
-Shift+F12		Format All Queries
 
 Paste SQL Statements
 Alt+Shift+I		Insert Statement
@@ -50,7 +42,7 @@ Alt+Shift+D		Delete Statement
 Alt+Shift+S		Select Statement
 
 Result
-F11			Insert Update Dialog
+F11			Open Table
 Ctrl+R			Set Focus To The Active Tab In Result Pane
 Ctrl+L			Switch Result Window/Table Data Between Grid/Text Mode
 Ctrl+Alt+C		Export Table Data As CSV, Excel, SQL etc...
@@ -80,37 +72,11 @@ Ctrl+Alt+F		Flush Dialog
 Ctrl+Shift+Alt+S		Create Schema For Database In HTML
 Ctrl+Shift+Q		Execute SQL Script
 
-PowerTools
-Ctrl+Alt+W		Database Synchronization Wizard
-Ctrl+Alt+Q		Visual Data Compare
-Ctrl+Q			Schema Synchronization Tool
-Ctrl+Alt+O		Import External Data Wizard
-Ctrl+Alt+N		Notification Services Wizard
-Ctrl+Alt+S		Scheduled Backup Wizard
-Ctrl+K			Query Builder
-Ctrl+Alt+D		Schema Designer
-Ctrl+Shift+D		Data Search
-
 User Manager
 Ctrl+U			Open User Manager
 
 Favorites
 Ctrl+Shift+F		Add Current SQL To Favorites
-
-Visual Data Compare
-Ctrl+T			Select a table
-Ctrl+Enter		Compare
-Ctrl+H			Hide similar rows
-Ctrl+N			Next difference
-Ctrl+P			Previous Difference
-Ctrl+L			Source
-Ctrl+R			Target
-Ctrl+Right		Merge to target
-Ctrl+Left			Merge to source
-Ctrl+Q			Preview SQL
-Ctrl+S			Apply changes
-Ctrl+Z			Revert changes
-Ctrl+Shift+Z		Revert selected changes
 
 Other
 F1			Help

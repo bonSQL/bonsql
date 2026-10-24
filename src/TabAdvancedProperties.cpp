@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -23,10 +24,11 @@
 #include "CommonHelper.h"
 #include "TableTabInterface.h"
 #include "TableTabInterfaceTabMgmt.h"
+#include "SQLMaker.h"   // NGSA (M8b): ExecuteAndGetResult for the versioning lookup
 
 extern PGLOBALS		pGlobals;
 
-#define MAX_HEIGHT		320
+#define MAX_HEIGHT		355	// NGSA (M8b): one more row (System versioning)
 
 
 TabAdvancedProperties::TabAdvancedProperties(HWND hwnd, TableTabInterfaceTabMgmt *ptabmgmt)
@@ -48,6 +50,10 @@ TabAdvancedProperties::TabAdvancedProperties(HWND hwnd, TableTabInterfaceTabMgmt
     m_wporigminrows         =   NULL;
     m_wporigrowformat       =   NULL;
     m_wporigchecksum        =   NULL;
+    m_wporigversioning      =   NULL;   // NGSA (M8b)
+    m_hstatversioning       =   NULL;
+    m_hcmbversioning        =   NULL;
+    m_ngsaversioningcol     =   (m_mdiwnd && m_mdiwnd->m_ngsacaps.systemVersioning == wyTrue) ? wyTrue : wyFalse;
     m_wporigdelaykey        =   NULL;
 
     m_disableenchange       =   wyTrue;
@@ -63,6 +69,17 @@ TabAdvancedProperties::TabAdvancedProperties(HWND hwnd, TableTabInterfaceTabMgmt
     m_origminrows.Clear();
     m_origdelay.Clear();
     m_origrowformat.Clear();
+}
+
+// NGSA (M8b): the System versioning combo holds "0" and "1" like Checksum (no Default: unspecified = not versioned)
+void
+TabAdvancedProperties::NgsaInitVersioningValues()
+{
+    if(!m_hcmbversioning)
+        return;
+    SendMessage(m_hcmbversioning, CB_ADDSTRING, 0, (LPARAM)L"0");
+    SendMessage(m_hcmbversioning, CB_ADDSTRING, 0, (LPARAM)L"1");
+    SendMessage(m_hcmbversioning, CB_SETCURSEL, 0, 0);
 }
 
 void
@@ -316,6 +333,28 @@ TabAdvancedProperties::CreateOtherWindows(HWND hwndparent)
             m_hlastfocusedwnd = m_hcmbdelaykeywrite;
     }
  
+    //...NGSA (M8b): System versioning (Static & Combo), MariaDB 10.3.4+ only
+    if(m_ngsaversioningcol)
+    {
+        m_hstatversioning =   CreateWindowEx(0, WC_STATIC, _(TEXT("System versioning")), 
+                                            style, 0, 0, 0, 0,	hwndparent, (HMENU) 0, 
+                                            (HINSTANCE)pGlobals->m_hinstance, NULL);
+        if(m_hstatversioning)
+        {
+            ShowWindow(m_hstatversioning, SW_HIDE);
+            UpdateWindow(m_hstatversioning);
+        }
+
+        m_hcmbversioning =   CreateWindowEx(WS_EX_CLIENTEDGE, WC_COMBOBOX, _(TEXT("")),
+                                            style | CBS_DROPDOWNLIST | WS_TABSTOP, 0, 0, 0, 0, hwndparent, (HMENU) IDC_NGSA_VERSIONING,
+                                            (HINSTANCE)pGlobals->m_hinstance, NULL);
+        if(m_hcmbversioning)
+        {
+            ShowWindow(m_hcmbversioning, SW_HIDE);
+            UpdateWindow(m_hcmbversioning);
+        }
+    }
+ 
     if(m_ptabmgmt->m_tabinterfaceptr->m_open_in_dialog)
     {
         m_wporigautoincr = (WNDPROC)SetWindowLongPtr(m_heditautoincr, GWLP_WNDPROC, (LONG_PTR)TabAdvancedProperties::SysKeyDownWndProc);
@@ -338,6 +377,12 @@ TabAdvancedProperties::CreateOtherWindows(HWND hwndparent)
 
         m_wporigdelaykey = (WNDPROC)SetWindowLongPtr(m_hcmbdelaykeywrite, GWLP_WNDPROC, (LONG_PTR)TabAdvancedProperties::SysKeyDownWndProc);
         SetWindowLongPtr(m_hcmbdelaykeywrite, GWLP_USERDATA, (LONG_PTR)this);
+
+        if(m_hcmbversioning)   // NGSA (M8b)
+        {
+            m_wporigversioning = (WNDPROC)SetWindowLongPtr(m_hcmbversioning, GWLP_WNDPROC, (LONG_PTR)TabAdvancedProperties::SysKeyDownWndProc);
+            SetWindowLongPtr(m_hcmbversioning, GWLP_USERDATA, (LONG_PTR)this);
+        }
 		
     }
     
@@ -367,6 +412,11 @@ TabAdvancedProperties::CreateOtherWindows(HWND hwndparent)
     SendMessage(m_hcmbdelaykeywrite, (UINT)WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), TRUE);
     SendMessage(m_hstatchecksum, (UINT)WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), TRUE);
     SendMessage(m_hcmbchecksum, (UINT)WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), TRUE);
+    if(m_hcmbversioning)   // NGSA (M8b)
+    {
+        SendMessage(m_hstatversioning, (UINT)WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), TRUE);
+        SendMessage(m_hcmbversioning, (UINT)WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), TRUE);
+    }
 }
 
 LRESULT CALLBACK
@@ -402,6 +452,8 @@ TabAdvancedProperties::SysKeyDownWndProc(HWND hwnd, UINT message, WPARAM wParam,
         wndproc = tabadv->m_wporigchecksum;
     else if(hwnd == tabadv->m_hcmbdelaykeywrite)
         wndproc = tabadv->m_wporigdelaykey;
+    else if(hwnd == tabadv->m_hcmbversioning)   // NGSA (M8b)
+        wndproc = tabadv->m_wporigversioning;
 
     if(!wndproc)
         return 1;
@@ -422,6 +474,7 @@ TabAdvancedProperties::InitAllWindows(wyBool includedefault)
     InitCheckSumValues(includedefault);
     InitDelayKeyWriteValues(includedefault);
     InitRowFormatValues(includedefault);
+    NgsaInitVersioningValues();   // NGSA (M8b)
 }
 
 wyBool
@@ -433,6 +486,8 @@ TabAdvancedProperties::ReinitializeValues()
     SendMessage(m_hcmbrowformat, CB_RESETCONTENT, 0, 0);
     SendMessage(m_hcmbchecksum, CB_RESETCONTENT, 0, 0);
     SendMessage(m_hcmbdelaykeywrite, CB_RESETCONTENT, 0, 0);
+    if(m_hcmbversioning)   // NGSA (M8b)
+        SendMessage(m_hcmbversioning, CB_RESETCONTENT, 0, 0);
 
     InitAllWindows(wyFalse);
 
@@ -570,6 +625,30 @@ TabAdvancedProperties::FetchInitValues()
     else
         m_origrowformat.SetAs("");
 
+    // NGSA (M8b): system versioning is TABLE_TYPE = 'SYSTEM VERSIONED' in information_schema.TABLES
+    // (SHOW TABLE STATUS shows nothing for it; measured on 11.8, 10/10/2026)
+    m_origversioning.SetAs("0");
+    if(m_ngsaversioningcol)
+    {
+        wyString    db, tbl;   /* wyString's copy constructor is private */
+        db.SetAs(((TableTabInterface*)m_ptabmgmt->m_tabinterfaceptr)->m_dbname);
+        tbl.SetAs(((TableTabInterface*)m_ptabmgmt->m_tabinterfaceptr)->m_origtblname);
+        MYSQL_RES*  vres;
+        MYSQL_ROW   vrow;
+
+        db.FindAndReplace("'", "''");
+        tbl.FindAndReplace("'", "''");
+        query.Sprintf("select `TABLE_TYPE` from `information_schema`.`TABLES` where `TABLE_SCHEMA` = '%s' and `TABLE_NAME` = '%s'", db.GetString(), tbl.GetString());
+        vres = ExecuteAndGetResult(m_mdiwnd, m_mdiwnd->m_tunnel, &m_mdiwnd->m_mysql, query);
+        if(vres)
+        {
+            vrow = m_mdiwnd->m_tunnel->mysql_fetch_row(vres);
+            if(vrow && vrow[0] && stricmp(vrow[0], "SYSTEM VERSIONED") == 0)
+                m_origversioning.SetAs("1");
+            m_mdiwnd->m_tunnel->mysql_free_result(vres);
+        }
+    }
+
     return wyTrue;
 }
 
@@ -594,6 +673,8 @@ TabAdvancedProperties::FillInitValues(wyBool iscancelchanges)
         SendMessage(m_hcmbdelaykeywrite, CB_SELECTSTRING, -1, (LPARAM) TEXT(STR_DEFAULT)); 
         SendMessage(m_hcmbrowformat, CB_SELECTSTRING, -1, (LPARAM) TEXT(STR_DEFAULT)); 
         SendMessage(m_hcmbchecksum, CB_SELECTSTRING, -1, (LPARAM) TEXT(STR_DEFAULT)); 
+        if(m_hcmbversioning)   // NGSA (M8b): a new table is not versioned
+            SendMessage(m_hcmbversioning, CB_SELECTSTRING, -1, (LPARAM) L"0");
     }
     else
     {
@@ -622,6 +703,8 @@ TabAdvancedProperties::FillInitValues(wyBool iscancelchanges)
         else
             SendMessage(m_hcmbchecksum, CB_SETCURSEL, -1, (LPARAM) 0);
 
+        if(m_hcmbversioning)   // NGSA (M8b)
+            SendMessage(m_hcmbversioning, CB_SELECTSTRING, -1, (LPARAM) (m_origversioning.Compare("1") == 0 ? L"1" : L"0"));
     }
     
     SendMessage(m_heditcomment, WM_SETTEXT, index, (LPARAM) m_origcomment.GetAsWideChar());
@@ -723,6 +806,13 @@ TabAdvancedProperties::GetMaxWidthOfStaticText(wyInt32* col1)
     size = GetTextLenOfStaticWindow(m_hstatdelaykeywrite);
     if(size > max)
         max = size;
+
+    if(m_hstatversioning)   // NGSA (M8b): the longest label, or it wraps into two clipped lines
+    {
+        size = GetTextLenOfStaticWindow(m_hstatversioning);
+        if(size > max)
+            max = size;
+    }
 	
 	*col1 = max;
 
@@ -772,6 +862,12 @@ TabAdvancedProperties::Resize()
 
     MoveWindow(m_hstatdelaykeywrite , minxpos , minypos + 279 , staticwndwidthcol1   , 20,    TRUE);
     MoveWindow(m_hcmbdelaykeywrite  , minxpos + dist_static_edit + staticwndwidthcol1, minypos + 275 , 150   , 20,    TRUE);
+
+    if(m_hcmbversioning)   // NGSA (M8b)
+    {
+        MoveWindow(m_hstatversioning, minxpos , minypos + 314 , staticwndwidthcol1   , 20,    TRUE);
+        MoveWindow(m_hcmbversioning , minxpos + dist_static_edit + staticwndwidthcol1, minypos + 310 , 150   , 20,    TRUE);
+    }
     
 	GetSystemMetrics(SM_CYVTHUMB);
 	
@@ -943,6 +1039,18 @@ TabAdvancedProperties::GenerateCreateQuery(wyString &query)
         advpropval.AddSprintf("row_format=%s ", tempstr.GetString());
     }
 
+    // NGSA (M8b): WITH SYSTEM VERSIONING is accepted anywhere among the table options (measured on 11.8)
+    if(m_hcmbversioning && (selindex = SendMessage(m_hcmbversioning, CB_GETCURSEL, 0, 0)) != CB_ERR)
+    {
+        SendMessage(m_hcmbversioning, CB_GETLBTEXT, selindex, (LPARAM)textbuf);
+        tempstr.SetAs(textbuf);
+        if(tempstr.Compare("1") == 0)
+        {
+            FormatString(advpropval, &counter);
+            advpropval.Add("WITH SYSTEM VERSIONING ");
+        }
+    }
+
     if(advpropval.GetLength())
         query.AddSprintf("%s", advpropval.GetString());
 }
@@ -1095,6 +1203,19 @@ TabAdvancedProperties::GenerateAlterQuery(wyString &query)
     }
     }
     
+    // NGSA (M8b): ADD / DROP SYSTEM VERSIONING share the comma list with the other options (measured on 11.8);
+    // a later ALTER on a versioned table gets the system_versioning_alter_history=KEEP prefix from NgsaAlterPrefix()
+    if(m_hcmbversioning && (selindex = SendMessage(m_hcmbversioning, CB_GETCURSEL, 0, 0)) != CB_ERR)
+    {
+        SendMessage(m_hcmbversioning, CB_GETLBTEXT, selindex, (LPARAM)textbuf);
+        tempstr.SetAs(textbuf);
+        if(tempstr.GetLength() && tempstr.Compare(m_origversioning) != 0)
+        {
+            FormatString(advpropval, &tmpcount);
+            advpropval.Add(tempstr.Compare("1") == 0 ? "ADD SYSTEM VERSIONING, " : "DROP SYSTEM VERSIONING, ");
+        }
+    }
+
     advpropval.RTrim();
 
     advpropval.GetCharAt(advpropval.GetLength()-1) == ',' ? advpropval.Strip(1) : NULL;
@@ -1146,6 +1267,7 @@ TabAdvancedProperties::OnTabSelChange()
                           m_hstatavgrowlen, m_heditavgrowlen, m_hstatmaxrows, m_heditmaxrows,
                           m_hstatminrows, m_heditminrows, m_hstatrowformat, m_hcmbrowformat,
 						  m_hstatdelaykeywrite, m_hcmbdelaykeywrite, m_hstatchecksum,  m_hcmbchecksum,
+                          m_hstatversioning, m_hcmbversioning,   // NGSA (M8b): NULL on MySQL, harmless in the list
                           NULL};
     
     //..Focus issue when user changes from Advanced to Preview Tab and comes back
@@ -1209,6 +1331,7 @@ TabAdvancedProperties::ScrollWindows(wyBool isdown, wyInt32 pos)
                           m_hstatminrows, m_heditminrows, m_hstatrowformat, m_hcmbrowformat,
 						  m_hstatdelaykeywrite, m_hcmbdelaykeywrite, m_hstatchecksum,  m_hcmbchecksum,
                           m_ptabmgmt->m_tabinterfaceptr->m_hbtnsave, m_ptabmgmt->m_tabinterfaceptr->m_hbtncancelchanges,
+                          m_hstatversioning, m_hcmbversioning,   // NGSA (M8b)
                           NULL};
 	wyInt32 temppos = 0;
 	if(m_scrollpos)

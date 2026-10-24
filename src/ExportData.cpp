@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -18,6 +19,7 @@
 
 
 #include <shlobj.h>
+#include "ngsa/NgsaDark.h"   // NGSA (#2158)
 
 #include "FrameWindowHelper.h"
 #include "MySQLVersionHelper.h"
@@ -29,6 +31,7 @@
 #include "GUIHelper.h"
 #include "ExportToExcel.h"
 #include "ExportAsSimpleSQL.h"
+#include "ngsa/NgsaServerOps.h"   // NGSA (#2152): BIT values
 
 #define	 SHOWWARNING	WM_USER + 1
 #define  SIZE_8K		(8*1024)
@@ -773,7 +776,7 @@ BackUp::DlgProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 		break;
 
 	case WM_HELP:
-		ShowHelp("http://sqlyogkb.webyog.com/article/116-backup-database-as-sql-dump");
+		ShowHelp("help:backup-database-as-sql-dump");
 		return TRUE;
 
 	case UM_BACKUPTABLE:
@@ -1164,7 +1167,7 @@ CExportResultSet::DlgProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 		break;
 
 	case WM_HELP:
-		ShowHelp("http://sqlyogkb.webyog.com/article/98-export-data");
+		ShowHelp("help:export-data");
 		return 1;
 
 	case WM_COMMAND:
@@ -1923,7 +1926,7 @@ for(count = 0; count < m_res->field_count; count++)
 	}
 
 	if(is_csv && m_cesv.m_esch.m_isfixed && is_blob){
-		msg.SetAs("Fixed length CSV is not supported for BLOB/TEXT types. \n Do you still want to continue?");
+		msg.SetAs(_(L"Fixed-length CSV is not supported for BLOB and TEXT columns.\nDo you still want to continue?"));
 		create = yog_message(m_hwnd, msg.GetAsWideChar(), pGlobals->m_appname.GetAsWideChar(),  MB_YESNO | MB_ICONINFORMATION | MB_DEFBUTTON2);
 		
 		if(create != IDYES)
@@ -2515,6 +2518,8 @@ CExportResultSet::SaveDataAsXML(HANDLE hfile)
 				myrowstr.SetAs(myrow[j], ismysql41);
 
 				//function to add text to buffer in an xml file handling characters.
+				if(myfield[j].type == MYSQL_TYPE_BIT)	// NGSA (#2152): BIT bytes as a number
+					NgsaBitToDecimal((const unsigned char*)myrow[j], NGSA_BIT_BYTES(myfield[j]), myrowstr);
 				AddXMLToBuffer(&buffer, myrowstr.GetString(), wyFalse);
 			}
 			else
@@ -2685,7 +2690,12 @@ wyBool
 				myrowstr.SetAs(myrow[j], ismysql41);
 
 				//Now add the value. If it number than use as it is other wise use double quotes refer-http://json.org/
-				if(myfield[j].type==MYSQL_TYPE_DECIMAL ||myfield[j].type==MYSQL_TYPE_FLOAT ||myfield[j].type==MYSQL_TYPE_INT24
+				if(myfield[j].type == MYSQL_TYPE_BIT)	// NGSA (#2152): BIT bytes as a number
+				{
+					NgsaBitToDecimal((const unsigned char*)myrow[j], NGSA_BIT_BYTES(myfield[j]), myrowstr);
+					buffer.Add(myrowstr.GetString());
+				}
+				else if(myfield[j].type==MYSQL_TYPE_DECIMAL ||myfield[j].type==MYSQL_TYPE_FLOAT ||myfield[j].type==MYSQL_TYPE_INT24
 					||myfield[j].type==MYSQL_TYPE_LONG||myfield[j].type==MYSQL_TYPE_LONGLONG||myfield[j].type==MYSQL_TYPE_NEWDECIMAL
 					||myfield[j].type==MYSQL_TYPE_SHORT || myfield[j].type==MYSQL_TYPE_JSON)
 					buffer.Add(myrowstr.GetString());
@@ -2911,7 +2921,18 @@ CExportResultSet::SaveDataAsCSV(HANDLE hfile)
 			if(count != 0)
 				buffer.Add(m_cesv.m_esch.m_fescape);
 
-            if(m_cesv.m_esch.m_isfixed)
+			if(fields[i].type == MYSQL_TYPE_BIT && myrow[i])	// NGSA (#2152): BIT bytes as a number
+			{
+				wyString bits;
+				NgsaBitToDecimal((const unsigned char*)myrow[i], NGSA_BIT_BYTES(fields[i]), bits);
+				if(m_cesv.m_esch.m_isfixed)
+					ret = m_cesv.WriteFixed(&buffer, (wyChar*)bits.GetString(), &fields[i], bits.GetLength(), isescaped,
+											fterm, isfterm, lterm, islterm, encl, isencl);
+				else
+					ret = m_cesv.WriteVarible(&buffer, (wyChar*)bits.GetString(), &fields[i], bits.GetLength(), isescaped,
+											fterm, isfterm, lterm, islterm, encl, isencl);
+			}
+			else if(m_cesv.m_esch.m_isfixed)
 			{
 				//Adds data of fixed length to the buffer.
 				ret = m_cesv.WriteFixed(&buffer, myrow[i], &fields[i], length[i], isescaped, 
@@ -3173,7 +3194,13 @@ CExportResultSet::SaveDataAsHTML(HANDLE hfile)
 				// we check for each character so that we can replace some specific characters
 				// like < or > with its original value which the browser understands.
 
-				if(myrow[j][0] == 0)
+				if(myfield[j].type == MYSQL_TYPE_BIT)	// NGSA (#2152): BIT bytes as a number
+				{
+					wyString bits;
+					NgsaBitToDecimal((const unsigned char*)myrow[j], NGSA_BIT_BYTES(myfield[j]), bits);
+					buffer.Add(bits.GetString());
+				}
+				else if(myrow[j][0] == 0)
 					buffer.Add("&nbsp;");
 				else
 				{
@@ -3438,12 +3465,12 @@ CExportResultSet::OnPaint(HWND hwnd)
 	RECT temp;
 	
 	VERIFY(hdc = BeginPaint(hwnd, &ps));
-	DoubleBuffer::EraseBackground(hwnd, hdc, NULL, GetSysColor(COLOR_3DFACE));
+	DoubleBuffer::EraseBackground(hwnd, hdc, NULL, NgsaDark::Panel(GetSysColor(COLOR_3DFACE)));
 	EndPaint(hwnd, &ps);
 
 	//To paint the resize grip
 	VERIFY(hdc = BeginPaint(hwndstat, &ps));
     GetClientRect(hwndstat, &temp);
-    DrawFrameControl(hdc, &temp, DFC_SCROLL, DFCS_SCROLLSIZEGRIP);
+    NgsaDark::FrameControl(hdc, &temp, DFC_SCROLL, DFCS_SCROLLSIZEGRIP, NgsaDark::IsOn());
     EndPaint(hwnd, &ps);
 }

@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -95,7 +96,7 @@ ImportBatch::DlgProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 		break;
 
 	case WM_HELP:
-		ShowHelp("http://sqlyogkb.webyog.com/article/117-excute-sql-script");
+		ShowHelp("help:execute-sql-script");
 		return wyTrue;
 
 	case WM_COMMAND:
@@ -608,7 +609,7 @@ ImportBatch::SetImportValues(ImportFromSQL * import)
 
     importfile.SetAs(file);
 	import->SetImportFile(importfile);
-	SearchFilePath(L"sqlyog", L".err", MAX_PATH, (wyWChar*)filepath, &lpFilePort);
+	SearchFilePath(BRAND_CFG_STEM_W, L".err", MAX_PATH, (wyWChar*)filepath, &lpFilePort);
 	errfile.SetAs(filepath);
 	import->SetErrorFile(errfile);
 }
@@ -647,13 +648,13 @@ ImportBatch::HandleError()
 	wyWChar			*lpFilePort;
     wyString        file;
 	
-	if(SearchFilePath(L"sqlyog", L".err", MAX_PATH, errfile, &lpFilePort) == wyTrue) 
+	if(SearchFilePath(BRAND_CFG_STEM_W, L".err", MAX_PATH, errfile, &lpFilePort) == wyTrue) 
     {
         file.SetAs(errfile);
         msg.Sprintf(_("There was error(s) while executing the queries .\r\nThe query and the error message has been logged at:\r\n%s.\r\nPlease click on \"Open Error File...\" to open the error file."), file.GetString());
     }
     else
-        msg.Sprintf(_("Unable to get SQLyog.err file information!"));
+        msg.Sprintf(_("Unable to get bonsql.err file information!"));
 
 	if(GetForegroundWindow() != m_hwnd)
 		FlashWindow(pGlobals->m_pcmainwin->m_hwndmain, TRUE);
@@ -804,7 +805,7 @@ CImportError::WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 		break;
 
 	case WM_HELP:
-		ShowHelp("http://sqlyogkb.webyog.com/article/117-excute-sql-script");
+		ShowHelp("help:execute-sql-script");
 		return wyTrue;
 
 	case WM_COMMAND:

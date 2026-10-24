@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc.
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -25,7 +26,9 @@ Author: Vishal P.R
 #define _FK_DROPDOWN_H_
 
 #include "CommonHelper.h"
-#include "htmlayout.h"
+#ifndef COMMUNITY
+#include "htmlayout.h"     // Ultimate's Form view only
+#endif
 
 
 class DataView;
@@ -41,7 +44,7 @@ class FKDropDown
         @param ptqt                 : IN pointer to the TabQueryTypes, should be NULL for Table Data
         @param params               : IN pointer to the behavior params if the call is from from view
         */                                    
-                                    FKDropDown(DataView* pdv, BEHAVIOR_EVENT_PARAMS* params);
+                                    FKDropDown(DataView* pdv, void* params);   // params: Ultimate Form view's BEHAVIOR_EVENT_PARAMS*, NULL from the grid
 
         ///Destructor
                                     ~FKDropDown();
@@ -387,7 +390,7 @@ class FKDropDown
         wyInt32                     m_selrow;
 
         ///Event parameter for action in form view
-        BEHAVIOR_EVENT_PARAMS*      m_params;
+        void*                       m_params;
 
         ///Control list used for resizing
         List                        m_controllist;
@@ -453,6 +456,6 @@ class FKDropDown
 @params params  : IN BEHAVIOR_EVENT_PARAMS of parent form view
 @returns the dialog return value
 */
-wyInt32         FKLookupAndInsert(DataView* pdvb, BEHAVIOR_EVENT_PARAMS* params);
+wyInt32         FKLookupAndInsert(DataView* pdvb, void* params);
 
 #endif

@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -45,7 +46,7 @@
 #include "GUIHelper.h"
 #include "TabEditorSplitter.h"
 #include  "wyIni.h"
-#include "UpgradeCheck.h"
+#include "ngsa/NgsaUpdateCheck.h"
 #include "QueryAnalyzerBase.h"
 #include "ConnectionTab.h"
 #include "UserManager.h"
@@ -59,7 +60,7 @@
 #include "DataView.h"
 #include "CCustomComboBox.h"
 #include "Http.h"
-#include "htmlayout.h"
+// bonSQL: no HTMLayout
 #include "TabCheck.h"
 
 #ifndef COMMUNITY
@@ -90,7 +91,8 @@ extern	PGLOBALS		pGlobals;
 #define			DELIMITERCLOSE		"$$\r\n\r\nDELIMITER ;"
 #define			MAX_RECENT_FILES	9
 #define			RECENT_FILE_COUNT	10
-#define			RECENT_SQLFILE_SUBMENU			22
+// we removed 3 menu items so reduce below from 22 to 19 so recent files still populate.
+#define			RECENT_SQLFILE_SUBMENU			19
 #define         RECENT_QUERYBUILDER_SUBMENU     23
 #define			RECENT_SCHEMADESIGNS_SUBMENU	24
 #define         WND_MNU_ITEMS       3
@@ -118,7 +120,7 @@ extern	PGLOBALS		pGlobals;
 #define	NO_BACKUP_TUNNEL	_("This feature is not available if you are connecting using HTTP Tunneling")
 #define	NO_RESTORE_TUNNEL	_("This feature is not available if you are connecting using HTTP Tunneling")
 #define	NO_IMPORTCSV_TUNNEL	_("This feature is not available if you are connecting using HTTP Tunneling")
-#define CONNECT_MYSQL_MSG   _(L" Please Connect To A MySQL Server")
+#define CONNECT_MYSQL_MSG   _(L" Please connect to a server")
 
 //sqlite tables for session save
 #define TABLE_SCHEMADETAILS "CREATE TABLE schema_version (description TEXT, major_version TEXT, minor_version TEXT)"
@@ -155,7 +157,7 @@ FrameWindow::FrameWindow(HINSTANCE hinstance)
     m_statusbarmgmt = NULL;
     m_editorcolumnline = -1;
 
-    if(SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport) == wyTrue)
+    if(SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport) == wyTrue)
     {
         dirstr.SetAs(directory);
 		pGlobals->m_prefpersist=wyIni::IniGetInt(GENERALPREFA, "PrefPersist",   GENERALPREF_PAGE, dirstr.GetString());
@@ -187,11 +189,11 @@ FrameWindow::FrameWindow(HINSTANCE hinstance)
 	m_icons				= NULL;
 	m_hicon				= NULL;
 	m_numicons			= 0;
-	m_upgrdchk			= NULL;
 	m_hsecondiml		= NULL;
 	m_hwndtool			= NULL;
 	m_hwndsecondtool	= NULL;
 	m_hwndtoolcombo		= NULL;
+	m_hfontlink			= NULL;	// NGSA: SetAsLink creates it once
 	memset(&m_tunnelauth, 0, sizeof(TUNNELAUTH));
 	memset(&m_rchsplitter, 0, sizeof(RECT));
 	memset(&m_rcvsplitter, 0, sizeof(RECT));
@@ -199,8 +201,6 @@ FrameWindow::FrameWindow(HINSTANCE hinstance)
 	m_iserrdlg = wyFalse;
     m_isredindexhelp = wyFalse;
 
-	//UpgradeCheck object
-	m_upgrdchk = new UpgradeCheck();
 
 	m_toolbariconsize = GetToolBarIconSize();
     m_iscloseallmdi = wyFalse;
@@ -244,8 +244,6 @@ FrameWindow::~FrameWindow()
 {	
     ShowQueryExecToolTip(wyFalse);
 
-	if(m_upgrdchk)
-		delete m_upgrdchk;
 
 	if(m_hmainiml)
 		VERIFY(ImageList_Destroy(m_hmainiml)); 
@@ -332,8 +330,8 @@ FrameWindow::Create()
 	//Sets the community ribbon
 	HandleCommunityRibbon();
 	
-	//Upgrade check
-	CheckForUpgrade();
+	// bonSQL: optional weekly check for new versions (Preferences > General), NgsaUpdateCheck.cpp
+	NgsaUpdate::CheckAtStartup(m_hwndmain);
 	
     Resize();
 		
@@ -861,11 +859,7 @@ FrameWindow::CreateMainWindow(HINSTANCE hinstance)
 	tempstr.SetAs(pGlobals->m_appname.GetAsWideChar());
 #ifndef ENTERPRISE
 
-#ifdef _WIN64
-	tempstr.AddSprintf(" 64");
-#else
-	tempstr.AddSprintf(" 32");
-#endif
+	// bonSQL: the title is the product name only (no "64"/"32", Andre 13/10/2026)
 
 #endif
 	appname = tempstr.GetAsWideChar();
@@ -915,11 +909,7 @@ FrameWindow::SetMainWindowTitle()
 	if(pGlobals->m_entlicense.GetLength() == 0)
 		return;
 	tempstr.SetAs(pGlobals->m_appname.GetAsWideChar());
-#ifdef _WIN64
-	tempstr.AddSprintf(" 64");
-#else
-	tempstr.AddSprintf(" 32");
-#endif	
+	// bonSQL: the title is the product name only (no "64"/"32", Andre 13/10/2026)
 	SetWindowText(m_hwndmain, tempstr.GetAsWideChar());
 }
 
@@ -948,7 +938,7 @@ FrameWindow::MoveToInitPos(HWND hwnd)
 		}
 	}
 
-    if(SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
+    if(SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
     {
 		m_showwindowstyle = SW_NORMAL;
         return wyFalse;
@@ -1088,7 +1078,7 @@ FrameWindow::MoveToInitPosByrc(HWND hwnd, RECT	*rc)
 	wyInt32		diffht, diffwd;
 	wyInt32		xprim, yprim;
 
-   /* if(SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
+   /* if(SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
     {
 		m_showwindowstyle = SW_NORMAL;
         return wyFalse;
@@ -1225,7 +1215,7 @@ FrameWindow::WriteInitPos(HWND hwnd)
     wyInt32     lstyle = 0, tmpleft = 0, tmptop = 0;;
 	wyWChar      directory[MAX_PATH + 1] = {0};
 
-    if(SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
+    if(SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
         return wyFalse;
 
 	VERIFY(GetWindowRect(hwnd, &rc));
@@ -1296,6 +1286,10 @@ FrameWindow::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
 	switch(message)
 	{
 	
+	case NGSA_WM_UPDATEFOUND:	// bonSQL: the start-up check found a newer version
+		NgsaUpdate::ShowFound(hwnd, lparam);
+		return 0;
+
 	case WM_NCCREATE:
 		pcmainwin	= (FrameWindow *)(((CREATESTRUCT*)lparam)->lpCreateParams);
 		pcmainwin->SetHwnd(hwnd);
@@ -1370,27 +1364,27 @@ FrameWindow::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
 			VERIFY(wnd = GetActiveWin());
 
 			if(!wnd)
-				ShowHelp("http://sqlyogkb.webyog.com/category/22-getting-started");
+				ShowHelp("help:getting-started");
 			else
 			{
 				tabimageid = wnd->m_pctabmodule->GetActiveTabImage();
 
 				//If user presses Help in dialog of SchemaDesigner
 				if(tabimageid == IDI_SCHEMADESIGNER_16)
-					ShowHelp("http://sqlyogkb.webyog.com/article/166-the-sqlyog-schema-designer");
+					ShowHelp("help:schema-designer");
 			
 				//If user presses Help in dialog of QueryBuilder
 				else if(tabimageid == IDI_QUERYBUILDER_16)
-					ShowHelp("http://sqlyogkb.webyog.com/article/58-the-sqlyog-query-builder");
+					ShowHelp("help:query-builder");
 				else
 				{
 					//Spatial data type err dialog is present,if user preeses the Help in that dialog
 					if(pcmainwin->m_iserrdlg == wyTrue)
-						ShowHelp("http://sqlyogkb.webyog.com/article/102-data-manipulation");
+						ShowHelp("help:data-manipulation");
                     else if(pcmainwin->m_isredindexhelp == wyTrue)
-                        ShowHelp("http://sqlyogkb.webyog.com/article/82-redundant-index-analyzer");
+                        ShowHelp("help:redundant-index-analyzer");
 					else
-						ShowHelp("http://sqlyogkb.webyog.com/category/22-getting-started");
+						ShowHelp("help:getting-started");
 				}	
 			}
 			return wyTrue;
@@ -2574,9 +2568,19 @@ FrameWindow::OnWmCommand(WPARAM wParam)
     if(m_connection->OnWmCommand(hwndactive, pcquerywnd, wParam) == wyTrue)
         return 1;
 
+	// bonSQL: these four act on the active connection window; with no connection open (all disconnected, e.g.
+	// after Ctrl+F4) F6/F4 crashed on a null window (found by the help-page screenshot run, 14/10/2026)
+	if(!pcquerywnd)
+	{
+		wyInt32 id = LOWORD(wParam);
+
+		if(id == ID_EXPORT_EXPORTTABLEDATA || id == ACCEL_OBFILTER || id == ACCEL_ALTERTABLE || id == ACCEL_CREATETABLE)
+			return 1;
+	}
+
 	switch(LOWORD(wParam))
 	{
-    case ID_EXPORT_EXPORTTABLEDATA: 
+    case ID_EXPORT_EXPORTTABLEDATA:
         pcquerywnd->EnableExportDialog();
         break;
     case ACCEL_OBFILTER:
@@ -2677,9 +2681,7 @@ FrameWindow::OnWmCommand(WPARAM wParam)
         break;
 
 	case IDM_OBCOLOR:
-		// Block color change when dark theme is active
-		if(wyTheme::IsDarkThemeActive())
-			break;
+		// NGSA (#2158): colour change is allowed in the Dark theme
 			
 		SendMessage(pcquerywnd->m_pcqueryobject->m_hwnd, WM_COMMAND, wParam, NULL);
 		break;
@@ -3376,6 +3378,12 @@ pGlobals->m_pcmainwin->m_closealltrans = 1;
             OnCreateEvent(hwndactive, pcquerywnd);
 		break;
 
+	case ID_DB_CREATESEQUENCE:	// NGSA
+	case ID_OBJECT_CREATESEQUENCE:
+		if(hwndactive )
+            OnCreateSequence(hwndactive, pcquerywnd);
+		break;
+
     case ID_OBJECT_EXPORTVIEW:
         pcquerywnd->ExportViews();
         break;
@@ -3406,6 +3414,11 @@ pGlobals->m_pcmainwin->m_closealltrans = 1;
 			OnAlterEvent(pcquerywnd);
 		break;
 
+	case ID_OBJECT_ALTERSEQUENCE:	// NGSA
+		if(hwndactive )
+			OnAlterSequence(pcquerywnd);
+		break;
+
 	case ID_OBJECT_ALTERTRIGGER:
 		if(hwndactive )
             OnAlterTrigger(pcquerywnd);
@@ -3418,6 +3431,10 @@ pGlobals->m_pcmainwin->m_closealltrans = 1;
 	case ID_OBJECT_DROPEVENT:
 		if(hwndactive )
 			pcquerywnd->m_pcqueryobject->DropDatabaseObject(pcquerywnd->m_tunnel, &pcquerywnd->m_mysql, "event");
+		break;
+	case ID_OBJECT_DROPSEQUENCE:	// NGSA
+		if(hwndactive )
+			pcquerywnd->m_pcqueryobject->DropDatabaseObject(pcquerywnd->m_tunnel, &pcquerywnd->m_mysql, "sequence");
 		break;
 	case ID_OBJECT_DROPSTOREDPROCEDURE:
 		if(hwndactive )
@@ -3539,6 +3556,7 @@ pGlobals->m_pcmainwin->m_closealltrans = 1;
 		    pcquerywnd->m_pcqueryobject->CopyDB();
 		break;
 	case ID_OBJECT_RENAMEEVENT:
+	case ID_OBJECT_RENAMESEQUENCE:	// NGSA
 	case ID_OBJECTS_RENAMEVIEW:
 	case ID_OBJECTS_RENAMETRIGGER:
 	case ID_OBJECT_RENAMETABLE:
@@ -3613,7 +3631,7 @@ pGlobals->m_pcmainwin->m_closealltrans = 1;
 		return 0;
 
 	case IDM_HELP_HELP:
-		ShowHelp("http://sqlyogkb.webyog.com/");
+		ShowHelp("help:index");
 		break;
 
 	case ACCEL_KEYSHORT:
@@ -3623,8 +3641,8 @@ pGlobals->m_pcmainwin->m_closealltrans = 1;
 	case IDM_HELP_ABOUT:
         return OnAbout();
 
-	case IDM_HELP_CHKUPGRD:
-		CheckForUpgrade(wyTrue);
+	case IDM_HELP_CHKUPGRD:	// bonSQL: Help > Check for Updates (NgsaUpdateCheck.cpp)
+		NgsaUpdate::CheckNow(m_hwndmain);
 		break;
 
     case ID_TOOLS_CHANGELANGUAGE:
@@ -3759,12 +3777,25 @@ pGlobals->m_pcmainwin->m_closealltrans = 1;
 		break;
 
 	case ACCEL_SIXTHTAB:
-        if(!ptabeditor)
+        if(!ptabeditor && !ptabtype)
             break;
 		if(hwndactive)
 		{
-			ptabmgmt->HideResultWindow();
-			ptabmgmt->SelectTab(5);
+			if(ptabmgmt)
+			{
+				ptabmgmt->HideResultWindow();
+				ptabmgmt->SelectTab(5);
+			}
+			else
+			{
+				// bonSQL: Alt+6 reaches the table designer's sixth tab (SQL Preview) like Alt+1 to Alt+5 reach the others
+				if(pcquerywnd->GetTabModule()->GetActiveTabImage() == IDI_CREATETABLE || pcquerywnd->GetTabModule()->GetActiveTabImage() == IDI_ALTERTABLE)
+				{
+					TableTabInterfaceTabMgmt *tabintmgmt;
+					tabintmgmt = ((TableTabInterface*)pcquerywnd->GetTabModule()->GetActiveTabType())->m_ptabintmgmt;
+					tabintmgmt->SelectTab(5);
+				}
+			}
 		}
 		break;
 
@@ -4412,7 +4443,7 @@ FrameWindow::GetSQLyogIniPath(wyString *path)
 	wyUInt32    ret;
 	
 	// Get the complete path.
-	ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	if(ret == 0)
 		return;
 
@@ -4428,7 +4459,7 @@ FrameWindow::InitSplitterPos(const wyChar *dirstr)
 	//wyString	dirstr;
 
 	//// Get the complete path.
-	//ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	//ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	//if(ret == 0)
 	//	return wyFalse;
 	//dirstr.SetAs(directory);
@@ -4563,7 +4594,7 @@ FrameWindow::InsertRecentMenuItems(HMENU hsubmenu, wyInt32 tabimageid)
 	VERIFY(InsertMenu(hsubmenu, 0, MF_BYPOSITION | MF_STRING, menuid, _(L"No Recent Files")));
 
 	// now we get all the keys from ini file.
-	ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	if(ret ==0)
 		return wyFalse;
 
@@ -4595,7 +4626,7 @@ FrameWindow::InsertRecentMenuItems(HMENU hsubmenu, wyInt32 tabimageid)
 }
 
 // Function writes the file which is passed as a parameter to the function and adds them to the
-// sqlyog.ini file. but first it checks whether the name exists or not. then only it adds.
+// bonsql.ini file. but first it checks whether the name exists or not. then only it adds.
 wyBool
 FrameWindow::WriteLatestFile(wyWChar *filename)
 {
@@ -4615,7 +4646,7 @@ FrameWindow::WriteLatestFile(wyWChar *filename)
 	// clear all the buffer.
 	memset(keyvalue, 0,(SIZE_512 * MAX_RECENT_FILES));
 
-	 if(SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfilereport) == wyFalse)
+	 if(SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfilereport) == wyFalse)
         return wyFalse;
 
     if(directory)
@@ -4683,7 +4714,7 @@ FrameWindow::WriteSplitterPos(wyWChar *section)
 	
 	// Get the complete path.
 
-    if(SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
+    if(SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
         return wyFalse;
 	
 	dirstr.SetAs(directory);
@@ -5013,7 +5044,7 @@ FrameWindow::OnActiveConn()
                                 ID_EXPORT_EXPORTTABLEDATA, ID_OBJECT_EXPORTVIEW,
 								ID_EXPORT_AS, ID_EXPORT_ASXML, ID_EXPORT_ASHTML, ID_OBJECT_VIEWDATA, ID_TABLE_OPENINNEWTAB, ID_OBJECT_ADVANCED,
 								ID_OBJECT_CREATEVIEW, ID_DB_CREATEVIEW, ID_OBJECT_CREATESTOREDPROCEDURE, ID_DB_CREATESTOREDPROCEDURE,
-								ID_OBJECT_CREATEFUNCTION,ID_DB_CREATEFUNCTION, ID_OBJECT_CREATEEVENT, ID_DB_CREATEEVENT,
+								ID_OBJECT_CREATEFUNCTION,ID_DB_CREATEFUNCTION, ID_OBJECT_CREATEEVENT, ID_DB_CREATEEVENT, ID_OBJECT_CREATESEQUENCE, ID_DB_CREATESEQUENCE,
 								ID_OBJECT_CREATETRIGGER,ID_DB_CREATETRIGGER, ID_OBJECT_ALTERVIEW, ID_OBJECT_ALTERSTOREDPROCEDURE,
 								ID_OBJECT_ALTERFUNCTION, ID_OBJECT_ALTERTRIGGER, ID_OBJECT_DROPVIEW,
 								ID_OBJECT_DROPSTOREDPROCEDURE,ID_OBJECT_DROPFUNCTION, ID_OBJECT_DROPTRIGGER,
@@ -5398,6 +5429,8 @@ FrameWindow::HandleFirstToolBar()
         for(count = 0; count < size; count++)
     	    SendMessage(m_hwndtool, TB_SETSTATE,(WPARAM)nid[count], TBSTATE_ENABLED);
     }
+    else if(pceditorbase)
+        SendMessage(m_hwndtool, TB_SETSTATE,(WPARAM)IDM_EXECUTE, TBSTATE_ENABLED);	// NGSA (#2144): Execute works in object editors
 	#ifndef COMMUNITY
 	if(pcquerywnd->m_conninfo.m_isreadonly == wyTrue)
 	{
@@ -5430,6 +5463,11 @@ FrameWindow::InitCreateObjectDlg(HWND hwnd, wyChar *object)
 	{
 		SetWindowText(hwnd, L"Create Event");
 		SendMessage(GetDlgItem(hwnd, IDC_CAPTION), WM_SETTEXT, 0, (LPARAM)_(L"Enter new event name"));
+	}
+	else if(stricmp(object, "CreateSequence")== 0 )	// NGSA
+	{
+		SetWindowText(hwnd, L"Create Sequence");
+		SendMessage(GetDlgItem(hwnd, IDC_CAPTION), WM_SETTEXT, 0, (LPARAM)_(L"Enter new sequence name"));
 	}
 	else if(stricmp(object, "CreateTrigger")== 0 )
 	{
@@ -5616,18 +5654,19 @@ FrameWindow::HandleCreateDatabase(HWND hwnd, MDIWindow	*pcquerywnd, wyWChar *dbn
 
 	//to trim empty spaces from right, to avoid mysql errors
 	dbnamestr.RTrim();
+	dbnamestr.FindAndReplace("`", "``");
 
 	query.Sprintf("create database `%s`", dbnamestr.GetString());
     
     if(pcquerywnd->m_pcqueryobject->m_dbcharset.GetLength() != 0 && 
        pcquerywnd->m_pcqueryobject->m_dbcharset.CompareI(STR_DEFAULT) != 0)
     {
-        query.AddSprintf("character set %s ", pcquerywnd->m_pcqueryobject->m_dbcharset.GetString());
+        query.AddSprintf(" character set %s", pcquerywnd->m_pcqueryobject->m_dbcharset.GetString());
     }
     if(pcquerywnd->m_pcqueryobject->m_dbcollation.GetLength() != 0 && 
        pcquerywnd->m_pcqueryobject->m_dbcollation.CompareI(STR_DEFAULT) != 0)
     {
-        query.AddSprintf("collate %s", pcquerywnd->m_pcqueryobject->m_dbcollation.GetString());
+        query.AddSprintf(" collate %s", pcquerywnd->m_pcqueryobject->m_dbcollation.GetString());
     }
 
     res = ExecuteAndGetResult(pcquerywnd, pcquerywnd->m_tunnel, &pcquerywnd->m_mysql, query, wyTrue, wyFalse, wyTrue, false, false, wyFalse,
@@ -5837,6 +5876,49 @@ FrameWindow::HandleCreateEvent(HWND hwnd, MDIWindow *pcquerywnd, wyWChar *eventn
 		return wyFalse;
 	}
 
+	pcquerywnd->m_tunnel->mysql_free_result(res);
+	return wyTrue;
+}
+
+// NGSA: name check for Create Sequence (sequences share the table namespace)
+wyBool 
+FrameWindow::HandleCreateSequence(HWND hwnd, MDIWindow *pcquerywnd, wyWChar *seqname)
+{
+	HWND        hwndedit;
+    wyString    query, msg, db, namestr;
+    MYSQL_RES	*res;
+	MYSQL_ROW	row;
+
+	GetSelectedDB(pcquerywnd, db);
+	hwndedit = GetDlgItem(hwnd, IDC_DBNAME);
+	SendMessage(hwndedit, WM_GETTEXT, SIZE_64, (LPARAM)seqname);
+	if(seqname)
+		namestr.SetAs(seqname);
+	namestr.RTrim();
+
+	if(IsFieldBlank(hwndedit) != 1)
+	{
+		yog_message(hwndedit, _(L"Please provide a valid sequence name"), pGlobals->m_appname.GetAsWideChar(), MB_OK | MB_ICONERROR |MB_HELP);
+		SetFocus(hwndedit);
+		return wyFalse;
+	}
+
+	query.Sprintf("select count(*) from `information_schema`.`TABLES` where `TABLE_SCHEMA` = '%s' and `TABLE_NAME` = '%s'", db.GetString(), namestr.GetString());
+    res = ExecuteAndGetResult(pcquerywnd, pcquerywnd->m_tunnel, &pcquerywnd->m_mysql, query);
+	if(!res && pcquerywnd->m_tunnel->mysql_affected_rows(pcquerywnd->m_mysql)== -1)
+	{
+		ShowMySQLError(hwnd, pcquerywnd->m_tunnel, &pcquerywnd->m_mysql, query.GetString());
+		return wyFalse;
+	}
+	row = pcquerywnd->m_tunnel->mysql_fetch_row(res);
+	if(row && row[0] && atoi(row[0]) > 0)
+	{
+		msg.Sprintf(_("Can't create sequence '%s'; a table or sequence with that name exists"), namestr.GetString());
+		yog_message(hwndedit, msg.GetAsWideChar(), pGlobals->m_appname.GetAsWideChar(), MB_OK | MB_ICONERROR);
+		SetFocus(hwndedit);
+		pcquerywnd->m_tunnel->mysql_free_result(res);
+		return wyFalse;
+	}
 	pcquerywnd->m_tunnel->mysql_free_result(res);
 	return wyTrue;
 }
@@ -6229,6 +6311,63 @@ FrameWindow::PrepareAlterEvent(MDIWindow *pcquerywnd, wyString &altereventstmt)
 	return wyTrue;
 }
 
+// NGSA: CREATE SEQUENCE skeleton with MariaDB's defaults spelled out
+void
+FrameWindow::PrepareCreateSequence(MDIWindow *pcquerywnd, const wyChar *seqname, wyString &strseq)
+{
+	wyString    db;
+
+	GetSelectedDB(pcquerywnd, db);
+	if(db.GetLength() == 0)
+        db.SetAs("db");
+
+    strseq.Sprintf("CREATE SEQUENCE `%s`.`%s`\r\n\tSTART WITH 1\r\n\tINCREMENT BY 1\r\n\tMINVALUE 1\r\n\tMAXVALUE 9223372036854775806\r\n\tCACHE 1000\r\n\tNOCYCLE",
+				   db.GetString(), seqname);
+}
+
+// NGSA: ALTER SEQUENCE prefilled from SHOW CREATE SEQUENCE (column 'Create Table'); ENGINE= is not accepted by ALTER
+wyBool 
+FrameWindow::PrepareAlterSequence(MDIWindow *pcquerywnd, wyString &alterstmt)
+{
+	wyInt32      index = 0, pos;
+	wyString     db, seq, query, create, options;
+	MYSQL_RES	 *res;
+	MYSQL_ROW	 row;
+
+	db.SetAs(pcquerywnd->m_pcqueryobject->m_seldatabase.GetString());
+	seq.SetAs(pcquerywnd->m_pcqueryobject->m_seltable.GetString());
+	if((db.GetLength() == 0) || (seq.GetLength() == 0)) 
+		return wyFalse;
+
+	query.Sprintf("show create sequence `%s`.`%s`", db.GetString(), seq.GetString());
+    res = ExecuteAndGetResult(pcquerywnd, pcquerywnd->m_tunnel, &pcquerywnd->m_mysql, query);
+	if(!res && pcquerywnd->m_tunnel->mysql_affected_rows(pcquerywnd->m_mysql)== -1)
+	{
+		ShowMySQLError(pcquerywnd->m_hwnd, pcquerywnd->m_tunnel, &pcquerywnd->m_mysql, query.GetString());
+		return wyFalse;
+	}
+	index = GetFieldIndex(res, "Create Table", pcquerywnd->m_tunnel, &pcquerywnd->m_mysql);
+	if(index == -1 || !(row = pcquerywnd->m_tunnel->mysql_fetch_row(res)) || !row[index])
+	{
+		pcquerywnd->m_tunnel->mysql_free_result(res);
+		return wyFalse;
+	}
+	create.SetAs(row[index]);
+	pcquerywnd->m_tunnel->mysql_free_result(res);
+
+	// options follow the closing backtick of the name: "CREATE SEQUENCE `x` start with 1 ... nocycle ENGINE=InnoDB"
+	pos = create.Find("` ", 0);
+	if(pos == -1)
+		return wyFalse;
+	options.SetAs(create.Substr(pos + 2, create.GetLength() - pos - 2));
+	pos = options.FindI(" ENGINE=", 0);
+	if(pos != -1)
+		options.Strip(options.GetLength() - pos);
+
+	alterstmt.Sprintf("ALTER SEQUENCE `%s`.`%s`\r\n\t%s", db.GetString(), seq.GetString(), options.GetString());
+	return wyTrue;
+}
+
 wyBool 
 FrameWindow::HandleGoTo(HWND hwnd, MDIWindow	*pcquerywnd, wyWChar *linenumber)
 {
@@ -6283,12 +6422,14 @@ FrameWindow::GetSelectedDB(MDIWindow *pcquerywnd, wyString &db)
 		case NFUNCITEM:
 		case NSPITEM:
 		case NEVENTITEM:
+		case NSEQUENCEITEM:
 		case NVIEWSITEM:
 		case NTRIGGERITEM:
 		case NTABLE:
 			VERIFY(hitem = TreeView_GetParent(pcquerywnd->m_pcqueryobject->m_hwnd, hitem));	
 
 		case NEVENTS:
+		case NSEQUENCES:
 		case NTRIGGER:
 		case NFUNC:
 		case NVIEWS:
@@ -6576,7 +6717,7 @@ FrameWindow::ConvertIniFileToUtf8()
 	wyBool		isconv;
 
 	// Get the complete path.
-	ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	if(ret == wyFalse)
 		return wyFalse;
 
@@ -6639,7 +6780,7 @@ FrameWindow::Convert(wyString &dirstr)
 		return wyFalse;
 	}
 
-	if(pGlobals->m_configdirpath.GetLength() ||  SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, (LPWSTR)path)))
+	if(pGlobals->m_configdirpath.GetLength() ||  SUCCEEDED(NgsaGetAppData((LPWSTR)path)))
     {
 		if(pGlobals->m_configdirpath.GetLength())
 		{
@@ -6650,7 +6791,7 @@ FrameWindow::Convert(wyString &dirstr)
 		else
 		{
 			wcscat(path, L"\\");
-			wcscat(path, L"SQLyog");
+			wcscat(path, BRAND_CFG_DIR_W);
 		}
 
 	    if(GetTempFileName(path, L"ini", 0, file))
@@ -6794,7 +6935,7 @@ FrameWindow::CreateIniFileBackup()
 
 	value.AddSprintf("%d", versionum);
 
-	ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 
 	//retb = SearchFilePath(L"sqlyog_backup", L".ini", MAX_PATH, directory, &lpfileport);
 
@@ -6814,8 +6955,8 @@ FrameWindow::CreateIniFileBackup()
 		inipath.SetAs(dirstr.GetString());
 		backupfilepath.SetAs(dirstr.GetString());
 
-		backupfilepath.Strip(strlen("sqlyog.ini") + 1);
-		backupfilepath.AddSprintf("\\sqlyog_backup.ini");
+		backupfilepath.Strip(strlen(BRAND_CFG_STEM_A ".ini") + 1);
+		backupfilepath.AddSprintf("\\" BRAND_CFG_STEM_A "_backup.ini");
 		CopyAndRename(dirstr, inipath, backupfilepath);
 
 	}
@@ -6842,10 +6983,10 @@ FrameWindow::HandleFiles(wyWChar *filename, wyWChar *extension)
 		apppath.SetAs(pGlobals->m_configdirpath);
 
 	//Handle ini file migration
-    else if(SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, fullpath))) 
+    else if(SUCCEEDED(NgsaGetAppData(fullpath))) 
 	{
         apppath.SetAs(fullpath);
-		apppath.Add("\\SQLyog");
+		apppath.Add("\\" BRAND_CFG_DIR_A);
 	}
     else
         return;
@@ -6941,10 +7082,10 @@ void
 FrameWindow::MigrateFiles()
 {
     //The below file types will be migrated
-    HandleFiles(L"sqlyog", L".ini");
+    HandleFiles(BRAND_CFG_STEM_W, L".ini");
     HandleFiles(L"sja", L".log");
     HandleFiles(L"sjasession", L".xml");
-    HandleFiles(L"sqlyog", L".err");
+    HandleFiles(BRAND_CFG_STEM_W, L".err");
     HandleAutocompleteTagFiles();
 }
 
@@ -6976,7 +7117,7 @@ FrameWindow::HandleAutocompleteTagFiles()
     HANDLE          hfile;
     wyInt32         count;
     
-    if(SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, fullpath)))
+    if(SUCCEEDED(NgsaGetAppData(fullpath)))
         fullpathstr.SetAs(fullpath);
 
     VERIFY(count = GetModuleFileName(NULL, directory, MAX_PATH - 1));
@@ -6990,7 +7131,7 @@ FrameWindow::HandleAutocompleteTagFiles()
 
     if(_wchdir(directorystr.GetAsWideChar()) != -1)
     {
-        fullpathstr.Add("\\SQLyog\\Tags");
+        fullpathstr.Add("\\" BRAND_CFG_DIR_A "\\Tags");
        
         if(!CreateDirectory(fullpathstr.GetAsWideChar(), NULL))
 	    {
@@ -7014,7 +7155,7 @@ FrameWindow::HandleAutocompleteTagFiles()
                     {
                         tagfilename.SetAs(wfd.cFileName);
                         fullpathstr.SetAs(fullpath);
-                        fullpathstr.Add("\\SQLyog\\Tags\\");
+                        fullpathstr.Add("\\" BRAND_CFG_DIR_A "\\Tags\\");
                         fullpathstr.Add(tagfilename.GetString());
                         newpath.SetAs(directorystr.GetString());
                         tempstr.SetAs(directorystr.GetString());
@@ -7051,14 +7192,14 @@ FrameWindow::HandleAutocompleteTagFiles()
 wyBool
 FrameWindow::CopyAndRename(wyString& directorystr, wyString& fullpathstr, wyString& newpath)
 {
-	fullpathstr.Strip(strlen("sqlyog.ini") + 1);
+	fullpathstr.Strip(strlen(BRAND_CFG_STEM_A ".ini") + 1);
 	if(!CreateDirectory(fullpathstr.GetAsWideChar(), NULL))
 	{
 		/* If the folder is there , then we will continue the process, otherwise we will return wyFalse */
 		if(GetLastError()!= ERROR_ALREADY_EXISTS)
 			return wyFalse;
 	}
-	fullpathstr.AddSprintf("\\sqlyog.ini");
+	fullpathstr.AddSprintf("\\" BRAND_CFG_STEM_A ".ini");
     if(CopyFile(directorystr.GetAsWideChar(), newpath.GetAsWideChar(), TRUE))
     {
         /*if(_wrename(directorystr.GetAsWideChar(), newpath.GetAsWideChar()) == 0)
@@ -7231,7 +7372,7 @@ FrameWindow::OnWmClose(HWND hwnd)
 #ifndef COMMUNITY
         if((hwndvdd = VisualDataDiff::FindInstance()))
         {
-			vddmsg.Sprintf(_("There are one or more open instances of %s. Please close them to close SQLyog."), _("Visual Data Compare"));
+			vddmsg.Sprintf(_("There are one or more open instances of %s. Please close them to close bonSQL."), _("Visual Data Compare"));
 			MessageBox(m_hwndmain,vddmsg.GetAsWideChar(), 
                 pGlobals->m_appname.GetAsWideChar(), MB_OK | MB_ICONINFORMATION);
 
@@ -7578,10 +7719,7 @@ FrameWindow::ONWmMainWinNotify(HWND hwnd, LPARAM lparam, WPARAM wparam)
                 wyTheme::SetMenuItemOwnerDraw(htrackmenu);
                 
                 // Disable ObjectBrowser color change when dark theme is active
-                if(wyTheme::IsDarkThemeActive())
-                {
-                    EnableMenuItem(htrackmenu, IDM_OBCOLOR, MF_GRAYED | MF_BYCOMMAND);
-                }
+                // NGSA (#2158): IDM_OBCOLOR stays enabled in the Dark theme
                 
                 GetCursorPos(&pnt);
 			    TrackPopupMenu(htrackmenu, TPM_LEFTALIGN | TPM_RIGHTBUTTON, pnt.x, pnt.y, 0, hwnd, NULL);
@@ -7835,6 +7973,9 @@ FrameWindow ::GetTreeItem(MDIWindow *wnd, wyString& hitemname)
         break;
     case IDI_CREATEEVENT:
         peditorbase->m_nodeimage = NEVENTS;
+        break;
+    case IDI_CREATESEQUENCE:	// NGSA
+        peditorbase->m_nodeimage = NSEQUENCES;
         break;
     }
 
@@ -8392,6 +8533,50 @@ FrameWindow::OnCreateEvent(HWND hwndactive, MDIWindow *wnd)
 
 }
 
+// NGSA: Create Sequence: ask for a name, open an editor tab on the Sequences folder with the skeleton
+void 
+FrameWindow::OnCreateSequence(HWND hwndactive, MDIWindow *wnd)
+{
+	wyWChar     *seqname;
+	wyInt64     ret;
+	HTREEITEM   hseqitem;
+    wyString    buff, namestr;
+	EditorBase	*peditorbase;
+
+	hseqitem = wnd->m_pcqueryobject->GetDatabaseNode();
+	if(hseqitem)
+		hseqitem = wnd->m_pcqueryobject->GetNode(hseqitem, NSEQUENCES);
+
+	ret = DialogBoxParam(pGlobals->m_hinstance, MAKEINTRESOURCE(IDD_DBMAKER), 
+			hwndactive, FrameWindow::CreateObjectDlgProc,(LPARAM)"CreateSequence");
+	if(ret)
+		seqname = (wyWChar*)ret;
+	else
+		return;
+	if(wcslen(seqname) == 0)
+        return;
+
+	VERIFY(SetCursor(LoadCursor(NULL, IDC_WAIT)));
+	namestr.SetAs(seqname);
+	namestr.RTrim();
+
+	wnd->m_pctabmodule->CreateAdvEditorTab(wnd, (wyChar *)namestr.GetString(), IDI_CREATESEQUENCE, hseqitem, &namestr);
+    peditorbase = wnd->GetActiveTabEditor()->m_peditorbase;
+    peditorbase->m_isdiscardchange = wyTrue;
+	SendMessage(peditorbase->m_hwnd, SCI_REPLACESEL, TRUE,(LPARAM)DELIMITEROPEN);
+	PrepareCreateSequence(wnd, namestr.GetString(), buff);
+	SendMessage(peditorbase->m_hwnd, SCI_REPLACESEL, TRUE,(LPARAM)buff.GetString());
+    SendMessage(peditorbase->m_hwnd, SCI_REPLACESEL, TRUE,(LPARAM)DELIMITERCLOSE);
+    SendMessage(peditorbase->m_hwnd, SCI_SETSAVEPOINT, 0, 0);
+    SendMessage(peditorbase->m_hwnd, SCI_EMPTYUNDOBUFFER, 0, 0);
+    peditorbase->m_isdiscardchange = wyFalse;
+	EditorFont::SetLineNumberWidth(peditorbase->m_hwnd);
+	PostMessage(pGlobals->m_pcmainwin->m_hwndmain, UM_SETFOCUS,(WPARAM)peditorbase->m_hwnd, 0);
+
+	free(seqname);
+	VERIFY(SetCursor(LoadCursor(NULL, IDC_ARROW)));
+}
+
 void 
 FrameWindow::OnCreateView(HWND hwndactive, MDIWindow *wnd, wyString *qbquery)
 {
@@ -8615,6 +8800,39 @@ FrameWindow::OnAlterEvent(MDIWindow *wnd)
 
 
 }
+// NGSA: Alter Sequence: editor tab prefilled with ALTER SEQUENCE
+void 
+FrameWindow::OnAlterSequence(MDIWindow *wnd)
+{
+	wyString      alterstmt;
+	EditorBase	  *peditorbase;
+	HTREEITEM     hitem;
+
+	VERIFY(hitem = TreeView_GetSelection(wnd->m_pcqueryobject->m_hwnd));
+	wnd->m_pcqueryobject->GetTableDatabaseName(hitem);	
+
+	VERIFY(SetCursor(LoadCursor(NULL, IDC_WAIT)));
+	if(PrepareAlterSequence(wnd, alterstmt) == wyFalse)
+	{
+		VERIFY(SetCursor(LoadCursor(NULL, IDC_ARROW)));
+		return;
+	}
+
+	wnd->m_pctabmodule->CreateAdvEditorTab(wnd, (wyChar*)wnd->m_pcqueryobject->m_seltable.GetString()
+											, IDI_ALTERSEQUENCE, TreeView_GetParent(wnd->m_pcqueryobject->m_hwnd, hitem));
+	peditorbase = wnd->GetActiveTabEditor()->m_peditorbase;
+    peditorbase->m_isdiscardchange = wyTrue;
+	SendMessage(peditorbase->m_hwnd, SCI_REPLACESEL, TRUE,(LPARAM)DELIMITEROPEN);	
+	SendMessage(peditorbase->m_hwnd, SCI_REPLACESEL, TRUE,(LPARAM)alterstmt.GetString());
+	SendMessage(peditorbase->m_hwnd, SCI_REPLACESEL, TRUE,(LPARAM)DELIMITERCLOSE);
+    SendMessage(peditorbase->m_hwnd, SCI_SETSAVEPOINT, 0, 0);
+    SendMessage(peditorbase->m_hwnd, SCI_EMPTYUNDOBUFFER, 0, 0);
+    peditorbase->m_isdiscardchange = wyFalse;
+	EditorFont::SetLineNumberWidth(peditorbase->m_hwnd);
+	SetFocus(peditorbase->m_hwnd);
+	VERIFY(SetCursor(LoadCursor(NULL, IDC_ARROW)));   
+}
+
 void 
 FrameWindow::OnAlterView(MDIWindow *wnd)
 {
@@ -8999,6 +9217,8 @@ FrameWindow::OnCreateObjectWmCommand(HWND hwnd, WPARAM wParam, wyChar *object)
 			    ret = pGlobals->m_pcmainwin->HandleCreateTrigger(hwnd, pcquerywnd, objectname);
 			else if(stricmp(object, "CreateEvent") == 0)
 				ret = pGlobals->m_pcmainwin->HandleCreateEvent(hwnd, pcquerywnd, objectname);
+			else if(stricmp(object, "CreateSequence") == 0)	// NGSA
+				ret = pGlobals->m_pcmainwin->HandleCreateSequence(hwnd, pcquerywnd, objectname);
 		    else if(stricmp(object, "CreateView") == 0)
 			    ret = pGlobals->m_pcmainwin->HandleCreateView(hwnd, pcquerywnd, objectname);
 		    else if(stricmp(object, "GoToLine") == 0)
@@ -9233,14 +9453,13 @@ FrameWindow::CreateConnDialog(wyBool readsession)
 	ConnectionInfo	conninfo;
     
 	wyString		failedconnections;
-	HANDLE thread_handle, savethread_handle;
+	HANDLE thread_handle = NULL, savethread_handle;   // bonSQL: thread_handle unused since Announcements went
     InitializeConnectionInfo(conninfo);
 	SYSTEMTIME	systime ={0};
 	DWORD		currntday = 0, lastchkdday = 0;
 	wyString	dirstr;
 	wyWChar		directory[MAX_PATH +1]={0}, *lpfileport;
 	wyString	keyvaluestr, currentdate;
-	UpgradeCheck upg;
 	wyBool		isannthread = wyFalse;
 	VERIFY(IsWindow(pGlobals->m_hwndclient));
 	
@@ -9262,31 +9481,12 @@ FrameWindow::CreateConnDialog(wyBool readsession)
 	//read last chect date time from ini
 	if(readsession)
 	{
-		SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+		SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 		if(directory)
 		{
 			dirstr.SetAs(directory);
 		}
-		if(dirstr.GetLength())
-		{
-			ret = wyIni::IniGetString(GENERALPREFA, "AnnouncementsCheckedDate", "0", &keyvaluestr, dirstr.GetString());
-			lastchkdday = strtoul(keyvaluestr.GetString(), NULL, 10); 
-		}
-		GetSystemTime(&systime);		
-		currntday = upg.HandleSetDayFormat(systime.wDay, systime.wMonth, systime.wYear);
-		currentdate.Sprintf("%lu", currntday);
-
-#if IS_FROM_WINDOWS_STORE == 1
-			lastchkdday = 0;
-#endif
-
-		if(currntday > lastchkdday && currntday - lastchkdday >= 1)
-		//if(TRUE)
-		{
-			isannthread = wyTrue;
-			thread_handle = (HANDLE)_beginthreadex(NULL, 0, Htmlannouncementsproc, NULL, 0, NULL);
-			pGlobals->m_isannouncementopen = wyFalse;
-		}
+		pGlobals->m_isannouncementopen = wyFalse;	// bonSQL: no announcements feed (Announcements.cpp)
 	}
 	//check if pref option says do not open restore connection dlg
 	//if(readsession && IsConnectionRestore() && GetSessionFile(path))
@@ -9665,64 +9865,45 @@ FrameWindow::OnCreateObjectWmHelp(HWND hwnd, wyChar *object)
 	
 	if(stricmp(object, "createdb") == 0)
 	{
-		ShowHelp("http://sqlyogkb.webyog.com/article/113-create-database");
+		ShowHelp("help:create-database");
 	}
 	else if(stricmp(object, "CreateView")== 0 )
 	{
-		ShowHelp("http://sqlyogkb.webyog.com/article/186-views");
+		ShowHelp("help:views");
 	}
 	else if(stricmp(object, "CreateProcedure")== 0 )
 	{
-		ShowHelp("http://sqlyogkb.webyog.com/article/188-stored-procedures");
+		ShowHelp("help:stored-procedures");
 	}
 	else if(stricmp(object, "CreateFunction")== 0 )
 	{
-		ShowHelp("http://sqlyogkb.webyog.com/article/189-functions");
+		ShowHelp("help:functions");
 	}
 	else if(stricmp(object, "CreateEvent")== 0 )
 	{
-		ShowHelp("http://sqlyogkb.webyog.com/article/191-events");
+		ShowHelp("help:events");
+	}
+	else if(stricmp(object, "CreateSequence")== 0 )	// NGSA
+	{
+		ShowHelp("https://mariadb.com/kb/en/create-sequence/");
 	}
 	else if(stricmp(object, "CreateTrigger")== 0 )
 	{
-		ShowHelp("http://sqlyogkb.webyog.com/article/190-triggers");
+		ShowHelp("help:triggers");
 	}	
 }
 
 ////check for upgrade	
 
-void
-FrameWindow::CheckForUpgrade(wyBool isexplict)
-{	
-#if IS_FROM_WINDOWS_STORE == 1
-	return;
-#endif
-	UpgradeCheck *upgradeexplicit = NULL;
-		
-	if(isexplict == wyTrue)
-	{
-		upgradeexplicit = new UpgradeCheck();
-		upgradeexplicit->m_hwndmain = m_hwndmain;
-		upgradeexplicit->HandleUpgradeCheck(isexplict);						
-
-		delete upgradeexplicit;
-	}
-
-	else
-	{
-		m_upgrdchk->m_hwndmain = m_hwndmain;
-		m_upgrdchk->HandleUpgradeCheck(isexplict);						
-	}
-}
-
 ///Handles the community ribbon
 void				
 FrameWindow::HandleCommunityRibbon()
 {
-#ifdef COMMUNITY
+#if 0	// bonSQL: the ad-rotation thread is not started; its window was never created, its ad strings are gone,
+		// and it read a stack COMTYHDR after HandleCommunityHeader returned (docs/ngsa/UPSELLS.md)
 	m_commribbon = new CommunityRibbon();
 
-	m_commribbon->HandleCommunityHeader();	
+	m_commribbon->HandleCommunityHeader();
 #endif
 }
 
@@ -10395,7 +10576,7 @@ FrameWindow::SaveConnectionDetails(wySQLite	*ssnsqliteobj)
 					{
 						quetabitem.m_mask = quetabitem.m_mask |CTBIF_COLOR|CTBIF_LPARAM|CTBIF_IMAGE; 
 						CustomTab_GetItem(wnd->m_pctabmodule->m_hwnd, k, &quetabitem);
-						if(quetabitem.m_iimage == IDI_SCHEMADESIGNER_16 || quetabitem.m_iimage == IDI_QUERYBUILDER_16 || quetabitem.m_iimage == IDI_QUERY_16 || quetabitem.m_iimage == IDI_CREATEVIEW || quetabitem.m_iimage == IDI_CREATEEVENT|| quetabitem.m_iimage == IDI_CREATEPROCEDURE|| quetabitem.m_iimage == IDI_CREATEFUNCTION|| quetabitem.m_iimage == IDI_CREATETRIGGER || quetabitem.m_iimage == IDI_ALTERVIEW || quetabitem.m_iimage == IDI_ALTEREVENT || quetabitem.m_iimage == IDI_ALTERPROCEDURE || quetabitem.m_iimage == IDI_ALTERFUNCTION || quetabitem.m_iimage == IDI_ALTERTRIGGER )
+						if(quetabitem.m_iimage == IDI_SCHEMADESIGNER_16 || quetabitem.m_iimage == IDI_QUERYBUILDER_16 || quetabitem.m_iimage == IDI_QUERY_16 || quetabitem.m_iimage == IDI_CREATEVIEW || quetabitem.m_iimage == IDI_CREATEEVENT|| quetabitem.m_iimage == IDI_CREATEPROCEDURE|| quetabitem.m_iimage == IDI_CREATEFUNCTION|| quetabitem.m_iimage == IDI_CREATETRIGGER || quetabitem.m_iimage == IDI_ALTERVIEW || quetabitem.m_iimage == IDI_ALTEREVENT || quetabitem.m_iimage == IDI_ALTERPROCEDURE || quetabitem.m_iimage == IDI_ALTERFUNCTION || quetabitem.m_iimage == IDI_ALTERTRIGGER || quetabitem.m_iimage == IDI_CREATESEQUENCE || quetabitem.m_iimage == IDI_ALTERSEQUENCE )
 						{
 							
 							temptabeditorele_temp = new tabeditorelem;
@@ -10576,7 +10757,7 @@ FrameWindow::SaveConnectionDetails(wySQLite	*ssnsqliteobj)
 						if(k == 0)
 							temptabeditorele_temp = (tabeditorelem*)tempmdilist_temp->m_listtabeditor_temp->GetFirst();
 
-						if(temptabeditorele_temp->m_iimage == IDI_SCHEMADESIGNER_16 || temptabeditorele_temp->m_iimage == IDI_QUERYBUILDER_16 || temptabeditorele_temp->m_iimage == IDI_QUERY_16 || temptabeditorele_temp->m_iimage == IDI_CREATEVIEW || temptabeditorele_temp->m_iimage == IDI_CREATEEVENT|| temptabeditorele_temp->m_iimage == IDI_CREATEPROCEDURE|| temptabeditorele_temp->m_iimage == IDI_CREATEFUNCTION|| temptabeditorele_temp->m_iimage == IDI_CREATETRIGGER || temptabeditorele_temp->m_iimage == IDI_ALTERVIEW || temptabeditorele_temp->m_iimage == IDI_ALTEREVENT || temptabeditorele_temp->m_iimage == IDI_ALTERPROCEDURE || temptabeditorele_temp->m_iimage == IDI_ALTERFUNCTION || temptabeditorele_temp->m_iimage == IDI_ALTERTRIGGER )
+						if(temptabeditorele_temp->m_iimage == IDI_SCHEMADESIGNER_16 || temptabeditorele_temp->m_iimage == IDI_QUERYBUILDER_16 || temptabeditorele_temp->m_iimage == IDI_QUERY_16 || temptabeditorele_temp->m_iimage == IDI_CREATEVIEW || temptabeditorele_temp->m_iimage == IDI_CREATEEVENT|| temptabeditorele_temp->m_iimage == IDI_CREATEPROCEDURE|| temptabeditorele_temp->m_iimage == IDI_CREATEFUNCTION|| temptabeditorele_temp->m_iimage == IDI_CREATETRIGGER || temptabeditorele_temp->m_iimage == IDI_ALTERVIEW || temptabeditorele_temp->m_iimage == IDI_ALTEREVENT || temptabeditorele_temp->m_iimage == IDI_ALTERPROCEDURE || temptabeditorele_temp->m_iimage == IDI_ALTERFUNCTION || temptabeditorele_temp->m_iimage == IDI_ALTERTRIGGER || temptabeditorele_temp->m_iimage == IDI_CREATESEQUENCE || temptabeditorele_temp->m_iimage == IDI_ALTERSEQUENCE )
 						{
 							if(temptabeditorele_temp->m_iimage == IDI_QUERYBUILDER_16)
 							{
@@ -10861,7 +11042,7 @@ if(pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_PRO)
 					{
 						if(k==0)
 							temptabeditorele_temp =(tabeditorelem*)tempmdilist_temp->m_listtabeditor_temp->GetFirst();
-						if(temptabeditorele_temp->m_iimage == IDI_SCHEMADESIGNER_16 || temptabeditorele_temp->m_iimage == IDI_QUERYBUILDER_16 || temptabeditorele_temp->m_iimage == IDI_QUERY_16 || temptabeditorele_temp->m_iimage == IDI_CREATEVIEW || quetabitem.m_iimage == IDI_CREATEEVENT|| temptabeditorele_temp->m_iimage == IDI_CREATEPROCEDURE|| temptabeditorele_temp->m_iimage == IDI_CREATEFUNCTION|| temptabeditorele_temp->m_iimage == IDI_CREATETRIGGER || temptabeditorele_temp->m_iimage == IDI_ALTERVIEW || temptabeditorele_temp->m_iimage == IDI_ALTEREVENT || temptabeditorele_temp->m_iimage == IDI_ALTERPROCEDURE ||  temptabeditorele_temp->m_iimage == IDI_ALTERFUNCTION ||  temptabeditorele_temp->m_iimage == IDI_ALTERTRIGGER )
+						if(temptabeditorele_temp->m_iimage == IDI_SCHEMADESIGNER_16 || temptabeditorele_temp->m_iimage == IDI_QUERYBUILDER_16 || temptabeditorele_temp->m_iimage == IDI_QUERY_16 || temptabeditorele_temp->m_iimage == IDI_CREATEVIEW || quetabitem.m_iimage == IDI_CREATEEVENT|| temptabeditorele_temp->m_iimage == IDI_CREATEPROCEDURE|| temptabeditorele_temp->m_iimage == IDI_CREATEFUNCTION|| temptabeditorele_temp->m_iimage == IDI_CREATETRIGGER || temptabeditorele_temp->m_iimage == IDI_ALTERVIEW || temptabeditorele_temp->m_iimage == IDI_ALTEREVENT || temptabeditorele_temp->m_iimage == IDI_ALTERPROCEDURE ||  temptabeditorele_temp->m_iimage == IDI_ALTERFUNCTION ||  temptabeditorele_temp->m_iimage == IDI_ALTERTRIGGER || temptabeditorele_temp->m_iimage == IDI_CREATESEQUENCE || temptabeditorele_temp->m_iimage == IDI_ALTERSEQUENCE )
 						{
 							
 							temptabeditorele = new tabeditorelem;
@@ -11056,7 +11237,7 @@ FrameWindow::SaveConnectionDetails2(wySQLite	*ssnsqliteobj)
 					{
 						quetabitem.m_mask = quetabitem.m_mask |CTBIF_COLOR|CTBIF_LPARAM|CTBIF_IMAGE; 
 						CustomTab_GetItem(wnd->m_pctabmodule->m_hwnd, k, &quetabitem);
-						if(quetabitem.m_iimage == IDI_SCHEMADESIGNER_16 || quetabitem.m_iimage == IDI_QUERYBUILDER_16 || quetabitem.m_iimage == IDI_QUERY_16 || quetabitem.m_iimage == IDI_CREATEVIEW || quetabitem.m_iimage == IDI_CREATEEVENT|| quetabitem.m_iimage == IDI_CREATEPROCEDURE|| quetabitem.m_iimage == IDI_CREATEFUNCTION|| quetabitem.m_iimage == IDI_CREATETRIGGER || quetabitem.m_iimage == IDI_ALTERVIEW || quetabitem.m_iimage == IDI_ALTEREVENT || quetabitem.m_iimage == IDI_ALTERPROCEDURE || quetabitem.m_iimage == IDI_ALTERFUNCTION || quetabitem.m_iimage == IDI_ALTERTRIGGER )
+						if(quetabitem.m_iimage == IDI_SCHEMADESIGNER_16 || quetabitem.m_iimage == IDI_QUERYBUILDER_16 || quetabitem.m_iimage == IDI_QUERY_16 || quetabitem.m_iimage == IDI_CREATEVIEW || quetabitem.m_iimage == IDI_CREATEEVENT|| quetabitem.m_iimage == IDI_CREATEPROCEDURE|| quetabitem.m_iimage == IDI_CREATEFUNCTION|| quetabitem.m_iimage == IDI_CREATETRIGGER || quetabitem.m_iimage == IDI_ALTERVIEW || quetabitem.m_iimage == IDI_ALTEREVENT || quetabitem.m_iimage == IDI_ALTERPROCEDURE || quetabitem.m_iimage == IDI_ALTERFUNCTION || quetabitem.m_iimage == IDI_ALTERTRIGGER || quetabitem.m_iimage == IDI_CREATESEQUENCE || quetabitem.m_iimage == IDI_ALTERSEQUENCE )
 						{
 							
 							temptabeditorele = new tabeditorelem;
@@ -11469,9 +11650,9 @@ ConnectFromList(wyString* failedconnections, wyString* sessionfile)
 	}
 	else
 	{
-		if(SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, directory)))
+		if(SUCCEEDED(NgsaGetAppData(directory)))
 		{
-			wcscat(directory, L"\\SQLyog\\");
+			wcscat(directory, L"\\" BRAND_CFG_DIR_W L"\\");
 			wcscat(directorybackup, directory);
 			wcscat(directory, L"connrestore.db");	
 			wcscat(directorybackup, L"connrestore_backup.ysav");
@@ -11878,6 +12059,8 @@ Htmlannouncementsproc(void *arg)
 	wyWChar		headers[1024*3] = {0};
 	wyUInt32 daysleft = 0;
 
+	return 0;	// bonSQL: no notifications feed (it called webyog.com with a user id); thread never started (LINK-AUDIT.md)
+
 	//Gets the product id(Ent, Commmunity or Trial)
 #ifdef COMMUNITY
 	productid.SetAs("Community");
@@ -11914,9 +12097,9 @@ Htmlannouncementsproc(void *arg)
 	extrainfo.SetAs(EXTRAINFO); // beta string	
 			
 #ifdef _DEBUG
-	url.SetAs("http://dev.webyog.com/notifications/sqlyog");
+	url.SetAs("");	// bonSQL: was Webyog's notifications feed
 #else
-	url.SetAs("http://www.webyog.com/notifications/sqlyog");
+	url.SetAs("");	// bonSQL: was Webyog's notifications feed
 #endif
 #ifdef _WIN64
 
@@ -12012,9 +12195,9 @@ sessionsavesproc(void *arg)
 	}
 	else
 	{
-		if(SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, directory)))
+		if(SUCCEEDED(NgsaGetAppData(directory)))
 		{
-			wcscat(directory, L"\\SQLyog\\");	
+			wcscat(directory, L"\\" BRAND_CFG_DIR_W L"\\");	
 			wcscat(directory, L"connrestore.db");
 		}
 		else 

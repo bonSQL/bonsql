@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc.
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -47,7 +48,6 @@ class CommunityRibbon;
 class	MDIWindow;
 class	EditorBase;
 class	Favorites;
-class	UpgradeCheck;
 class	ConnectionTab;
 class	tabeditorelem;
 class	TabHistory;
@@ -450,7 +450,7 @@ public:
     */
 	wyBool					InitLatestFiles();
 
-    ///Gets the SQLyog.ini file path
+    ///Gets the bonsql.ini file path
 	/**
 	@path : OUT gets the ini file path
 	@return void
@@ -827,7 +827,6 @@ public:
 	yogIcons				*m_icons;
 
 	//Upgrade check class pointer
-	UpgradeCheck			*m_upgrdchk;
 
 	//Tool bar icon size
 	wyInt32					m_toolbariconsize;
@@ -1110,6 +1109,7 @@ public:
 	@returns wyTrue on success else wyFalse
 	*/
 	wyBool                  HandleCreateEvent       (HWND hwnd, MDIWindow *pcquerywnd, wyWChar *name);
+	wyBool                  HandleCreateSequence    (HWND hwnd, MDIWindow *pcquerywnd, wyWChar *name);	// NGSA
 
 	/// Handles the creation view
 	/**
@@ -1144,6 +1144,8 @@ public:
 	@returns wyboll.
 	*/
 	wyBool PrepareAlterEvent      (MDIWindow *pcquerywnd, wyString &altereventstmt); 
+	void PrepareCreateSequence  (MDIWindow *pcquerywnd, const wyChar *seqname, wyString &strseq);	// NGSA
+	wyBool PrepareAlterSequence   (MDIWindow *pcquerywnd, wyString &alterstmt);	// NGSA
 
 	/// Prepares the creation of view
 	/**
@@ -1478,6 +1480,7 @@ public:
     @returns void
     */
 	void                    OnCreateEvent(HWND hwndactive, MDIWindow *wnd);
+	void                    OnCreateSequence(HWND hwndactive, MDIWindow *wnd);	// NGSA
 
     /// Handles when create trigger is selected
     /**
@@ -1502,6 +1505,7 @@ public:
     */
     void                    OnAlterView(MDIWindow *wnd);
 	void                    OnAlterEvent(MDIWindow *wnd);
+	void                    OnAlterSequence(MDIWindow *wnd);	// NGSA
 
     /// Handles when alter function is selected
     /**
@@ -1700,7 +1704,6 @@ public:
 	@param isexplict : IN its wyTrue if its explicit check(help->check for upgrade), e;se wyFalse(while start up)
 	@return voi
 	*/
-	void				CheckForUpgrade(wyBool isexplict = wyFalse);	
 
 	///Handles the community ribbon
 	/**

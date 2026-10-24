@@ -1,6 +1,8 @@
+// Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
+// Originally part of SQLyog Community, copyright (C) Webyog Inc., GNU GPL.
 //{{NO_DEPENDENCIES}}
 // Microsoft Visual C++ generated include file.
-// Used by SQLyog.rc
+// Used by bonSQL.rc
 //
 #define IDI_MAIN                        1
 #define IDC_DIAG_OPTIMIZE               3
@@ -231,7 +233,7 @@
 #define IDI_UNCHECKICON                 852
 #define IDI_ENTMENU                     856
 #define IDD_GETSQLYOGENTERPRISE         857
-#define IDD_UPGRADECHK                  858
+#define IDD_NGSA_UPDATE                 858	// bonSQL: Check for Updates (NgsaUpdateCheck.cpp)
 #define IDD_PREFOTHERS                  859
 #define IDD_PREFGENERAL                 860
 #define IDI_RESETFILTER                 864
@@ -342,6 +344,9 @@
 #define IDI_REMOVE_FILTER               994
 #define IDI_REMOVE_DB_FILTER            995
 #define IDI_OVERLAYFILTER               997
+#define IDI_SEQUENCE                    1018
+#define IDI_CREATESEQUENCE              1019
+#define IDI_ALTERSEQUENCE               1020
 #define IDR_CONNTABPLUSMENU1            998
 #define IDB_PNG1                        1004
 #define IDC_DLGCONNECT_USER             1005
@@ -572,6 +577,7 @@
 #define IDC_AUTOINCR                    1163
 #define IDC_CHECKSUM                    1164
 #define IDC_DELAYKEY                    1165
+#define IDC_NGSA_VERSIONING             1727	// NGSA (M8b): System versioning combo on the Advanced tab
 #define IDC_MAINTAB                     1168
 #define IDC_SETNULL                     1169
 #define IDC_NULLCHARDISPLAY             1170
@@ -610,6 +616,29 @@
 #define IDC_TUNNEL                      1211
 #define IDC_USEPROXY                    1211
 #define IDC_FL_RESOURCE                 1211
+#define IDC_FL_BINLOGS                  1716
+#define IDC_FL_ENGINELOGS               1717
+#define IDC_FL_ERRORLOGS                1718
+#define IDC_FL_GENERALLOGS              1719
+#define IDC_FL_SLOWLOGS                 1720
+#define IDC_FL_RELAYLOGS                1721
+#define IDC_FL_OPTCOSTS                 1722
+#define IDC_FL_SSL                      1723
+#define IDC_UM_ISROLE                   1724
+#define IDC_NGSA_SYNTAX                 1725
+#define IDC_NGSA_SYNTAXTEXT             1726
+#define IDC_NGSA_FORMAT                 1728	// NGSA (M14): Format button in the field viewer
+#define IDC_NGSA_TABLEDATADESC          1729	// NGSA (#2369): Preferences > Others, Table Data opens descending
+#define IDC_NGSA_PLFILTER               1730	// NGSA (#2295): Show Values dialog filter box
+#define IDC_NGSA_PLFILTERTEXT           1731
+#define IDC_NGSA_PLHIDESLEEP            1732
+#define IDC_NGSA_KILLQUERY              1733	// NGSA (B2): Kill Query button in the Processlist dialog
+#define IDC_NGSA_UPDATECHECK            1734	// bonSQL: Preferences > General, weekly check for new versions
+#define IDC_NGSA_UPD_TEXT               1735	// bonSQL: Check for Updates dialog
+#define IDC_NGSA_UPD_NOTE               1736
+#define IDC_NGSA_UPD_AUTO               1737
+#define IDC_NGSA_UPD_DOWNLOAD           1738
+#define IDC_NGSA_UPD_SKIP               1739
 #define IDC_UPGRDCHK                    1211
 #define IDC_EMPTYDBSELECTALL            1211
 #define IDC_HIDECOLUMNS                 1211
@@ -1512,6 +1541,14 @@
 #define ID_DB_CREATEFUNCTION            41663
 #define ID_DB_CREATETRIGGER             41664
 #define ID_DB_CREATEEVENT               41665
+#define ID_OBJECT_CREATESEQUENCE        41829
+#define ID_OBJECT_ALTERSEQUENCE         41830
+#define ID_OBJECT_DROPSEQUENCE          41831
+#define ID_OBJECT_RENAMESEQUENCE        41832
+#define ID_DB_CREATESEQUENCE            41833
+#define IDM_EDIT_TEMP_CREATESEQUENCE    41834
+#define IDM_EDIT_TEMP_ALTERSEQUENCE     41835
+#define IDM_EDIT_TEMP_DROPSEQUENCE      41836
 #define ACCEL_QUERYUPDATE_KEY           41666
 #define ID_HELP_REGISTRATION            41668
 #define IDM_TOOL_RENAMEUSER             41670
@@ -1670,9 +1707,9 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
-#define _APS_NEXT_RESOURCE_VALUE        1018
-#define _APS_NEXT_COMMAND_VALUE         41829
-#define _APS_NEXT_CONTROL_VALUE         1716
+#define _APS_NEXT_RESOURCE_VALUE        1021
+#define _APS_NEXT_COMMAND_VALUE         41837
+#define _APS_NEXT_CONTROL_VALUE         1740
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

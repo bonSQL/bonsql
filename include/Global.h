@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc.
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -32,6 +33,8 @@ using namespace std;
 #include "datatype.h"
 
 #include "wyIni.h"
+#include "ngsa/NgsaBrand.h"
+#include "ngsa/NgsaConfig.h"
 #include "wyFile.h"
 
 class FrameWindow;
@@ -124,7 +127,9 @@ class wySQLite;
 #define TABLE_XPM {"    10    12        8            1","` c #868794",". c #c8cad9","# c #e6e7f7","a c #a8a9b1","b c #d9daea","c c #b9bac6","d c #fafcfc","e c #9092a1","dddddddddd","daaeeea`dd","#.`e#e`.dd","d.dd.d#cdd","d#.#b.bbdd","dcd#b##add","dbe`.eecdd","da.#c.#add","d.#db#dcdd","dbb#.b#.dd","ddd#dddddd","dddddddddd"}
 #define FIELD_XPM {"    10    12        8            1","` c #040404",". c #e4e4e4","# c #f4f5f4","a c #242224","b c #101010","c c #ecedec","d c #fcfdfc","e c #0c0a0c","dddddcdddd","dcdd#d.ddd","###ddddddd","ddd#d.dddd","d#.e`a`ddd","cd`bd.``dd","dd``dd``dd","d#``#ddddd","d#ebdd#`dd","cdc````ddd","d.ddd#dddd","d#dcddcddd"}
 #define SP_XPM {"    10    12        8            1","` c #343314",". c #c3a73a","# c #f3df2c","a c #eedeb4","b c #faf9ef","c c #b8a472","d c #d2bf83","e c #dac134","bbbdabbbbb","ba``caabbb","bc`d#eedbb","bae##e.dbb","ba#e##.abb","bc###..cbb","ade#eebabb","bceee.bbbb","bacdadbbbb","bbabbbbbbb","bbbbbbbbbb","bbbbbbbbbb"}
-#define FUNC_XPM {"    10    12        8            1","` c #040404",". c #e8e8e8","# c #141614","a c #fbfcfb","b c #101010","c c #242624","d c #f2f1f2","e c #0c0a0c","aadaddaadaaaaa","addddaaaaaaaaa","a.aaaaa.aaaaaa","aadd`aaaaaaaaa","daa``aadaaaaaa","aa````baaaaaaa","daa`#aadaaaaaa","aaa``adadaaaaa","daac`a.aaadaaa","dad`bdadaaaaaa","daade``daaaaaa","ddadaaaaaaaaaa","daaadaaaaaaaaa","ad.aadaaaaaaaa","daaaaaadaaaaaa","aaaadadaaaaaaa","aaaaaaaaaaaaaa","aaaaaaaaaaaaaa"}
+#define FUNC_XPM {"    14    18        8            1","` c #040404",". c #e8e8e8","# c #141614","a c #fbfcfb","b c #101010","c c #242624","d c #f2f1f2","e c #0c0a0c","aadaddaadaaaaa","addddaaaaaaaaa","a.aaaaa.aaaaaa","aadd`aaaaaaaaa","daa``aadaaaaaa","aa````baaaaaaa","daa`#aadaaaaaa","aaa``adadaaaaa","daac`a.aaadaaa","dad`bdadaaaaaa","daade``daaaaaa","ddadaaaaaaaaaa","daaadaaaaaaaaa","ad.aadaaaaaaaa","daaaaaadaaaaaa","aaaadadaaaaaaa","aaaaaaaaaaaaaa","aaaaaaaaaaaaaa"}
+// NGSA (10/10/2026): FUNC_XPM is 14x18 (18 rows of 14); it was declared 10x12. Scintilla 5 copies whole rows
+// (XPM::Init), so the wrong header overran the pixel buffer and corrupted the heap on every editor creation.
 #define ALIAS_XPM {"    10    12        8            1","` c #5d5d5f",". c #9da9dc","# c #7c82a5","a c #8f94ad","b c #cad0e9","c c #b6bace","d c #666a7c","e c #dce4f8","``````````","#cc.c.aaad",".b..a....a","a..b##cb##","aa`dddd`##","a.ceaabea#","aa`ddddd##","a..b##cb#d","aaaa##aa#d","#.a##a#d#d","``````````","dddddddddd"};
 
 
@@ -153,7 +158,7 @@ class wySQLite;
 
 #define SORTICONWIDTH           15
 
-#define	ININAMEDOBJECT			L"9046FD35-2E88-SQLyog85-INI-8EC2"
+#define	ININAMEDOBJECT			L"9046FD35-2E88-bonSQL-INI-8EC2"
 
 // The most important typedef .. change MYSQL * to PMYSQL which will be used everywhere
 
@@ -271,6 +276,9 @@ enum OBJECT
 	OBJECT_INDEX,
 	OBJECT_TABLEDDL,
 	OBJECT_VIEWDDL,
+	OBJECT_SEQUENCES,		// NGSA: MariaDB sequences folder
+	OBJECT_SEQUENCE,		// NGSA: one sequence (SHOW CREATE SEQUENCE)
+	OBJECT_SEQUENCESTATE,	// NGSA: one sequence's current state (SELECT * FROM seq)
 };
 
 

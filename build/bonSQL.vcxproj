@@ -1,0 +1,622 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Template|Win32">
+      <Configuration>Template</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Template|x64">
+      <Configuration>Template</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectGuid>{040BE517-FD94-46E0-89F6-07F29CA8750E}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Template|Win32'">
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Template|x64'">
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <TargetName>bonSQL</TargetName>
+    <_ProjectFileVersion>10.0.30319.1</_ProjectFileVersion>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">..\bin\$(Platform)\$(Configuration)\</OutDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">..\bin\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</LinkIncremental>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</LinkIncremental>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">..\bin\$(Platform)\$(Configuration)\</OutDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">..\bin\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</LinkIncremental>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkIncremental>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Template|Win32'">..\bin\$(Platform)\$(Configuration)\</OutDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Template|x64'">..\bin\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Template|Win32'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Template|x64'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</GenerateManifest>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <PreBuildEvent>
+      <Command>call "$(ProjectDir)ngsa-buildinfo.cmd"</Command>
+      <Message>NGSA: writing include\ngsa\NgsaBuildInfo.h</Message>
+    </PreBuildEvent>
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>../include;../include/scintilla;../include/mysql;../src/htmlview;../include/pcre;../include/tinyxml;../include/vld;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_WIN32_WINNT=0x600;COMMUNITY;NGSA_SSH_SSL;UNICODE;_UNICODE;PCRE_STATIC;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_DEPRECATE;_CRT_NON_CONFORMING_SWPRINTFS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MinimalRebuild>true</MinimalRebuild>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <ProgramDataBaseFileName>$(IntDir)vc70_t.pdb</ProgramDataBaseFileName>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>shfolder.lib;version.lib;Ws2_32.lib;odbc32.lib;odbccp32.lib;wsock32.lib;comctl32.lib;htmlhelp.lib;wininet.lib;imm32.lib;gdiplus.lib;ole32.lib;msimg32.lib;sqlite3.lib;libmariadb.lib;pcre.lib;Rpcrt4.lib;shlwapi.lib;winmm.lib;wevtapi.lib;libcrypto.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
+      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+      <IgnoreSpecificDefaultLibraries>LIBCMT;msvcrt;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ProgramDatabaseFile>$(TargetDir)$(TargetName).pdb</ProgramDatabaseFile>
+      <SubSystem>Windows</SubSystem>
+      <TargetMachine>MachineX86</TargetMachine>
+      <AdditionalLibraryDirectories>..\lib\$(Platform)\$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalManifestDependencies>type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='x86' publicKeyToken='6595b64144ccf1df' language='*'</AdditionalManifestDependencies>
+    </Link>
+    <Manifest>
+      <EnableDPIAwareness>false</EnableDPIAwareness>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <PreBuildEvent>
+      <Command>call "$(ProjectDir)ngsa-buildinfo.cmd"</Command>
+      <Message>NGSA: writing include\ngsa\NgsaBuildInfo.h</Message>
+    </PreBuildEvent>
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>../include;../include/scintilla;../include/mysql;../src/htmlview;../include/pcre;../include/tinyxml;../include/vld;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;WIN64;_DEBUG;_WINDOWS;_WIN32_WINNT=0x501;COMMUNITY;NGSA_SSH_SSL;UNICODE;_UNICODE;PCRE_STATIC;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_DEPRECATE;_CRT_NON_CONFORMING_SWPRINTFS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <ProgramDataBaseFileName>$(IntDir)vc70_t.pdb</ProgramDataBaseFileName>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>shfolder.lib;version.lib;Ws2_32.lib;odbc32.lib;odbccp32.lib;wsock32.lib;comctl32.lib;htmlhelp.lib;wininet.lib;imm32.lib;gdiplus.lib;ole32.lib;msimg32.lib;sqlite3.lib;libmariadb.lib;pcre.lib;Rpcrt4.lib;shlwapi.lib;winmm.lib;libcrypto.lib;secur32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
+      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+      <IgnoreSpecificDefaultLibraries>LIBCMT; LIBC;LIBCD;msvcrt;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ProgramDatabaseFile>$(TargetDir)$(TargetName).pdb</ProgramDatabaseFile>
+      <SubSystem>Windows</SubSystem>
+      <AdditionalLibraryDirectories>..\lib\$(Platform)\$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalManifestDependencies>type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='amd64' publicKeyToken='6595b64144ccf1df' language='*'</AdditionalManifestDependencies>
+    </Link>
+    <Manifest>
+      <EnableDPIAwareness>false</EnableDPIAwareness>
+    </Manifest>
+    <ResourceCompile>
+      <PreprocessorDefinitions>WIN64</PreprocessorDefinitions>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <PreBuildEvent>
+      <Command>call "$(ProjectDir)ngsa-buildinfo.cmd"</Command>
+      <Message>NGSA: writing include\ngsa\NgsaBuildInfo.h</Message>
+    </PreBuildEvent>
+    <ClCompile>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <AdditionalIncludeDirectories>../include;../include/scintilla;../include/mysql;../src/htmlview;../include/pcre;../include/tinyxml;../include/vld;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_WIN32_WINNT=0x600;SCI_LEXER;STATIC_BUILD;COMMUNITY;NGSA_SSH_SSL;_UNICODE;UNICODE;PCRE_STATIC;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_DEPRECATE;_CRT_NON_CONFORMING_SWPRINTFS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <StringPooling>true</StringPooling>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <ProgramDataBaseFileName>$(IntDir)vc70.pdb</ProgramDataBaseFileName>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>shfolder.lib;version.lib;Ws2_32.lib;odbc32.lib;odbccp32.lib;wsock32.lib;comctl32.lib;htmlhelp.lib;wininet.lib;imm32.lib;gdiplus.lib;ole32.lib;msimg32.lib;sqlite3.lib;libmariadb.lib;pcre.lib;Rpcrt4.lib;shlwapi.lib;winmm.lib;wevtapi.lib;libcrypto.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
+      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+      <IgnoreSpecificDefaultLibraries>LIBCD;msvcrt;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ProgramDatabaseFile>$(TargetDir)$(TargetName).pdb</ProgramDatabaseFile>
+      <SubSystem>Windows</SubSystem>
+      <OptimizeReferences>true</OptimizeReferences>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <TargetMachine>MachineX86</TargetMachine>
+      <AdditionalLibraryDirectories>..\lib\$(Platform)\$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalManifestDependencies>type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='x86' publicKeyToken='6595b64144ccf1df' language='*'</AdditionalManifestDependencies>
+    </Link>
+    <Manifest>
+      <EnableDPIAwareness>false</EnableDPIAwareness>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <PreBuildEvent>
+      <Command>call "$(ProjectDir)ngsa-buildinfo.cmd"</Command>
+      <Message>NGSA: writing include\ngsa\NgsaBuildInfo.h</Message>
+    </PreBuildEvent>
+    <ClCompile>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <AdditionalIncludeDirectories>../include;../include/scintilla;../include/mysql;../src/htmlview;../include/pcre;../include/tinyxml;../include/vld;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;WIN64;NDEBUG;_WINDOWS;_WIN32_WINNT=0x501;SCI_LEXER;STATIC_BUILD;COMMUNITY;NGSA_SSH_SSL;_UNICODE;UNICODE;PCRE_STATIC;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_DEPRECATE;_CRT_NON_CONFORMING_SWPRINTFS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <StringPooling>true</StringPooling>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <ProgramDataBaseFileName>$(IntDir)vc70.pdb</ProgramDataBaseFileName>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>shfolder.lib;version.lib;Ws2_32.lib;odbc32.lib;odbccp32.lib;wsock32.lib;comctl32.lib;htmlhelp.lib;wininet.lib;imm32.lib;gdiplus.lib;ole32.lib;msimg32.lib;sqlite3.lib;libmariadb.lib;pcre.lib;Rpcrt4.lib;shlwapi.lib;winmm.lib;libcrypto.lib;secur32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
+      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+      <IgnoreSpecificDefaultLibraries>LIBCD.lib;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ProgramDatabaseFile>$(TargetDir)$(TargetName).pdb</ProgramDatabaseFile>
+      <SubSystem>Windows</SubSystem>
+      <OptimizeReferences>true</OptimizeReferences>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <AdditionalLibraryDirectories>..\lib\$(Platform)\$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalManifestDependencies>type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='amd64' publicKeyToken='6595b64144ccf1df' language='*'</AdditionalManifestDependencies>
+    </Link>
+    <Manifest>
+      <EnableDPIAwareness>false</EnableDPIAwareness>
+    </Manifest>
+    <ResourceCompile>
+      <PreprocessorDefinitions>WIN64</PreprocessorDefinitions>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Template|Win32'">
+    <PreBuildEvent>
+      <Command>call "$(ProjectDir)ngsa-buildinfo.cmd"</Command>
+      <Message>NGSA: writing include\ngsa\NgsaBuildInfo.h</Message>
+    </PreBuildEvent>
+    <ClCompile>
+      <AdditionalIncludeDirectories>../include;../include/scintilla;../include/mysql;../src/htmlview;../include/pcre;../include/tinyxml;../include/vld;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories>..\lib\$(Platform)\$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>shfolder.lib;odbc32.lib;odbccp32.lib;wsock32.lib;comctl32.lib;htmlhelp.lib;wininet.lib;imm32.lib;gdiplus.lib;ole32.lib;msimg32.lib;sqlite.lib;libmariadb.lib;pcre.lib;Rpcrt4.lib;shlwapi.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+      <IgnoreSpecificDefaultLibraries>LIBCMT; LIBC;LIBCD;msvcrt;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <AdditionalManifestDependencies>type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='x86' publicKeyToken='6595b64144ccf1df' language='*'</AdditionalManifestDependencies>
+    </Link>
+    <Manifest>
+      <EnableDPIAwareness>false</EnableDPIAwareness>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Template|x64'">
+    <PreBuildEvent>
+      <Command>call "$(ProjectDir)ngsa-buildinfo.cmd"</Command>
+      <Message>NGSA: writing include\ngsa\NgsaBuildInfo.h</Message>
+    </PreBuildEvent>
+    <ClCompile>
+      <AdditionalIncludeDirectories>../include;../include/scintilla;../include/mysql;../src/htmlview;../include/pcre;../include/tinyxml;../include/vld;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories>..\lib\$(Platform)\$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>shfolder.lib;odbc32.lib;odbccp32.lib;wsock32.lib;comctl32.lib;htmlhelp.lib;wininet.lib;imm32.lib;gdiplus.lib;ole32.lib;msimg32.lib;sqlite.lib;libmariadb.lib;pcre.lib;Rpcrt4.lib;shlwapi.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+      <IgnoreSpecificDefaultLibraries>LIBCMT; LIBC;LIBCD;msvcrt;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <AdditionalManifestDependencies>type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='amd64' publicKeyToken='6595b64144ccf1df' language='*'</AdditionalManifestDependencies>
+    </Link>
+    <Manifest>
+      <EnableDPIAwareness>false</EnableDPIAwareness>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="..\src\Announcements.cpp" />
+    <ClCompile Include="..\src\AutoCompleteInterface.cpp" />
+    <ClCompile Include="..\src\BlobMgmt.cpp" />
+    <ClCompile Include="..\src\ButtonDropDown.cpp" />
+    <ClCompile Include="..\src\CalendarCtrl.cpp" />
+    <ClCompile Include="..\src\CCustomComboBox.cpp" />
+    <ClCompile Include="..\src\ClientMySQLWrapper.cpp" />
+    <ClCompile Include="..\src\CommonHelper.cpp" />
+    <ClCompile Include="..\src\CommunityRibbon.cpp" />
+    <ClCompile Include="..\src\ConnectionBase.cpp" />
+    <ClCompile Include="..\src\ConnectionCommunity.cpp" />
+    <ClCompile Include="..\src\ConnectionTab.cpp" />
+    <ClCompile Include="..\src\CopyDatabase.cpp" />
+    <ClCompile Include="..\src\CustGrid.cpp" />
+    <ClCompile Include="..\src\CustomSaveDlg.cpp" />
+    <ClCompile Include="..\src\CustTab.cpp" />
+    <ClCompile Include="..\src\DataView.cpp" />
+    <ClCompile Include="..\src\DBListBuilder.cpp" />
+    <ClCompile Include="..\src\DialogPersistence.cpp" />
+    <ClCompile Include="..\src\DoubleBuffer.cpp" />
+    <ClCompile Include="..\src\EditorBase.cpp" />
+    <ClCompile Include="..\src\EditorFont.cpp" />
+    <ClCompile Include="..\src\EditorProcs.cpp" />
+    <ClCompile Include="..\src\EditorQuery.cpp" />
+    <ClCompile Include="..\src\Escapechar.cpp" />
+    <ClCompile Include="..\src\ExportAsSimpleSQL.cpp">
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="..\src\ExportAsSQL.cpp" />
+    <ClCompile Include="..\src\ExportBatch.cpp" />
+    <ClCompile Include="..\src\ExportData.cpp" />
+    <ClCompile Include="..\src\ExportImportConnectionDetails.cpp" />
+    <ClCompile Include="..\src\ExportToExcel.cpp" />
+    <ClCompile Include="..\src\Favorite.cpp" />
+    <ClCompile Include="..\src\FavoriteAdd.cpp" />
+    <ClCompile Include="..\src\FavoriteMenu.cpp" />
+    <ClCompile Include="..\src\FavoriteOrganize.cpp" />
+    <ClCompile Include="..\src\FileHelper.cpp" />
+    <ClCompile Include="..\src\FindAndReplace.cpp" />
+    <ClCompile Include="..\src\FKDropDown.cpp" />
+    <ClCompile Include="..\src\FrameWindow.cpp" />
+    <ClCompile Include="..\src\FrameWindowHelper.cpp" />
+    <ClCompile Include="..\src\FrameWindowSplitter.cpp" />
+    <ClCompile Include="..\src\GUIHelper.cpp" />
+    <ClCompile Include="..\src\Htmlrender.cpp" />
+    <ClCompile Include="..\src\Http.cpp" />
+    <ClCompile Include="..\src\ImageList.cpp" />
+    <ClCompile Include="..\src\ImportBatch.cpp" />
+    <ClCompile Include="..\src\ImportData.cpp" />
+    <ClCompile Include="..\src\ImportFromSQL.cpp" />
+    <ClCompile Include="..\src\jsoncpp.cpp" />
+    <ClCompile Include="..\src\KeyShortCuts.cpp" />
+    <ClCompile Include="..\src\L10n.cpp" />
+    <ClCompile Include="..\src\L10nText.cpp" />
+    <ClCompile Include="..\src\LexHelper.cpp" />
+    <ClCompile Include="..\src\List.cpp" />
+    <ClCompile Include="..\src\LogMgmt.cpp" />
+    <ClCompile Include="..\src\MDIWindow.cpp" />
+    <ClCompile Include="..\src\MiniDump.cpp" />
+    <ClCompile Include="..\src\MySQLRowExArray.cpp" />
+    <ClCompile Include="..\src\MySQLVersionHelper.cpp" />
+    <ClCompile Include="..\src\ObjectBrowser.cpp" />
+    <ClCompile Include="..\src\ObjectInfo.cpp" />
+    <ClCompile Include="..\src\OtherDialogs.cpp" />
+    <ClCompile Include="..\src\PreferenceBase.cpp" />
+    <ClCompile Include="..\src\PreferenceCommunity.cpp" />
+    <ClCompile Include="..\src\QueryAnalyzerBase.cpp" />
+    <ClCompile Include="..\src\QueryAnalyzerCommunity.cpp" />
+    <ClCompile Include="..\src\QueryThread.cpp" />
+    <ClCompile Include="..\src\ResultView.cpp" />
+    <ClCompile Include="..\src\SortAndFilter.cpp" />
+    <ClCompile Include="..\src\SQLFormatter.cpp" />
+    <ClCompile Include="..\src\sqlite3.c" />
+    <ClCompile Include="..\src\SQLMaker.cpp" />
+    <ClCompile Include="..\src\SQLTokenizer.cpp" />
+    <ClCompile Include="..\src\StatusbarMgmt.cpp" />
+    <ClCompile Include="..\src\TabAdvancedProperties.cpp" />
+    <ClCompile Include="..\src\TabCheck.cpp" />
+    <ClCompile Include="..\src\TabEditor.cpp">
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="..\src\TabEditorSplitter.cpp">
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="..\src\TabFields.cpp" />
+    <ClCompile Include="..\src\TabForeignKeys.cpp" />
+    <ClCompile Include="..\src\TabHistory.cpp" />
+    <ClCompile Include="..\src\TabIndexes.cpp" />
+    <ClCompile Include="..\src\TableTabInterface.cpp" />
+    <ClCompile Include="..\src\TableTabInterfaceTabMgmt.cpp" />
+    <ClCompile Include="..\src\TableView.cpp" />
+    <ClCompile Include="..\src\TabMessage.cpp" />
+    <ClCompile Include="..\src\TabMgmt.cpp" />
+    <ClCompile Include="..\src\TabModule.cpp">
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="..\src\TabObject.cpp" />
+    <ClCompile Include="..\src\TabPreview.cpp" />
+    <ClCompile Include="..\src\TabQueryHistory.cpp" />
+    <ClCompile Include="..\src\TabQueryObject.cpp" />
+    <ClCompile Include="..\src\TabQueryTypes.cpp">
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="..\src\TabResult.cpp" />
+    <ClCompile Include="..\src\TabTable.cpp" />
+    <ClCompile Include="..\src\TabTableData.cpp" />
+    <ClCompile Include="..\src\TabTypes.cpp">
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="..\src\TunnelCommunity.cpp" />
+    <ClCompile Include="..\src\UrlEncode.cpp" />
+    <ClCompile Include="..\src\UserManager.cpp" />
+    <ClCompile Include="..\src\WinMain.cpp" />
+    <ClCompile Include="..\src\ngsa\NgsaConnectionExt.cpp" />
+    <ClCompile Include="..\src\ngsa\NgsaSshTunnel.cpp" />
+    <ClCompile Include="..\src\ngsa\NgsaCaps.cpp" />
+    <ClCompile Include="..\src\ngsa\NgsaServerOps.cpp" />
+    <ClCompile Include="..\src\ngsa\NgsaTrace.cpp" />
+    <ClCompile Include="..\src\ngsa\NgsaConfig.cpp" />
+    <ClCompile Include="..\src\ngsa\NgsaJson.cpp" />
+    <ClCompile Include="..\src\ngsa\NgsaFieldSyntax.cpp" />
+    <ClCompile Include="..\src\ngsa\NgsaUpdateCheck.cpp" />
+    <ClCompile Include="..\src\ngsa\NgsaDark.cpp" />
+    <ClCompile Include="..\src\ngsa\NgsaScintilla.cpp" />
+    <ClCompile Include="..\src\ngsa\NgsaOpenSslApplink.c" />
+    <ClCompile Include="..\src\tinyxml\tinyxml2.cpp" />
+    <ClCompile Include="..\src\WyCrc.cpp" />
+    <ClCompile Include="..\src\wyFile.cpp" />
+    <ClCompile Include="..\src\wyIni.cpp" />
+    <ClCompile Include="..\src\wyMySQLError.cpp" />
+    <ClCompile Include="..\src\wySqlite.cpp" />
+    <ClCompile Include="..\src\wyString.cpp" />
+    <ClCompile Include="..\src\wyTheme.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\include\Announcements.h" />
+    <ClInclude Include="..\include\AppInfo.h" />
+    <ClInclude Include="..\include\AutoCompleteInterface.h" />
+    <ClInclude Include="..\include\BlobMgmt.h" />
+    <ClInclude Include="..\include\ButtonDropDown.h" />
+    <ClInclude Include="..\include\CalendarCtrl.h" />
+    <ClInclude Include="..\include\CCustomComboBox.h" />
+    <ClInclude Include="..\include\ClientMySQLWrapper.h" />
+    <ClInclude Include="..\include\CommonHelper.h" />
+    <ClInclude Include="..\include\CommunityRibbon.h" />
+    <ClInclude Include="..\include\ConnectionBase.h" />
+    <ClInclude Include="..\include\ConnectionCommunity.h" />
+    <ClInclude Include="..\include\ConnectionTab.h" />
+    <ClInclude Include="..\include\CopyDatabase.h" />
+    <ClInclude Include="..\include\CustGrid.h" />
+    <ClInclude Include="..\include\CustomSaveDlg.h" />
+    <ClInclude Include="..\include\CustTab.h" />
+    <ClInclude Include="..\include\Datatype.h" />
+    <ClInclude Include="..\include\DataView.h" />
+    <ClInclude Include="..\include\DBListBuilder.h" />
+    <ClInclude Include="..\include\DialogPersistence.h" />
+    <ClInclude Include="..\include\DoubleBuffer.h" />
+    <ClInclude Include="..\include\EditorBase.h" />
+    <ClInclude Include="..\include\EditorFont.h" />
+    <ClInclude Include="..\include\EditorProcs.h" />
+    <ClInclude Include="..\include\EditorQuery.h" />
+    <ClInclude Include="..\include\EditorTab.h" />
+    <ClInclude Include="..\include\ExportAsSimpleSQL.h" />
+    <ClInclude Include="..\include\ExportAsSQL.h" />
+    <ClInclude Include="..\include\ExportBatch.h" />
+    <ClInclude Include="..\include\ExportImportConnectionDetails.h" />
+    <ClInclude Include="..\include\ExportMultiFormat.h" />
+    <ClInclude Include="..\include\ExportToExcel.h" />
+    <ClInclude Include="..\include\FavoriteAdd.h" />
+    <ClInclude Include="..\include\FavoriteBase.h" />
+    <ClInclude Include="..\include\FavoriteMenu.h" />
+    <ClInclude Include="..\include\FavoriteOrganize.h" />
+    <ClInclude Include="..\include\FileHelper.h" />
+    <ClInclude Include="..\include\FindAndReplace.h" />
+    <ClInclude Include="..\include\FindReplace.h" />
+    <ClInclude Include="..\include\FKDropDown.h" />
+    <ClInclude Include="..\include\FrameWindow.h" />
+    <ClInclude Include="..\include\FrameWindowHelper.h" />
+    <ClInclude Include="..\include\Global.h" />
+    <ClInclude Include="..\include\GUIHelper.h" />
+    <ClInclude Include="..\include\HelpHeader.h" />
+    <ClInclude Include="..\include\Htmlrender.h" />
+    <ClInclude Include="..\include\Http.h" />
+    <ClInclude Include="..\include\ImageList.h" />
+    <ClInclude Include="..\include\ImportBatch.h" />
+    <ClInclude Include="..\include\ImportFromSQL.h" />
+    <ClInclude Include="..\include\Include.h" />
+    <ClInclude Include="..\include\jsoncpp.h" />
+    <ClInclude Include="..\include\L10n.h" />
+    <ClInclude Include="..\include\L10nText.h" />
+    <ClInclude Include="..\include\LexHelper.h" />
+    <ClInclude Include="..\include\LexMySQL.h" />
+    <ClInclude Include="..\include\List.h" />
+    <ClInclude Include="..\include\LogMgmt.h" />
+    <ClInclude Include="..\include\MainWinSplitter.h" />
+    <ClInclude Include="..\include\MDIWindow.h" />
+    <ClInclude Include="..\include\MiniDump.h" />
+    <ClInclude Include="..\include\MySQLRowExArray.h" />
+    <ClInclude Include="..\include\MySQLVersionHelper.h" />
+    <ClInclude Include="..\include\ObjectBrowser.h" />
+    <ClInclude Include="..\include\ObjectInfo.h" />
+    <ClInclude Include="..\include\OtherDialogs.h" />
+    <ClInclude Include="..\include\PreferenceBase.h" />
+    <ClInclude Include="..\include\PreferenceCommunity.h" />
+    <ClInclude Include="..\include\QueryAnalyzerBase.h" />
+    <ClInclude Include="..\include\QueryMessageEdit.h" />
+    <ClInclude Include="..\include\QueryThread.h" />
+    <ClInclude Include="..\include\resource.h" />
+    <ClInclude Include="..\include\ResultView.h" />
+    <ClInclude Include="..\include\SortAndFilter.h" />
+    <ClInclude Include="..\include\SQLFormatter.h" />
+    <ClInclude Include="..\include\sqlite3.h" />
+    <ClInclude Include="..\include\SQLMaker.h" />
+    <ClInclude Include="..\include\SQLTokenizer.h" />
+    <ClInclude Include="..\include\StatusbarMgmt.h" />
+    <ClInclude Include="..\include\Symbols.h" />
+    <ClInclude Include="..\include\TabAdvancedProperties.h" />
+    <ClInclude Include="..\include\TabCheck.h" />
+    <ClInclude Include="..\include\TabEditor.h" />
+    <ClInclude Include="..\include\TabEditorSplitter.h" />
+    <ClInclude Include="..\include\TabFields.h" />
+    <ClInclude Include="..\include\TabForeignKeys.h" />
+    <ClInclude Include="..\include\TabHistory.h" />
+    <ClInclude Include="..\include\TabIndexes.h" />
+    <ClInclude Include="..\include\TableTabInterface.h" />
+    <ClInclude Include="..\include\TableTabInterfaceTabMgmt.h" />
+    <ClInclude Include="..\include\TableView.h" />
+    <ClInclude Include="..\include\TabMessage.h" />
+    <ClInclude Include="..\include\TabMgmt.h" />
+    <ClInclude Include="..\include\TabModule.h" />
+    <ClInclude Include="..\include\TabObject.h" />
+    <ClInclude Include="..\include\TabPreview.h" />
+    <ClInclude Include="..\include\TabQueryObject.h" />
+    <ClInclude Include="..\include\TabQueryTypes.h" />
+    <ClInclude Include="..\include\TabResult.h" />
+    <ClInclude Include="..\include\TabTableData.h" />
+    <ClInclude Include="..\include\TabTypes.h" />
+    <ClInclude Include="..\include\tinyxml\tinyxml2.h" />
+    <ClInclude Include="..\include\Tunnel.h" />
+    <ClInclude Include="..\include\TunnelCommunity.h" />
+    <ClInclude Include="..\include\ngsa\NgsaUpdateCheck.h" />
+    <ClInclude Include="..\include\UrlEncode.h" />
+    <ClInclude Include="..\include\UserManager.h" />
+    <ClInclude Include="..\include\Verify.h" />
+    <ClInclude Include="..\include\WyCrc.h" />
+    <ClInclude Include="..\include\wyFile.h" />
+    <ClInclude Include="..\include\wyIni.h" />
+    <ClInclude Include="..\include\wyMySQLError.h" />
+    <ClInclude Include="..\include\wySqlite.h" />
+    <ClInclude Include="..\include\wyString.h" />
+    <ClInclude Include="..\include\wyTheme.h" />
+    <ClInclude Include="..\include\ngsa\NgsaConnectionExt.h" />
+    <ClInclude Include="..\include\ngsa\NgsaSshTunnel.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="..\include\bonSQL.rc" />
+    <ResourceCompile Include="..\include\VersionInfo.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\include\Flat.xml" />
+    <None Include="..\include\readme.txt" />
+    <None Include="..\include\twilight_theme.xml" />
+    <None Include="bitmaps\OB_filter.ico" />
+    <None Include="bitmaps\overlay_filter.ico" />
+    <None Include="bitmaps\previous.PNG" />
+    <None Include="bitmaps\remove_db_filter_black.ico" />
+    <None Include="bitmaps\TableOptions.ico" />
+    <None Include="bitmaps\TabPreview.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <Xml Include="..\include\Dark.xml" />
+  </ItemGroup>
+  <ItemGroup Label="bonSQL HtmlView: HTML view on litehtml (docs/ngsa/HTMLVIEW.md)">
+    <ClCompile Include="..\src\htmlview\HtmlView.cpp">
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <ConformanceMode>true</ConformanceMode>
+      <PreprocessorDefinitions>NOMINMAX;UNICODE;_UNICODE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <UndefinePreprocessorDefinitions>_MBCS;%(UndefinePreprocessorDefinitions)</UndefinePreprocessorDefinitions>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>../third_party/litehtml/include;../third_party/litehtml/include/litehtml;../third_party/litehtml/src/gumbo/include;../third_party/litehtml/src/gumbo/include/gumbo;../third_party/litehtml/src/gumbo/visualc/include;../third_party/litehtml/containers/windows/win32;../src/htmlview;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <ObjectFileName>$(IntDir)htmlview\</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="..\third_party\litehtml\containers\windows\win32\win32_container.cpp">
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <ConformanceMode>true</ConformanceMode>
+      <PreprocessorDefinitions>NOMINMAX;UNICODE;_UNICODE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <UndefinePreprocessorDefinitions>_MBCS;%(UndefinePreprocessorDefinitions)</UndefinePreprocessorDefinitions>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>../third_party/litehtml/include;../third_party/litehtml/include/litehtml;../third_party/litehtml/src/gumbo/include;../third_party/litehtml/src/gumbo/include/gumbo;../third_party/litehtml/src/gumbo/visualc/include;../third_party/litehtml/containers/windows/win32;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <ObjectFileName>$(IntDir)htmlview\</ObjectFileName>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+    </ClCompile>
+    <ClCompile Include="..\third_party\litehtml\src\*.cpp">
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <ConformanceMode>true</ConformanceMode>
+      <PreprocessorDefinitions>NOMINMAX;UNICODE;_UNICODE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <UndefinePreprocessorDefinitions>_MBCS;%(UndefinePreprocessorDefinitions)</UndefinePreprocessorDefinitions>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>../third_party/litehtml/include;../third_party/litehtml/include/litehtml;../third_party/litehtml/src/gumbo/include;../third_party/litehtml/src/gumbo/include/gumbo;../third_party/litehtml/src/gumbo/visualc/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <ObjectFileName>$(IntDir)litehtml\</ObjectFileName>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+    </ClCompile>
+    <ClCompile Include="..\third_party\litehtml\src\gumbo\*.c">
+      <CompileAs>CompileAsC</CompileAs>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <AdditionalIncludeDirectories>../third_party/litehtml/src/gumbo/include;../third_party/litehtml/src/gumbo/include/gumbo;../third_party/litehtml/src/gumbo/visualc/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <ObjectFileName>$(IntDir)gumbo\</ObjectFileName>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+    </ClCompile>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+  <ProjectExtensions>
+    <VisualStudio>
+    </VisualStudio>
+  </ProjectExtensions>
+</Project>

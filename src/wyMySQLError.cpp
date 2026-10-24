@@ -291,8 +291,8 @@ MySQLError::CreateScintillaWindow(HWND hDlg)
 		DestroyIcon(hicon);
 
 		SetWindowText(GetDlgItem(hDlg, IDC_STATIC_ERRMSG), _(L"Warnings"));	
-		SetWindowText(GetDlgItem(hDlg, IDC_STATIC_MYSQLERROR), _(L"MySQL Warning"));	
-		SetWindowText(hDlg, _(L"MySQL Warning"));
+		SetWindowText(GetDlgItem(hDlg, IDC_STATIC_MYSQLERROR), _(L"Server Warning"));	
+		SetWindowText(hDlg, _(L"Server Warning"));
 	}
 
 	else
@@ -303,8 +303,8 @@ MySQLError::CreateScintillaWindow(HWND hDlg)
 		DestroyIcon(hicon);
 
 		SetWindowText(GetDlgItem(hDlg, IDC_STATIC_ERRMSG), _(L"Error message"));
-		SetWindowText(GetDlgItem(hDlg, IDC_STATIC_MYSQLERROR), _(L"MySQL Error"));
-		SetWindowText(hDlg, _(L"MySQL Error"));
+		SetWindowText(GetDlgItem(hDlg, IDC_STATIC_MYSQLERROR), _(L"Server Error"));
+		SetWindowText(hDlg, _(L"Server Error"));
 	}
 }
 

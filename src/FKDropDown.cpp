@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -42,9 +43,11 @@ struct FKThreadStruct
     HANDLE      m_hevent;
 };
 
-FKDropDown::FKDropDown(DataView* pdv, BEHAVIOR_EVENT_PARAMS* params)
+FKDropDown::FKDropDown(DataView* pdv, void* params)
 {
+#ifndef COMMUNITY
     htmlayout::dom::element src;
+#endif
     wyString                temp;
 
     InitializeCriticalSection(&m_cs);
@@ -62,14 +65,16 @@ FKDropDown::FKDropDown(DataView* pdv, BEHAVIOR_EVENT_PARAMS* params)
 	m_pmdi = m_pdv->m_wnd;
     
     //if the call contains valid params, then it is from form view otherwise from grid, based on which we are identifying the current column
+#ifndef COMMUNITY
     if(params)
     {
-        src = params->heTarget;
+        src = ((BEHAVIOR_EVENT_PARAMS*)params)->heTarget;
         src = src.first_sibling();
         temp.SetAs(src.get_attribute("id"));
         m_column = temp.GetAsInt32();
     }
     else
+#endif
     {
         m_column = CustomGrid_GetCurSelCol(m_hwndparentgrid);
     }
@@ -172,10 +177,10 @@ FKDropDown::InitDialog(HWND hwnd)
     HWND                    hwndsearch;
     WNDPROC                 origproc, wndproc;
     wyString                temp;
+#ifndef COMMUNITY
     htmlayout::dom::element src;
+#endif
     wyWChar*                buffer;
-    json::string            items;
-    json::value	            value;
     wyBool                  isfullname = wyFalse;
     HICON                   hicon;
 
@@ -236,7 +241,7 @@ FKDropDown::InitDialog(HWND hwnd)
     else
     {
         //find the selected field's coordinate, we need this to position the window relatively
-        src = m_params->heTarget;
+        src = ((BEHAVIOR_EVENT_PARAMS*)m_params)->heTarget;
         src = src.prev_sibling();
         rect = src.get_location(1);
         rect.left -= 3;
@@ -552,7 +557,7 @@ FKDropDown::DlgProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
             break;
 
         case WM_HELP:
-            ShowHelp("http://sqlyogkb.webyog.com/article/103-looking-up-constraints-for-a-value");
+            ShowHelp("help:looking-up-constraints-for-a-value");
 		    break;
 
         default:
@@ -2254,7 +2259,7 @@ FKDropDown::FilterOnValuesEntered(wyInt32 value)
     wyWChar*    lpfileport = NULL;
     wyString    dirstr;
 
-    if(SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
+    if(SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
     {
         return value < 0 ? 1 : 0;
     }
@@ -2404,7 +2409,7 @@ FKDropDown::DeleteFKList(FKEYINFOPARAM** pfkinfo, wyInt32* count)
     *count = 0;
 }
 
-wyInt32 FKLookupAndInsert(DataView* pdv, BEHAVIOR_EVENT_PARAMS* params)
+wyInt32 FKLookupAndInsert(DataView* pdv, void* params)
 {
     wyInt32     image;
     MDIWindow*  pmdi = GetActiveWin();
@@ -2413,7 +2418,7 @@ wyInt32 FKLookupAndInsert(DataView* pdv, BEHAVIOR_EVENT_PARAMS* params)
     {
         if((image = pmdi->m_pctabmodule->GetActiveTabImage()) == IDI_DATASEARCH)
         {
-            MessageBox(pmdi->m_pctabmodule->m_hwnd, _(L"Please stop the search to retreive parent table rows"), pGlobals->m_appname.GetAsWideChar(), MB_ICONINFORMATION | MB_OK);
+            MessageBox(pmdi->m_pctabmodule->m_hwnd, _(L"Stop the search first to retrieve the parent table's rows"), pGlobals->m_appname.GetAsWideChar(), MB_ICONINFORMATION | MB_OK);
 		    return IDCANCEL;
         }
     }

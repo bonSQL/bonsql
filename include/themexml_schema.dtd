@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- root element -->
-<!ELEMENT sqlyogtheme (framewindow, mdiclient, mdichild, menu, menubar, toolbar, maintoolbar, hsplitter, vsplitter, conntab, querytab, restab, tabletab)>
-<!ATTLIST sqlyogtheme
+<!ELEMENT bonsqltheme (framewindow, mdiclient, mdichild, menu, menubar, toolbar, maintoolbar, hsplitter, vsplitter, conntab, querytab, restab, tabletab)>
+<!ATTLIST bonsqltheme
           name CDATA #IMPLIED>
           <!-- main application window -->
           <!ELEMENT framewindow (background)>

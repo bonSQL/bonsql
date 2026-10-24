@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -215,7 +216,7 @@ wyIni::IniIsConnectionExists(const wyWChar *path)
 	
 	if(trycount > FILE_LOCK_WAIT_TRY_COUNT)
 	{
-		MessageBox(NULL, _(L"Files are inaccessible"), L"SQLyog", MB_ICONERROR | MB_OKCANCEL); 
+		MessageBox(NULL, _(L"Files are inaccessible"), L"bonSQL", MB_ICONERROR | MB_OKCANCEL); 
         LeaveCriticalSection(&pGlobals->m_csiniglobal);
         return wyFalse;
     }
@@ -324,7 +325,7 @@ wyIni::IniTransferFullSection(const wyChar* fromSec, const wyChar* toSec,
 	
 	if(trycount > FILE_LOCK_WAIT_TRY_COUNT)
 	{
-		MessageBox(NULL, _(L"Files are inaccessible"), L"SQLyog", MB_ICONERROR | MB_OKCANCEL); 
+		MessageBox(NULL, _(L"Files are inaccessible"), L"bonSQL", MB_ICONERROR | MB_OKCANCEL); 
         LeaveCriticalSection(&pGlobals->m_csiniglobal);
         return wyFalse;
     }
@@ -383,7 +384,7 @@ wyIni::IniTransferFullSection(const wyChar* fromSec, const wyChar* toSec,
 	
 	                if(trycount > FILE_LOCK_WAIT_TRY_COUNT)
 	                {
-		                MessageBox(NULL, _(L"Files are inaccessible"), L"SQLyog", MB_ICONERROR | MB_OKCANCEL); 
+		                MessageBox(NULL, _(L"Files are inaccessible"), L"bonSQL", MB_ICONERROR | MB_OKCANCEL); 
 		                fclose(in_stream);
                         LeaveCriticalSection(&pGlobals->m_csiniglobal);
                         return wyFalse;
@@ -596,7 +597,7 @@ wyIni::LoadFile(const wyChar *filename, const wyChar* secname, const wyChar* key
 	if(trycount > FILE_LOCK_WAIT_TRY_COUNT)
 	{
 		m_errormsg = "open file error";
-		MessageBox(NULL, _(L"SQLyog is getting terminated"), L"SQLyog", MB_ICONERROR | MB_OKCANCEL); 
+		MessageBox(NULL, _(L"bonSQL is closing because a settings file cannot be read"), L"bonSQL", MB_ICONERROR | MB_OKCANCEL); 
 
 		exit(0);
 		//return wyFalse;	

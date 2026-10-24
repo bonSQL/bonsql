@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -92,6 +93,18 @@ StatusBarMgmt::AddTickCount(Tunnel * tunnel, wyInt64 execsec, wyInt64 totsec, wy
     m_text[2].SetAs(msg);
     UpdatePart(2);
 	return;
+}
+
+// NGSA (#2135): while a query runs the Exec part counts up; AddTickCount overwrites it at the end
+void
+StatusBarMgmt::NgsaShowRunning(wyInt64 elapsedus)
+{
+	wyString timestr, msg;
+
+	GetTime(elapsedus, timestr);
+	msg.Sprintf(_(" Running: %s"), timestr.GetString());
+	m_text[1].SetAs(msg);
+	UpdatePart(1);
 }
 
 // Formats and sets the number of rows returned in the resultset after execution of a query.
@@ -213,4 +226,15 @@ StatusBarMgmt::UpdatePart(wyInt32 part)
     SendMessage(m_hwnd, SB_GETRECT, part, (LPARAM)&rect);
     InvalidateRect(m_hwnd, &rect, FALSE);
     UpdateWindow(m_hwnd);
+}
+
+// NGSA (#2135): Table Data and other non-editor executions never write Exec/Total; do not leave the counter behind
+void
+StatusBarMgmt::NgsaClearRunning()
+{
+	if(m_text[1].GetLength() && strstr(m_text[1].GetString(), "Running:"))
+	{
+		m_text[1].SetAs("");
+		UpdatePart(1);
+	}
 }

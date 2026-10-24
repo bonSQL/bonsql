@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -111,7 +112,7 @@ CommunityRibbon::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
 	{
 		case WM_MOUSEMOVE:
 			SetCursor(LoadCursor(NULL, IDC_HAND)); 
-			pGlobals->m_pcmainwin->AddTextInStatusBar(L"http://www.webyog.com");
+			pGlobals->m_pcmainwin->AddTextInStatusBar(L"");	// bonSQL: was "http://www.webyog.com"
 			return 0;
 	}
 

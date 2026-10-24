@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -23,7 +24,9 @@ Author: Vishal P.R
 *********************************************/
 
 #include <iostream>
+#include "ngsa/NgsaDark.h"   // NGSA (#2158)
 #include "wyTheme.h"
+#include "Htmlrender.h"
 #include "FrameWindowHelper.h"
 #include "EditorFont.h"
 #include "TabMessage.h"
@@ -70,7 +73,8 @@ Author: Vishal P.R
 #define CELLBORDER			"border"
 
 //xml elements
-#define ELE_ROOT            "sqlyogtheme"
+#define ELE_ROOT            "bonsqltheme"
+#define ELE_ROOT_OLD        "sqlyogtheme"	// bonSQL: themes made for SQLyog still load
 #define ELE_MDICLIENT       "mdiclient"
 #define ELE_FRAMEWINDOW     "framewindow"
 #define ELE_MENU            "menu"
@@ -1324,10 +1328,10 @@ wyTheme::SetThemeDir(wyString* pstr)
 	{	
 		pstr->Clear();
 
-		if(SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, path))) 
+		if(SUCCEEDED(NgsaGetAppData(path))) 
 		{
 			pstr->SetAs(path);
-			pstr->AddSprintf("\\SQLyog\\%s\\", THEMEDIR);
+			pstr->AddSprintf("\\" BRAND_CFG_DIR_A "\\%s\\", THEMEDIR);
 		}
 	}
 	else
@@ -1478,7 +1482,7 @@ wyTheme::GetSetThemeInfo(wyInt32 mode, LPTHEMEINFO pthemeinfo, wyString* pthemed
     tinyxml2::XMLDocument*  ptx = NULL;
 
     //search for ini
-    if(SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
+    if(SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport) == wyFalse)
     {
         return wyFalse;
     }
@@ -1529,7 +1533,7 @@ wyTheme::GetSetThemeInfo(wyInt32 mode, LPTHEMEINFO pthemeinfo, wyString* pthemed
             return wyFalse;
         }
 
-#ifdef COMMUNITY
+#if 0	// NGSA (#2158): Dark.xml is a real theme now; 13.3.1 rejected it in Community
 		//IDR_DARKTHEME id = 44146
 		if (themetype == RESOURCE_THEME && themefile.Compare("44146") == 0)
 		{
@@ -1651,7 +1655,7 @@ wyTheme::LoadTheme(wyString* pthemedir, LPTHEMEINFO pthemeinfo)
     if(!ptixd->Error() && (ele = ptixd->RootElement()) && (tagname = ele->Value()))
     {
         //if valid sqlyog theme file
-        if(!strcmp(tagname, ELE_ROOT) && (attr = ele->Attribute("name")))
+        if((!strcmp(tagname, ELE_ROOT) || !strcmp(tagname, ELE_ROOT_OLD)) && (attr = ele->Attribute("name")))
         {
             temp.SetAs(attr);
             temp.LTrim();
@@ -2374,6 +2378,7 @@ wyTheme::ApplyTheme()
 
     //enumerate the window for updating colors and resizing
     EnumChildWindows(pGlobals->m_pcmainwin->m_hwndmain, wyTheme::EnumChildProcUpdateTabs, NULL);
+    NgsaDark::RethemeAll(pGlobals->m_pcmainwin->m_hwndmain);   // NGSA (#2158)
 	EnumChildWindows(pGlobals->m_pcmainwin->m_hwndmain, wyTheme::EnumChildProcResize, NULL);
 
 	// Update editor colors for all MDI windows
@@ -2563,9 +2568,9 @@ wyTheme::EnumChildProcRefreshHtml(HWND hwnd, LPARAM lparam)
 	else if (!wcsicmp(classname, L"Db search Html window")) {
 		SendMessage(hwnd, WM_USER + 1001, 0, 0);
 	}
-    else if (!wcsicmp(classname, L"InfoHtmlWindow"))
+    else if (!wcsicmp(classname, L"bonSQLHtmlView"))     // bonSQL: HtmlView (Info tab, Profiler page)
     {
-        SendMessage(hwnd, WM_USER + 1002, 0, 0);
+        ApplyHtmlViewTheme(hwnd);
     }
 
 	return TRUE;

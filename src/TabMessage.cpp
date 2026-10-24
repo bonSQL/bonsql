@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -31,6 +32,7 @@
 #include "EditorFont.h"
 #include "Scintilla.h"
 #include "Include.h"
+#include "ngsa/NgsaScintilla.h"   // NGSA (M13): Scintilla 5 lexer selection
 
 
 
@@ -167,7 +169,7 @@ TabMessage::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
 		break;
 
      case WM_HELP:
-		ShowHelp("http://sqlyogkb.webyog.com/article/78-message-tab");
+		ShowHelp("help:message-tab");
 		return 1;
 
      case SCI_COPY:
@@ -382,14 +384,14 @@ TabMessage::SetColor()
     m_rgbfgcolor = DEF_NORMALCOLOR;
 
     // Check if this is a dialog MTI tab in dark theme
-    if(wyTheme::IsDarkThemeActive() && !EditorFont::IsMainWindowEditor(m_hwnd))
+    if(wyFalse)   // NGSA (#2158): was IsDarkThemeActive() && !IsMainWindowEditor(m_hwnd); dialog text panes are dark too
     {
         SetMTIColorsForDarkThemeDialog(m_rgbselectioncolor, m_rgbbgcolor, m_rgbfgcolor);
     }
     else
     {
         // For main window MTI tabs or light theme, use custom colors and theme colors
-        if(SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport) == wyTrue)
+        if(SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport) == wyTrue)
         {
             dirstr.SetAs(directory);
             m_rgbselectioncolor   =   wyIni::IniGetInt(GENERALPREFA, "MTISelectionColor", DEF_TEXTSELECTION, dirstr.GetString());
@@ -429,7 +431,7 @@ TabMessage::SetFont()
         m_hfont = NULL;
     }
 
-	ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	
     if(ret == 0)
     {
@@ -441,7 +443,7 @@ TabMessage::SetFont()
 	wyIni::IniGetString("DataFont", "FontName", "Courier New", &fontnamestr, dirstr.GetString());
 	px = wyIni::IniGetInt("DataFont", "FontSize", 10, dirstr.GetString());
 	fontitalics = wyIni::IniGetInt("DataFont", "FontItalic", 0, dirstr.GetString());
-	SendMessage(m_hwnd, SCI_SETLEXERLANGUAGE, 0, (LPARAM)"SQLyogMsg");
+	NgsaScintilla::SetLexer(m_hwnd, "SQLyogMsg");	// NGSA (M13): in-process lexer, see NgsaScintilla.cpp
 
     SendMessage(m_hwnd, SCI_STYLESETFONT, STYLE_DEFAULT, (LPARAM)fontnamestr.GetString());
 	SendMessage(m_hwnd, SCI_STYLESETSIZE, STYLE_DEFAULT, px);

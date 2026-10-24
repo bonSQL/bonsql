@@ -45,8 +45,22 @@ extern	PGLOBALS pGlobals;
 #define SERVER_TAB  0
 #define HTTP_TAB    1
 #define SSH_TAB     2
-#define SSL_TAB     3 
+#define SSL_TAB     3
 #define ADVANCE_TAB		4
+
+// bonSQL: the Connect dialog has no HTTP tab (bonSQL has no HTTP tunnelling), so tab positions no longer
+// equal the *_TAB ids. Each tab carries its id in lParam (ConnectionCommunity::CreateTabs); this returns the
+// id of the selected tab, or -1 if none is selected.
+inline int NgsaConnTabId(HWND hwndtab)
+{
+	TCITEM  tci = {0};
+	int     sel = TabCtrl_GetCurSel(hwndtab);
+
+	if(sel < 0)
+		return sel;
+	tci.mask = TCIF_PARAM;
+	return TabCtrl_GetItem(hwndtab, sel, &tci) ? (int)tci.lParam : sel;
+}
 
 #define		DEFAULT_CONN		_(L"(Select an existing connection...)")
 

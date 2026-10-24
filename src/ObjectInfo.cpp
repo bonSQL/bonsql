@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -17,8 +18,11 @@
 */
 
 #include "ObjectInfo.h"
+#include "ngsa/NgsaCaps.h"   // NGSA: sequences
+#include "ngsa/NgsaJson.h"   // NGSA (M1 part two): json in the column list
 #include "EditorFont.h"
 #include "Htmlrender.h"
+#include "HtmlView.h"       // bonSQL: HtmlView (litehtml) replaces HTMLayout
 #include "wyTheme.h"
 
 
@@ -50,7 +54,7 @@
 .tabcaptionstyle{font: 14px \"Open Sans\", Verdana, Arial, Helvetica; text-align:left; color:black;}\
 .buttonstyle{color:#333333; border-color:#a9b4bc;font: bold 12px \"Trebuchet MS\", Verdana, Arial, Helvetica,sans-serif;  background-color:  #efefee;}\
 .warningstyle{font: 13px \"Trebuchet MS\", Verdana, Arial, Helvetica; text-align:left; color:grey;}\
-.redindexrowstyle{font: 12px \"Couthrier New\", Courier, mono; text-align:right; background:#FAC8A5; color: black; height:18px;}\
+.redindexrowstyle{font: 12px \"Courier New\", Courier, mono; text-align:right; background:#FAC8A5; color: black; height:18px;}\
 .redindexcolstyle{font: 12px \"Courier New\", Courier, mono; text-align:left; background:#FAC8A5; color: black; height:18px; text-align:left; padding-left:10px; padding-right:10x;}\
 .captionstyle{font: 14px  \"Trebuchet MS\", Verdana, Arial, Helvetica; text-align:left;background-color:#FFFFFF; color: black; background-repeat:repeat-x;}\
 .blueline { background-color: #4caaf9;height: 1px; }\
@@ -77,9 +81,9 @@ html { background-color: #1E1E1E; margin: 8; padding: 0; }\
 .optimizedtable1style{word-wrap:break-all;table-layout:fixed; background:#1E1E1E;}\
 .tablestyle{border: none; solid #404040; background:#1E1E1E;}\
 .tabcaptionstyle{font: 14px \"Open Sans\", Verdana, Arial, Helvetica; text-align:left; color:#DCDCDC;}\
-.buttonstyle{color:#000000; border-color:#606060;font: bold 12px \"Trebuchet MS\", Verdana, Arial, Helvetica,sans-serif;  background-color:background-color:#3b7dbb;}\
+.buttonstyle{color:#E0E0E0; border:1px solid #606060;font: bold 12px \"Trebuchet MS\", Verdana, Arial, Helvetica,sans-serif;  background-color:#3E3E42; background-image:none; padding:2px 8px;}\n.buttonstyle:hover{background-color:#505055; background-image:none;}\n.buttonstyle:active{background-color:#094771; background-image:none;}\
 .warningstyle{font: 13px \"Trebuchet MS\", Verdana, Arial, Helvetica; text-align:left; color:#888888;}\
-.redindexrowstyle{font: 12px \"Couthrier New\", Courier, mono; text-align:right; background:#8B4513; color: #DCDCDC; height:18px;}\
+.redindexrowstyle{font: 12px \"Courier New\", Courier, mono; text-align:right; background:#8B4513; color: #DCDCDC; height:18px;}\
 .redindexcolstyle{font: 12px \"Courier New\", Courier, mono; text-align:left; background:#8B4513; color: #DCDCDC; height:18px; text-align:left; padding-left:10px; padding-right:10x;}\
 .captionstyle{font: 14px  \"Trebuchet MS\", Verdana, Arial, Helvetica; text-align:left;background-color:#1E1E1E; color: #DCDCDC; background-repeat:repeat-x;}\
 .blueline { background-color: #3b7dbb;height: 1px; }\
@@ -145,6 +149,8 @@ ObjectInfo::ObjectInfo(MDIWindow* pmdi, HWND hwndparent)
     m_funcinfores               = NULL;
     m_triginfores               = NULL;
     m_eventinfores              = NULL;
+    m_seqinfores = NULL;	// NGSA
+    m_seqstateres = NULL;
     m_dbddlinfores              = NULL;
 	m_isMDIclose = wyFalse;
 	m_findreplace = NULL;
@@ -246,7 +252,7 @@ ObjectInfo::SetColor()
 	
 	//Get the complete path.
 	// ObjectInfo editors should always get theme colors (they are main window editors)
-    if(SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport) == wyTrue)
+    if(SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport) == wyTrue)
     {
         wyString	dirstr(directory);
 
@@ -281,87 +287,18 @@ ObjectInfo::CreateHTMLControl()
 	hinst = pGlobals->m_entinst;
 #endif
 
-    m_hwndhtmleditor = CreateWindowEx(0, 
-                                      INFO_HTML_WINDOW, 
-                                      L"Source", 
-                                      WS_CHILD | WS_VSCROLL | WS_HSCROLL | WS_VISIBLE,
-                                      0, 0, 0, 0,
-                                      m_hwndframe, 
-                                      (HMENU)NULL, 
-                                      hinst, 
-                                      this);
-
-	SetWindowLongPtr(m_hwndhtmleditor, GWLP_USERDATA,(LONG_PTR)this);
-    htmlayout::attach_event_handler(m_hwndhtmleditor, &DOMEventsHandler);
-    HTMLayoutSetCallback(m_hwndhtmleditor, &HTMLayoutNotifyHandler, 0);    
+    // bonSQL: the Info tab's page is drawn by HtmlView (litehtml); links go to HandleClickEventOnLink
+    m_hwndhtmleditor = HtmlView::Create(m_hwndframe, 0, WS_CHILD | WS_VSCROLL | WS_HSCROLL | WS_VISIBLE | WS_TABSTOP);
+    SetPropW(m_hwndhtmleditor, L"bonSQLInfoView", (HANDLE)1);
+    HtmlView::SetLinkHandler(m_hwndhtmleditor, HtmlViewLinkHandler, this);
+    ApplyHtmlViewTheme(m_hwndhtmleditor);
 }
 
 LRESULT	CALLBACK
 ObjectInfo::HtmlWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-	ObjectInfo* ptabobject = (ObjectInfo*)GetWindowLongPtr(hwnd, GWLP_USERDATA);
-    LRESULT     lResult;
-    BOOL        bHandled;
-    POINT		pt;
-
-    if(message == WM_USER + 1002)
-    {
-        // Apply CSS only if the HTMLayout document is ready.
-        // mark a pending flag so it can be applid on HLN_DOCUMENT_COMPLETE.
-        if(GetProp(hwnd, L"INFO_HTML_DOC_READY") != NULL)
-        {
-            wyString css;
-            css.SetAs(GetInfoTabCSS());
-            HTMLayoutSetCSS(hwnd, (LPCBYTE)css.GetString(), css.GetLength(), NULL, NULL);
-            HTMLayoutUpdateWindow(hwnd);
-        }
-        else
-        {
-            SetProp(hwnd, L"INFO_HTML_NEED_THEME", (HANDLE)1);
-        }
-        return 0; 
-    }
-
-    lResult = HTMLayoutProcND(hwnd,message,wParam,lParam, &bHandled);
-    
-    if(bHandled)
-    {
-        return lResult;
-    }
-
-	 switch(message)
-	{		
-	    case WM_HELP:
-		    ShowHelp("http://sqlyogkb.webyog.com/article/84-query-profiler");
-            break;	
-
-        case UM_FOCUS:
-            SetFocus(hwnd);
-            break;
-
-	    case WM_MOUSEMOVE:									
-			if(ptabobject && ptabobject->m_istostopcaption == wyTrue)	
-			{
-				pt.x = GET_X_LPARAM(lParam);
-				pt.y = GET_Y_LPARAM(lParam);
-
-                //check whether the point is inside
-                if(IsPointInsideHTMLElement(hwnd, L"schemaoptbutton", pt) == wyTrue)
-				{					
-					SetCursor(LoadCursor(NULL, IDC_ARROW));					
-					ReleaseCapture();
-				}
-				else
-				{					
-					SetCursor(LoadCursor(NULL, IDC_WAIT));	
-					SetCapture(hwnd);
-				}			
-            }			
-
-		    break;
-	}
-
-	return DefWindowProc(hwnd, message, wParam, lParam);
+    // bonSQL: was HTMLayout's window procedure; the Info tab's view is an HtmlView window now (CreateHTMLControl)
+    return DefWindowProc(hwnd, message, wParam, lParam);
 }
 
 void 
@@ -493,7 +430,7 @@ ObjectInfo::WriteSelectedFormatOption()
     wyString    dirstr;
 
     ret = SendMessage(m_hwndopthtml, BM_GETCHECK, (WPARAM)0, 0);
-    SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+    SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
     dirstr.SetAs(directory);
     wyIni::IniWriteInt(GENERALPREFA, "InfoTabFormatOption", ret, dirstr.GetString());
 }
@@ -506,7 +443,7 @@ ObjectInfo::InitView()
     wyString    dirstr;
 
     ret = SendMessage(m_hwndopthtml, BM_GETCHECK, (WPARAM)0, 0);
-    SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+    SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
     dirstr.SetAs(directory);
     ret = wyIni::IniGetInt(GENERALPREFA, "InfoTabFormatOption", BST_CHECKED, dirstr.GetString());
 
@@ -597,6 +534,15 @@ ObjectInfo::Refresh(wyBool isforce)
 		    ShowValues(wnd, pqueryobject->m_seldatabase.GetString(),	
 				    pqueryobject->m_seltable.GetString(), OBJECT_EVENT, isforce);
             break;
+
+        case NSEQUENCEITEM:	// NGSA
+		    pqueryobject->GetTableDatabaseName(TreeView_GetSelection(pqueryobject->m_hwnd));
+		    pqueryobject->GetDatabaseName(TreeView_GetParent(pqueryobject->m_hwnd, 
+				            TreeView_GetParent(pqueryobject->m_hwnd, 
+						    TreeView_GetSelection(pqueryobject->m_hwnd))));
+		    ShowValues(wnd, pqueryobject->m_seldatabase.GetString(),	
+				    pqueryobject->m_seltable.GetString(), OBJECT_SEQUENCE, isforce);
+            break;
 	    
         case NTABLES :
 		    pqueryobject->GetDatabaseName(TreeView_GetParent(pqueryobject->m_hwnd,TreeView_GetSelection(pqueryobject->m_hwnd)));
@@ -626,6 +572,11 @@ ObjectInfo::Refresh(wyBool isforce)
         case NEVENTS:
 		    pqueryobject->GetDatabaseName(TreeView_GetParent(pqueryobject->m_hwnd,TreeView_GetSelection(pqueryobject->m_hwnd)));
 		    ShowValues(wnd,pqueryobject->m_seldatabase.GetString(),"",OBJECT_EVENTS, isforce);
+		    break;
+
+        case NSEQUENCES:	// NGSA
+		    pqueryobject->GetDatabaseName(TreeView_GetParent(pqueryobject->m_hwnd,TreeView_GetSelection(pqueryobject->m_hwnd)));
+		    ShowValues(wnd,pqueryobject->m_seldatabase.GetString(),"",OBJECT_SEQUENCES, isforce);
 		    break;
 		
 	    case NFOLDER:
@@ -710,6 +661,10 @@ ObjectInfo::ShowValues(MDIWindow* pcquerywnd, const wyChar* db, const wyChar* ta
 	{
 		ret = ShowEventInfo(pcquerywnd, db, table);
 	}
+	else if(obj == OBJECT_SEQUENCE)	// NGSA
+	{
+		ret = ShowSequenceInfo(pcquerywnd, db, table);
+	}
 	else if(obj == OBJECT_VIEWS)
 	{	
 		SendMessage(m_hwnd, SCI_SETTEXT, 0,(LPARAM)""); 
@@ -734,6 +689,11 @@ ObjectInfo::ShowValues(MDIWindow* pcquerywnd, const wyChar* db, const wyChar* ta
 	{
 		SendMessage(m_hwnd, SCI_SETTEXT, 0,(LPARAM)"");
 		ret = ShowAllEvents(pcquerywnd, db, OBJECT_EVENTS);
+	}
+	else if(obj == OBJECT_SEQUENCES)	// NGSA
+	{
+		SendMessage(m_hwnd, SCI_SETTEXT, 0,(LPARAM)"");
+		ret = ShowAllSequences(pcquerywnd, db, OBJECT_SEQUENCES);
 	}
     
 	SendMessage(m_hwnd, SCI_SETSEL, -1, 0);
@@ -822,6 +782,9 @@ ObjectInfo::ShowTableInfo(MDIWindow * pcquerywnd, const wyChar*db, const wyChar 
 	if(m_istostopcaption == wyFalse)
 	{
 		// get information about the fields.
+		if(pcquerywnd->m_ngsacaps.jsonIsCheckConstraint == wyTrue)	// NGSA (M1 part two): MariaDB JSON columns listed as json
+			NgsaJson::ColumnInfoQuery(query, db, table);
+		else
 		query.Sprintf("show full fields from `%s`.`%s`", db, table);
 			
 		// create the first top title.
@@ -1215,6 +1178,12 @@ ObjectInfo::ShowDBInfo(MDIWindow * pcquerywnd, const wyChar *db)
 				return wyFalse;
 		}
 	}
+		if(NgsaCapsCompute::HasSequences(&pcquerywnd->m_mysql) == wyTrue)	// NGSA
+		{
+			SendMessage(m_hwnd, SCI_APPENDTEXT, 2, (LPARAM)"\r\n");
+			if(ShowAllSequences(pcquerywnd, db, OBJECT_DATABASE) == wyFalse)
+				return wyFalse;
+		}
 	}
 	
 	if(pcquerywnd->m_ismysql41 == wyTrue)
@@ -1358,6 +1327,10 @@ ObjectInfo::AddMySQLColInfo(MDIWindow *pcquerywnd, const wyChar *objname, wyStri
 		columns.SetAs("Create Event,sql_mode,time_zone,character_set_client,collation_connection,Database Collation,");
 		break;
 
+	case OBJECT_SEQUENCE:	// NGSA: SHOW CREATE SEQUENCE reports the DDL under 'Create Table'
+		columns.SetAs("Create Table,");
+		break;
+
 	default:
 		return myres;
 	}
@@ -1487,10 +1460,8 @@ ObjectInfo::ShowServerInfo(MDIWindow * wnd)
 	m_htmlformatstr.Add("<br/>&nbsp;<br/>&nbsp;</html>");
 	
 	//Passing HTML buffer to HTML control
-	HTMLayoutLoadHtml(m_hwndhtmleditor, (PBYTE)m_htmlformatstr.GetString(), m_htmlformatstr.GetLength());
+	HtmlView::SetDocument(m_hwndhtmleditor, m_htmlformatstr.GetString(), NULL);
 	
-	//html page Selection mode
-	HTMLayoutSetMode(m_hwndhtmleditor, HLM_SHOW_SELECTION);
 			
 	return wyTrue;
 }
@@ -1544,6 +1515,83 @@ ObjectInfo::ShowEventInfoHtmlFormat(MDIWindow *pcquerywnd, MYSQL_RES *myres, con
 	AddObjectInfoHtmlFormat(pcquerywnd, myres, &columns, event, OBJECT_EVENT);
 
 	return wyTrue;
+}
+
+// NGSA: one sequence: DDL (SHOW CREATE SEQUENCE) plus its current state (SELECT * FROM seq)
+wyBool
+ObjectInfo::ShowSequenceInfo(MDIWindow * pcquerywnd, const wyChar *db, const wyChar *sequence)
+{
+    wyString    query, temptitle;
+
+	VERIFY(SendMessage(m_hwnd, SCI_SETTEXT, 0,(LPARAM)""));
+
+	query.Sprintf("show create sequence `%s`.`%s`", db, sequence); 
+	temptitle.Sprintf(_("/*Sequence Information*/\r\n"));
+	AppendLine(temptitle);
+    m_seqinfores = AddMySQLColInfo(pcquerywnd, sequence, query, temptitle, OBJECT_SEQUENCE, m_seqinfores);
+	if(!m_seqinfores)
+		return wyFalse;
+
+	query.Sprintf("select * from `%s`.`%s`", db, sequence);
+	temptitle.Sprintf(_("/*Sequence State*/\r\n"));
+	AppendLine(temptitle);
+	m_seqstateres = AddInfo(pcquerywnd->m_tunnel, &pcquerywnd->m_mysql, query, temptitle, wyFalse, m_seqstateres);
+
+	ShowSequenceInfoHtmlFormat(pcquerywnd, m_seqinfores, sequence);
+
+	SendMessage(m_hwnd, SCI_APPENDTEXT, 2,(LPARAM)"\r\n");	
+	return wyTrue;
+}
+
+wyBool
+ObjectInfo::ShowSequenceInfoHtmlFormat(MDIWindow *pcquerywnd, MYSQL_RES *myres, const wyChar *sequence)
+{
+	wyString columns;
+
+	pcquerywnd->m_tunnel->mysql_data_seek(myres, 0);
+	columns.SetAs("Create Table");
+	AddObjectInfoHtmlFormat(pcquerywnd, myres, &columns, sequence, OBJECT_SEQUENCE, wyFalse, m_seqstateres ? wyFalse : wyTrue);
+
+	if(m_seqstateres)
+	{
+		pcquerywnd->m_tunnel->mysql_data_seek(m_seqstateres, 0);
+		AddObjectInfoHtmlFormat(pcquerywnd, m_seqstateres, NULL, sequence, OBJECT_SEQUENCESTATE, wyTrue, wyTrue);
+	}
+	return wyTrue;
+}
+
+// NGSA: all sequences of a database (Sequences folder, or the database page)
+wyBool
+ObjectInfo::ShowAllSequences(MDIWindow *pcquerywnd, const wyChar *db, OBJECT obj)
+{
+	wyString    query, temptitle;
+
+	if(obj == OBJECT_SEQUENCES)
+	{
+		temptitle.Sprintf(_("/*Database: %s*/\r\n"), db);
+		AppendLine(temptitle);
+		VERIFY(SendMessage(m_hwnd, SCI_APPENDTEXT, temptitle.GetLength(),(LPARAM)temptitle.GetString()));
+	}
+
+	SendMessage(m_hwnd, SCI_APPENDTEXT, 2, (LPARAM)"\r\n");	
+	query.Sprintf("select `SEQUENCE_NAME` as `Sequence`, `DATA_TYPE` as `Type`, `START_VALUE` as `Start`, `MINIMUM_VALUE` as `Minimum`, "
+				  "`MAXIMUM_VALUE` as `Maximum`, `INCREMENT` as `Increment`, `CYCLE_OPTION` as `Cycle` "
+				  "from `INFORMATION_SCHEMA`.`SEQUENCES` where `SEQUENCE_SCHEMA` = '%s' order by `SEQUENCE_NAME`", db);
+
+	temptitle.SetAs(_("/*Sequence Information*/\r\n"));
+	AppendLine(temptitle);
+    m_seqinfores = AddInfo(pcquerywnd->m_tunnel, &pcquerywnd->m_mysql, query, temptitle, wyFalse, m_seqinfores); 
+	if(!m_seqinfores)
+		return wyFalse;
+
+	return ShowAllSequencesHtmlFormat(pcquerywnd, m_seqinfores, db, obj);
+}
+
+wyBool
+ObjectInfo::ShowAllSequencesHtmlFormat(MDIWindow *pcquerywnd, MYSQL_RES *myres, const wyChar *db, OBJECT obj)
+{
+	pcquerywnd->m_tunnel->mysql_data_seek(myres, 0);
+	return AddObjectInfoHtmlFormat(pcquerywnd, myres, NULL, db, OBJECT_SEQUENCES, obj == OBJECT_DATABASE ? wyTrue : wyFalse);
 }
 
 wyBool
@@ -1911,7 +1959,8 @@ ObjectInfo::ShowAllEventsHtmlFormat(MDIWindow *pcquerywnd, MYSQL_RES *myres, con
 	pcquerywnd->m_tunnel->mysql_data_seek(myres, 0);
 
 	ret = AddObjectInfoHtmlFormat(pcquerywnd, myres, NULL, db, OBJECT_EVENTS, 
-							obj == OBJECT_DATABASE ? wyTrue : wyFalse);
+							obj == OBJECT_DATABASE ? wyTrue : wyFalse,
+							(obj == OBJECT_DATABASE && NgsaCapsCompute::HasSequences(&pcquerywnd->m_mysql)) ? wyFalse : wyTrue);	// NGSA: sequences block follows
 
 	return ret;
 }
@@ -2089,12 +2138,14 @@ ObjectInfo::AddObjectInfoHtmlFormat(MDIWindow *wnd, MYSQL_RES *myres, wyString *
 	
 	//Adding the Title image
 	if(imgpath.GetLength())
-		{htmlbuffer->AddSprintf("<div><img  class=\"imgcaptionstyle\"src=\"%s\"/><span class=\"text1\">%s</span></div><br>", 
+		{htmlbuffer->AddSprintf("<div style=\"margin-bottom:6px\"><img  class=\"imgcaptionstyle\"src=\"%s\"/><span class=\"text1\">%s</span></div>",
 									imgpath.GetString(), imgcaption.GetString());
 	htmlbuffer->Add("<div class=\"blueline\"></div>");}
-    htmlbuffer->Add("<br><br><div class=\"captionstyle\"><b>");
+	// bonSQL: margins instead of <br> runs; litehtml draws each <br> after a block as a full blank line, which
+	// left a large gap between the object's title and its first section (HTMLayout drew them small)
+    htmlbuffer->Add("<div class=\"captionstyle\" style=\"margin:14px 0 6px 0\"><b>");
 	htmlbuffer->Add(title.GetString());
-    htmlbuffer->Add("</div><br>");
+    htmlbuffer->Add("</div>");
 
 	/*Bug  issue 2250 is solved at here*/
 	if(obj == OBJECT_TABLE && m_istostopcaption == wyFalse 
@@ -2102,6 +2153,7 @@ ObjectInfo::AddObjectInfoHtmlFormat(MDIWindow *wnd, MYSQL_RES *myres, wyString *
 	{
 		htmlbuffer->AddSprintf("<div class=\"resultcaptionstyle\">");
 
+#ifndef COMMUNITY	// NGSA: Ultimate-only button; in Community it only opened the upsell dialog
 		if(pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_PRO && pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_NORMAL)
 		{
 			htmlbuffer->AddSprintf("<b>" SCHEMA_OPTBUTTON "</b></div>", LINK_SCHEMA_OPTIMIZE);
@@ -2109,14 +2161,21 @@ ObjectInfo::AddObjectInfoHtmlFormat(MDIWindow *wnd, MYSQL_RES *myres, wyString *
 			htmlbuffer->Add("<div class = \"warningstyle\">");
 			htmlbuffer->AddSprintf("<b>%s</b></div></div>", OPTIMIZER_HELP);
 		}
-		
+#else
+		htmlbuffer->Add("</div>");
+#endif
+
 		htmlhead.SetAs(*htmlbuffer);
 		htmlbuffer->Clear();
 	}
     else if(obj == OBJECT_TABLES)
     {
         //with ultimate only
+#ifdef COMMUNITY
+        if(0)	// NGSA: Ultimate-only button; in Community it only opened the upsell dialog
+#else
         if(pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_NORMAL && pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_PRO)
+#endif
         {
             //add Redundant Index Button
             htmlbuffer->AddSprintf("<div class=\"resultcaptionstyle\">");
@@ -2161,9 +2220,11 @@ ObjectInfo::AddObjectInfoHtmlFormat(MDIWindow *wnd, MYSQL_RES *myres, wyString *
 	}
 #endif
 
-	if(obj == OBJECT_TABLE &&	pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_PRO 
+#ifndef COMMUNITY	// bonSQL: this blank line made room for the Ultimate buttons; in Community it was only a gap
+	if(obj == OBJECT_TABLE &&	pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_PRO
 		&& pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_NORMAL)
 		htmlbuffer->Add("<br/>");
+#endif
 
 	//htmlbuffer->Add("<div style=width: auto;>");
 	htmlbuffer->Add("<div>");
@@ -2282,10 +2343,8 @@ ObjectInfo::PrintHTML(OBJECT obj, wyString *htmlbuffer)
 		htmlbuffer->Add("</html>");
 
 		//Passs the HTML buffer to HTML control
-		HTMLayoutLoadHtml(m_hwndhtmleditor, (PBYTE)htmlbuffer->GetString(), htmlbuffer->GetLength());
+		HtmlView::SetDocument(m_hwndhtmleditor, htmlbuffer->GetString(), NULL);
 
-		//html page Selection mode
-		HTMLayoutSetMode(m_hwndhtmleditor, HLM_SHOW_SELECTION);
 	}
 
 wyBool
@@ -2488,6 +2547,32 @@ ObjectInfo::AddHtmlFormatTitleAndImage(OBJECT obj, const wyChar *db, wyString *t
 		imagecaption->Sprintf(_("&nbsp;Event: %s"), db);
 	}
 
+	else if(obj == OBJECT_SEQUENCES && db)	// NGSA
+	{
+		if(m_seqinfores)
+			title->Sprintf(_("Sequences (%d) "), m_seqinfores->row_count);
+		else
+			title->Sprintf(_("Sequence Information"));
+
+		if(isdbobject == wyFalse)
+		{
+			image->SetAs("res:DATABASE.PNG");
+			imagecaption->Sprintf(_("Database: %s"), m_lastseldb.GetString());
+		}
+	}
+
+	else if(obj == OBJECT_SEQUENCE && db)	// NGSA
+	{
+		image->SetAs("res:SEQUENCE.PNG");
+		title->Sprintf(_("Sequence Information"));
+		imagecaption->Sprintf(_("&nbsp;Sequence: %s"), db);
+	}
+
+	else if(obj == OBJECT_SEQUENCESTATE && db)	// NGSA: second block of the sequence page
+	{
+		title->Sprintf(_("Current State"));
+	}
+
 	else if(obj == OBJECT_VIEW && db)
 	{
 		image->SetAs("res:VIEW.PNG");
@@ -2529,7 +2614,11 @@ ObjectInfo::AddObjectInfoHtmlFormatForIndex(MDIWindow *wnd, MYSQL_RES *myres, co
 	//htmlbuffer->Add("</b></div><br>");
 
     //with ultimate only
+#ifdef COMMUNITY
+    if(0)    // bonSQL: Ultimate-only button (did nothing in Community; HtmlView draws no form buttons)
+#else
     if(pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_NORMAL && pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_PRO)
+#endif
     {
         //add the redundant index button
         tempbuff.Add("<div class=\"resultcaptionstyle\">");
@@ -2952,6 +3041,7 @@ ObjectInfo::AddColumnHeaderWithOutSchemaAnalyze(wyChar *tok, wyString *htmlbuffe
 			||(obj == OBJECT_FUNCTION && !stricmp(tok, "Create Function"))
 			||(obj == OBJECT_TRIGGER && !stricmp(tok, "Statement"))
 			||(obj == OBJECT_EVENT && !stricmp(tok, "Create Event"))
+			||(obj == OBJECT_SEQUENCE && !stricmp(tok, "Create Table"))	// NGSA
 			||(obj == OBJECT_VIEWDDL && !stricmp(tok, "Create View"))
 			||(obj == OBJECT_TABLEDDL && !stricmp(tok, "Create Table")))
         {
@@ -3897,6 +3987,16 @@ ObjectInfo::FreeDBLevelResultsets()
         m_wnd->m_tunnel->mysql_free_result(m_eventinfores);
     }
 
+    if(m_seqinfores)	// NGSA
+    {
+        m_wnd->m_tunnel->mysql_free_result(m_seqinfores);
+    }
+
+    if(m_seqstateres)
+    {
+        m_wnd->m_tunnel->mysql_free_result(m_seqstateres);
+    }
+
     if(m_dbddlinfores)
     {
         m_wnd->m_tunnel->mysql_free_result(m_dbddlinfores);
@@ -3908,6 +4008,8 @@ ObjectInfo::FreeDBLevelResultsets()
     m_funcinfores = NULL;
     m_triginfores = NULL;
     m_eventinfores = NULL;
+    m_seqinfores = NULL;	// NGSA
+    m_seqstateres = NULL;
     m_dbddlinfores = NULL;
 }
 

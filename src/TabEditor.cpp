@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -226,7 +227,7 @@ TabEditor::OnTabSelChange()
     /// If the tab type is advance tab then we need to disable the execute button 
     if(pceditorbase->GetAdvancedEditor() == wyTrue)
 	{ 
-		SendMessage(hwndtoolbar, TB_SETSTATE, (WPARAM)IDM_EXECUTE, TBSTATE_INDETERMINATE);
+		SendMessage(hwndtoolbar, TB_SETSTATE, (WPARAM)IDM_EXECUTE, TBSTATE_ENABLED);	// NGSA (#2144): EditorProcs runs the whole editor on F9
 		//SendMessage(hwndsecondtool, TB_SETSTATE, (WPARAM)ID_FORMATCURRENTQUERY, TBSTATE_INDETERMINATE);
 		SendMessage(hwndtoolbar, TB_SETSTATE, (WPARAM)ACCEL_QUERYUPDATE, TBSTATE_INDETERMINATE);
         SendMessage(hwndsecondtool, TB_SETSTATE, (WPARAM)ID_FORMATCURRENTQUERY, TBSTATE_ENABLED);
@@ -362,7 +363,7 @@ TabEditor::OnTabClose()
     /// If the tab type is advance tab then we need to disable the execute button and format current query button
     if(pceditorbase->GetAdvancedEditor() == wyTrue)
 	{
-		SendMessage(hwndtoolbar, TB_SETSTATE, (WPARAM)IDM_EXECUTE, TBSTATE_INDETERMINATE);
+		SendMessage(hwndtoolbar, TB_SETSTATE, (WPARAM)IDM_EXECUTE, TBSTATE_ENABLED);	// NGSA (#2144): EditorProcs runs the whole editor on F9
 		SendMessage(hwndtoolbar, TB_SETSTATE,(WPARAM)ACCEL_QUERYUPDATE ,(LPARAM)TBSTATE_INDETERMINATE);
 		SendMessage(hwndsecondtool, TB_SETSTATE, (WPARAM)ID_FORMATCURRENTQUERY, TBSTATE_INDETERMINATE);
 	}

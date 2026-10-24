@@ -30,7 +30,7 @@
 #include "LogMgmt.h"
 #include "Datatype.h"
 
-#define DEBUG_LOG_FILE "c:\\sqlyogdeb.log"
+#define DEBUG_LOG_FILE "c:\\bonsqldeb.log"
 
 /** LogMgmt()
   *	@brief		Constructor for logger. Writes Enter function name to the log file

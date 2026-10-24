@@ -61,20 +61,20 @@ private:
     // Variable identifies whether dialog is Import or Export Connection Details Dialog. true for Import and false for export
     bool            m_isimport;             
 
-    // Variable holds the number of Connections in SQLyog.ini
+    // Variable holds the number of Connections in bonsql.ini
     wyInt32         m_ConInIni;  
 
     // Handle to ListView Control
     HWND            m_hwndLV;               
 
     // Holds the name of file from which Connection details needs to be transferred
-    // SQLyog.ini in case of Export Connection Details
+    // bonsql.ini in case of Export Connection Details
     // User Defined file in case of Import Connection Details
     wyString        m_fromfile;             
     
     // Holds the name of file to which Connection details needs to be transferred
     // User defined file in case of Export Connection Details
-    // SQLyog.ini in case of Import Connection Details
+    // bonsql.ini in case of Import Connection Details
     wyString        m_tofile;               
     
     // Holds index of last item checked in ListView Control. Used for implementing Shift+RightClick in case of multiple selection in sequence
@@ -264,7 +264,7 @@ public:
     */
     wyInt32                 SearchNameIfExisting(ConDetails **arr,wyWChar *name, wyInt32 lower, wyInt32 upper, bool param);
 
-    /// Function to load data from SQlyog.ini for Import Connection Details dialog
+    /// Function to load data from bonsql.ini for Import Connection Details dialog
     /**
     @param hwnd             : IN dialog handle
     @param arr_cdName       : OUT pointer to base address to array of ConDetails to be sorted by Connection Name
@@ -273,10 +273,10 @@ public:
     */
     wyInt32                 LoadSortedDataFromIni(HWND hwnd, ConDetails ***arr_cdName, ConDetails ***arr_cdSec);
 
-    /// Function to import connection details from .sycs file to SQLyog.ini
+    /// Function to import connection details from .sycs file to bonsql.ini
     /**
     @param hwnd             : IN dialog handle
-    @param noOfConnection   : IN/OUT noOf Connections in SQLyog.ini
+    @param noOfConnection   : IN/OUT noOf Connections in bonsql.ini
     @param arr_cdName       : IN pointer to array of ConDetails sorted by Connection Name
     @param arr_cdSec        : IN pointer to array of ConDetails sorted by Section Name
     @return Returns wyTrue if successfull, wyFalse if user has pressed cancel in case of conflict
@@ -286,7 +286,7 @@ public:
     /// Function to check for Non repeating section name and return the updated connection number available(non conflicting)
     /**
     @param arr_cdSec        : IN pointer to array of ConDetails sorted by Section Name
-    @param noOfConnection   : IN number of Connections in SQLyog.ini
+    @param noOfConnection   : IN number of Connections in bonsql.ini
     @param cono             : IN Connection no, e.g if section name is "Connection 46" then cono will be 46
     @return Returns the non conflicting connection number
     */
@@ -296,13 +296,13 @@ public:
     /**
     @param arr_cdName       : IN pointer to array of ConDetails sorted by Connection Name
     @param buffer           : IN/OUT contains the Connection name and while returning holds the non conflicting connection name
-    @param noOfConnection   : IN number of Connections in SQLyog.ini
+    @param noOfConnection   : IN number of Connections in bonsql.ini
     */
     void                    GetValidConnectionName(ConDetails **arr_cdName, wyWChar *buffer, wyInt32 noOfConnection);
 
-    /// Function updates the array of pointer to ConDetails when new Connections are added to SQLyog.ini
+    /// Function updates the array of pointer to ConDetails when new Connections are added to bonsql.ini
     /**
-    @param noOfConnection   : IN number of connections in SQLyog.ini
+    @param noOfConnection   : IN number of connections in bonsql.ini
     @param arr              : IN pointer to array of ConDetails
     @param cd               : IN pointer to ConDetails to be inserted in array
     @param param            : IN true for array sorted by Connection Name, false for array sorted by Section Names

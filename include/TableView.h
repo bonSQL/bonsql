@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc.
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -101,6 +102,7 @@ class TableView : public DataView, public IQueryBuilder
 		@returns void. But caller needs to destroy query.(they own it)
 		*/
 		void				GetQuery(wyString& query);
+		void				NgsaDefaultOrderBy(wyString& orderby);	// NGSA (#2369)
 	
 	protected:
         ///Function to create toolbars and additional controls

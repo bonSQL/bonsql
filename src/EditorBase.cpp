@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -29,6 +30,7 @@
 #include "QueryThread.h"
 #include "commonhelper.h"
 #include "TabEditorSplitter.h"
+#include "ngsa/NgsaScintilla.h"   // NGSA (M13): Scintilla 5 lexer selection
 
 extern	PGLOBALS		pGlobals;
 
@@ -753,7 +755,7 @@ EditorBase::SetScintillaValues(HWND hwndedit)
     static  wyChar *func_xpm[] = FUNC_XPM;
 	static  wyChar *alias_xpm[] = ALIAS_XPM;
 
-    SendMessage(m_hwnd, SCI_SETLEXERLANGUAGE, 0, (LPARAM)"MySQL");
+    NgsaScintilla::SetLexer(m_hwnd, "MySQL");	// NGSA (M13)
 	SendMessage(m_hwnd, SCI_USEPOPUP, 0, 0);
     SendMessage(hwndedit, SCI_CLEARREGISTEREDIMAGES, 0, 0);
 	SendMessage(hwndedit, SCI_REGISTERIMAGE, 8, (LPARAM)alias_xpm);
@@ -856,7 +858,7 @@ EditorBase::SetFont()
 }
 
 wyInt32
-EditorBase::ExecuteQueryThread(wyString query, wyInt32 *stop, MDIWindow *wnd, wyInt32& curline, wyBool isanalyze)
+EditorBase::ExecuteQueryThread(wyString query, wyInt32 *stop, MDIWindow *wnd, wyInt32& curline, wyBool isanalyze, wyBool isedit)
 {
 	wyInt32			 start=0, end=0, *err = 0;
 	QueryThread		 thd;
@@ -898,7 +900,7 @@ EditorBase::ExecuteQueryThread(wyString query, wyInt32 *stop, MDIWindow *wnd, wy
 	param->m_lowlimitvalue = -1;
 	param->m_iseditor = isanalyze;
 	param->executeoption = ALL;
-	param->isedit = wyFalse;
+	param->isedit = isedit;	// NGSA (#2215): true for F8 on a selection
 	param->tmpmysql = tmpmysql; 
 	param->isexplain = wyFalse;
 
@@ -945,7 +947,7 @@ EditorBase::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
 	switch(message)	
 	{
 	    case WM_HELP:
-            ShowHelp("http://sqlyogkb.webyog.com/article/45-sql-window");
+            ShowHelp("help:sql-window");
 		    return wyTrue;
 
 	    case WM_CONTEXTMENU:

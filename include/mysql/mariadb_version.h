@@ -26,11 +26,11 @@
 #define MYSQL_VERSION_ID                100808
 #define MYSQL_SERVER_VERSION            "10.8.8-MariaDB"
 
-#define MARIADB_PACKAGE_VERSION "3.3.8"
-#define MARIADB_PACKAGE_VERSION_ID 30308
+#define MARIADB_PACKAGE_VERSION "3.4.11"
+#define MARIADB_PACKAGE_VERSION_ID 30411
 #define MARIADB_SYSTEM_TYPE "Windows"
 #define MARIADB_MACHINE_TYPE "AMD64"
-#define MARIADB_PLUGINDIR "C:/Program Files/mariadb-connector-c/lib/mariadb/plugin"
+#define MARIADB_PLUGINDIR "../plugins/libmariadb"
 
 /* mysqld compile time options */
 #ifndef MYSQL_CHARSET

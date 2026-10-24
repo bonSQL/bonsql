@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc.
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -52,6 +53,7 @@ struct tagInsertUpdateBlob
 	wyBool      m_ischanged;
 	wyBool		m_isblob;
 	wyBool		m_isJson;
+	wyString	m_ngsacolkey;	// NGSA (M12): "db.table.column", remembers the Syntax choice
 };
 
 /*! Creates a type tagInsertUpdateBlob*/ 
@@ -181,6 +183,12 @@ private:
     */
     wyBool				ShowText();
 
+	/// NGSA (M12): pick the syntax (remembered, else detected) and colour the text
+	void				NgsaInitSyntax();
+	/// NGSA (M12): apply a syntax, optionally remember it for the column
+	void				NgsaApplySyntax(wyInt32 syntax, wyBool remember);
+	void				NgsaFormat();	// NGSA (M14): pretty-print the text for the chosen syntax (JSON, XML)
+
     /// Prepares the screen to display image
     /**
     @param hdc				: IN device handle
@@ -305,6 +313,12 @@ private:
 
 	/// ComboBox handle
 	HWND				m_hwndcombo;
+	/// NGSA (M12): Syntax combo and its label, current syntax (NgsaSyntax), column key
+	HWND				m_hwndngsasyntax;
+	HWND				m_hwndngsasyntaxtext;
+	HWND				m_hwndngsaformat;	// NGSA (M14)
+	wyInt32				m_ngsasyntax;
+	wyString			m_ngsacolkey;
 
     /// Old data is null or not
 	wyBool				m_oldnull;

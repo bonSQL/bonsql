@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -19,6 +20,7 @@
 
 #define MyFree(x)HeapFree(GetProcessHeap(),NULL,x)
 
+#include "ngsa/NgsaTrace.h"   // NGSA: NGSA_TRACE diagnostics
 #include "FrameWindowHelper.h"
 #include "ExportMultiFormat.h"
 #include "Global.h"
@@ -150,6 +152,8 @@ wyInt32 my_query(MDIWindow *wnd, Tunnel * tunnel, PMYSQL mysql, const wyChar *qu
 			wnd->m_lastquerytime = timetaken;
 		}
 		
+		if(ret && wnd)
+			NgsaTrace("my_query: error %u (%s) querycount=%d currentwnd=%d isimport=%d", tunnel->mysql_errno(*mysql), tunnel->mysql_error(*mysql), (int)querycount, (int)currentwnd, (int)isimport);
 		//Re-instatiating the SSH session 
 		if(!tunnel->IsTunnel() && wnd && isimport == wyFalse && currentwnd == wyTrue &&
 			ret &&((tunnel->mysql_errno(*mysql)== MYSQL_CONNECT_ERROR) ||
@@ -171,10 +175,10 @@ wyInt32 my_query(MDIWindow *wnd, Tunnel * tunnel, PMYSQL mysql, const wyChar *qu
 					#ifndef COMMUNITY
 
 						if(pGlobals->m_entlicense.CompareI("Professional") != 0 && wnd->m_ptransaction && (wnd->m_ptransaction->m_starttransactionenabled == wyFalse))
-							recstr.SetAs(_("  SQLyog reconnected. The transaction has been rolled back due to connection error."));
+							recstr.SetAs(_("  bonSQL reconnected. The transaction has been rolled back due to connection error."));
 						else
 					#endif
-					recstr.SetAs(_("  SQLyog reconnected"));
+					recstr.SetAs(_("  bonSQL reconnected"));
 					//profile comment to history
 					my_queryprofile(wnd, tsrecon, recstr.GetString(), wyTrue); 
 				}
@@ -189,7 +193,7 @@ wyInt32 my_query(MDIWindow *wnd, Tunnel * tunnel, PMYSQL mysql, const wyChar *qu
 					if(wnd->m_ptransaction && (wnd->m_ptransaction->m_starttransactionenabled == wyFalse))
 					{
 						wnd->m_ptransaction->CallOnCommit();
-						presult = MessageBox(wnd->GetHwnd() , _(L"SQLyog reconnected. The transaction has been rolled back due to connection error."), 
+						presult = MessageBox(wnd->GetHwnd() , _(L"bonSQL reconnected. The transaction has been rolled back due to connection error."), 
 						   _(L"Warning"), MB_ICONWARNING | MB_OK | MB_DEFBUTTON2);
 					}
 				}
@@ -212,11 +216,11 @@ wyInt32 my_query(MDIWindow *wnd, Tunnel * tunnel, PMYSQL mysql, const wyChar *qu
 					if(pGlobals->m_entlicense.CompareI("Professional") != 0 && wnd->m_ptransaction && (wnd->m_ptransaction->m_starttransactionenabled == wyFalse))
 					{
 						//wnd->m_ptransaction->CallOnCommit();
-						recstr.SetAs(_("  SQLyog reconnect failed. The Transaction has been rolled back due to connection error."));
+						recstr.SetAs(_("  bonSQL reconnect failed. The Transaction has been rolled back due to connection error."));
 					}
 					else
 				#endif
-				recstr.SetAs(_("  SQLyog reconnect failed"));
+				recstr.SetAs(_("  bonSQL reconnect failed"));
 				
 				//profile comment to history
 				my_queryprofile(wnd, tsrecon, recstr.GetString(), wyTrue);  
@@ -231,7 +235,7 @@ wyInt32 my_query(MDIWindow *wnd, Tunnel * tunnel, PMYSQL mysql, const wyChar *qu
 					}
 					if(wnd->m_ptransaction && (wnd->m_ptransaction->m_starttransactionenabled == wyFalse))
 					{
-						presult = MessageBox(wnd->GetHwnd() , _(L"SQLyog reconnect Failed. The Transaction has been rolled back due to connection error."), 
+						presult = MessageBox(wnd->GetHwnd() , _(L"bonSQL reconnect Failed. The Transaction has been rolled back due to connection error."), 
 						   _(L"Warning"), MB_ICONWARNING | MB_OK | MB_DEFBUTTON2);
 						wnd->m_ptransaction->CallOnCommit();
 					}
@@ -1318,7 +1322,7 @@ IsDataTrunc()
 	wyString	dirstr;
 
 	// Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	opt = wyIni::IniGetInt(GENERALPREFA, "TruncData", 0, dirstr.GetString());
 
@@ -1341,7 +1345,7 @@ SetEditWordWrap(HWND hwnd, wyBool isrich, wyBool scintilla)
 		return 1;
 
 	// Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	opt	= wyIni::IniGetInt(GENERALPREFA, "WordWrap", 0/* from 5.1 RC1 default value is false */, dirstr.GetString());
 
@@ -2595,7 +2599,7 @@ UpdatePrompt()
 	wyString	dirstr;
 
 	// Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	ret = wyIni::IniGetInt(GENERALPREFA, "PromptUpdate", 1, dirstr.GetString());
 
@@ -2611,7 +2615,7 @@ AppendBackQuotes()
 	wyString	dirstr;
 
 	// Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	ret = wyIni::IniGetInt(GENERALPREFA, "AppendBackQuotes", 1, dirstr.GetString());
 
@@ -2627,7 +2631,7 @@ ShowData()
 	wyString	dirstr;
 
 	// Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	ret = wyIni::IniGetInt(GENERALPREFA, "ShowData", 1, dirstr.GetString());
 
@@ -2645,7 +2649,7 @@ IsEditorFocus()
 	wyString	dirstr;
 
 	// Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	ret = wyIni::IniGetInt(GENERALPREFA, "FocusOnEdit", 1, dirstr.GetString());
 
@@ -2661,7 +2665,7 @@ IsStartTransactionEnable()
 	wyString	dirstr;
 	
 
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	ret = wyIni::IniGetInt(GENERALPREFA, "StartTransaction", 1, dirstr.GetString());
 	return(ret)?(wyTrue):(wyFalse);
@@ -2676,7 +2680,7 @@ IsRefreshOptionChange()
 	wyString	dirstr;
 	
 
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	ret = wyIni::IniGetInt(GENERALPREFA, "SwitchShortcut", 0, dirstr.GetString());//getting Switch shortcut status from init File
 
@@ -2694,7 +2698,7 @@ IsConfirmOnTabClose()
 	wyString	dirstr;
 
 	// Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	ret = wyIni::IniGetInt(GENERALPREFA, "PromptOnTabClose", 1, dirstr.GetString());
 
@@ -2712,7 +2716,7 @@ GetKeyWordCase()
 	wyInt32     kwcase;
 
 	// Get the complete path.	
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 
 	wyIni::IniGetString(GENERALPREFA, "KeywordCase", "UPPERCASE", &kwcasestr, dirstr.GetString());
@@ -2737,7 +2741,7 @@ GetFunCase()
 	wyInt32     funcase;
 
 	// Get the complete path.	
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 
 	wyIni::IniGetString(GENERALPREFA, "FunctionCase", "UPPERCASE", &funcasestr, dirstr.GetString());
@@ -2761,7 +2765,7 @@ IsSmartKeyword()
 	wyString	dirstr;
 
 	// Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	ret = wyIni::IniGetInt(GENERALPREFA, "SmartKeyword", 1, dirstr.GetString());
 
@@ -2777,7 +2781,7 @@ IsInsertTextOnDBClick()
 	wyString	dirstr;
 
 	// Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	ret = wyIni::IniGetInt(GENERALPREFA, "GetTextOnDBClick", 1, dirstr.GetString());
 
@@ -2816,7 +2820,7 @@ IsGetObjectInfoAlways()
     wyInt32     ret;
 	wyString	dirstr;
 	// Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	ret = wyIni::IniGetInt(GENERALPREFA, "GetInfoAlways", 0, dirstr.GetString());
 
@@ -2832,7 +2836,7 @@ IsOpenTablesInOB()
     wyInt32     ret;
 	wyString	dirstr;
 	// Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	ret = wyIni::IniGetInt(GENERALPREFA, "OBOpenTablesByDefault", 0, dirstr.GetString());
 
@@ -2847,7 +2851,7 @@ IsConnectionRestore()
     wyInt32     ret;
 	wyString	dirstr;
 	// Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	ret = wyIni::IniGetInt(GENERALPREFA, "SessionRestore", 1, dirstr.GetString());
 
@@ -2862,7 +2866,7 @@ IsShowAllInTableData()
 	wyWChar			directory[MAX_PATH + 1]={0}, *lpfileport=0;
 	wyString		dirstr;
 
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	
 	dirstr.SetAs(directory);
 	
@@ -2878,7 +2882,7 @@ IsInfoTabHTMLFormat()
 	wyWChar			directory[MAX_PATH + 1]={0}, *lpfileport=0;
 	wyString		dirstr;
 
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	
 	dirstr.SetAs(directory);
 	
@@ -3060,7 +3064,7 @@ GetTabSize()
 	wyString	dirstr;
 	
 	// Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini",MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini",MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	tabsize = wyIni::IniGetInt(GENERALPREFA, "TabSize", DEF_TAB_SIZE, dirstr.GetString());
 
@@ -3253,7 +3257,7 @@ InitGlobals(PGLOBALS pg)
     pg->m_ishistoryunderquery = wyFalse;
 	pg->m_prefpersist = 0;
 	pg->m_conrestore = wyFalse;
-	pg->m_isannouncementopen = wyTrue;
+	pg->m_isannouncementopen = wyFalse;    // bonSQL: Announcements switched off
 	pg->m_pcquerywnd = NULL;
 	pg->m_announcements = NULL;
 	pg->m_mdiwlist = NULL;
@@ -3467,11 +3471,24 @@ IsRefreshTableData()
 	wyString	dirstr;
 
 	// Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	ret = wyIni::IniGetInt(GENERALPREFA, "RefreshTableData", 0, dirstr.GetString());
 
 	return(ret)?(wyTrue):(wyFalse);
+}
+
+// NGSA (#2369)
+wyBool
+NgsaIsTableDataDescending()
+{
+	wyWChar		*lpfileport=0;
+	wyWChar		directory[MAX_PATH + 1]= {0};
+	wyString	dirstr;
+
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
+	dirstr.SetAs(directory);
+	return wyIni::IniGetInt(GENERALPREFA, "TableDataDescending", 0, dirstr.GetString()) ? wyTrue : wyFalse;
 }
 
 //Setting the size of the tool bar icons
@@ -3485,7 +3502,7 @@ GetToolBarIconSize()
 	wyString	iconsizestr;
 
 	//Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	
 	wyIni::IniGetString(GENERALPREFA, "ToolIconSize", TOOLBARICONSIZE_DEFAULT, &iconsizestr, dirstr.GetString());
@@ -3510,7 +3527,7 @@ IsInsertSpacesForTab()
     wyInt32     ret;
 	
 	// Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	ret = wyIni::IniGetInt(GENERALPREFA, "InsertSpacesForTab", 0, dirstr.GetString());
 
@@ -3526,7 +3543,7 @@ IsRetainColumnWidth()
 	wyString	dirstr;
 	
 	// Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini",MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini",MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	isretain = wyIni::IniGetInt(GENERALPREFA, "RetainColumnWidth", 1, dirstr.GetString());
 
@@ -3543,7 +3560,7 @@ IsASAndAliasAlignment()
 	
 
 	// Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	ret = wyIni::IniGetInt(FORMATTERPREFA , "ASAndAliasAlignment", ASANDALIASALIGN_DEFAULT, dirstr.GetString());
 
@@ -3558,7 +3575,7 @@ IsStacked()
 	wyString	dirstr;
 	
 	// Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	ret = wyIni::IniGetInt(FORMATTERPREFA , "Stacked", STACKED_DEFAULT, dirstr.GetString());
 
@@ -3574,7 +3591,7 @@ GetLineBreak()
 	wyString	dirstr;
 
 	// Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	ret = wyIni::IniGetInt(FORMATTERPREFA , "Linebreak", LINEBREAK_DEFAULT, dirstr.GetString());
 
@@ -3589,7 +3606,7 @@ GetIndentation()
 	wyString	dirstr;
 
 	// Get the complete path.
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	ret = wyIni::IniGetInt(FORMATTERPREFA , "Indentation", INDENTATION_DEFAULT , dirstr.GetString());
 
@@ -3804,7 +3821,7 @@ IsShowWarnings()
     wyInt32     ret;
 	wyString	dirstr;
 	
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	
 	//getting show warnings status from init File
@@ -3821,7 +3838,7 @@ IsHaltExecutionOnError()
     wyInt32     ret;
 	wyString	dirstr;
 	
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	
 	//getting show warnings status from init File
@@ -3928,7 +3945,7 @@ DatabaseTablesGet(const wyChar* database, List* dbtablelist, HWND hwndparent, wy
 }
 
 
-// Functions to get and write limit values from and to SQLyog.ini
+// Functions to get and write limit values from and to bonsql.ini
 wyBool 
 GetLimitValues()
 {
@@ -3937,7 +3954,7 @@ GetLimitValues()
 	wyInt32     ret;
 	wyString	dirstr;
 	
-	ret = SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	if(ret == 0)
 		return wyFalse;
 	
@@ -3960,7 +3977,7 @@ IsResultTabPagingEnabled()
     wyInt32     ret;
 	wyString	dirstr;
 	
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	
 	//getting show warnings status from init File
@@ -3983,7 +4000,7 @@ GetTabPositions()
     wyInt32     ret;
 	wyString	dirstr;
 	
-	SearchFilePath(L"sqlyog", L".ini", MAX_PATH, directory, &lpfileport);
+	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
 	
 	ret = wyIni::IniGetInt(GENERALPREFA, "TableDataUnderQuery", 1, dirstr.GetString());

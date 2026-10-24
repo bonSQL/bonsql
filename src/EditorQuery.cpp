@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -77,7 +78,7 @@ EditorQuery::CreateQueryEdit(MDIWindow * wnd, HWND hwnd)
     as it gets one.
 */
 wyBool
-EditorQuery::ExecuteAllQuery(wyInt32 *stop)
+EditorQuery::ExecuteAllQuery(wyInt32 *stop, wyBool isedit)
 {
 	wyInt32          curpos, curline, start, end, len;
 	wyString		 query;
@@ -152,7 +153,7 @@ EditorQuery::ExecuteAllQuery(wyInt32 *stop)
 	*stop = wyFalse;
 	wnd->m_lastfocus = m_hwnd;
 
-	ExecuteQueryThread(query.GetString(), stop, wnd, curline);
+	ExecuteQueryThread(query.GetString(), stop, wnd, curline, wyTrue, isedit);	// NGSA (#2215)
 
 	return wyTrue;
 }
@@ -286,7 +287,7 @@ EditorQuery::ExecuteCurrentQuery(wyInt32 * stop, wyBool isedit)
 	end		= SendMessage(m_hwnd, SCI_GETSELECTIONEND, 0, 0);
 	
 	if((start-end) > 1)
-		return ExecuteSelQuery(stop);
+		return ExecuteSelQuery(stop, isedit);	// NGSA (#2215)
 
     *err = 0;
 
@@ -353,11 +354,11 @@ EditorQuery::ExecuteCurrentQuery(wyInt32 * stop, wyBool isedit)
 }
 
 wyBool
-EditorQuery::ExecuteSelQuery(wyInt32 *stop)
+EditorQuery::ExecuteSelQuery(wyInt32 *stop, wyBool isedit)
 {
     //starting from v5.1, we dont discriminate between select and all query
     //and they both go thru the same function 
-    return ExecuteAllQuery(stop);
+    return ExecuteAllQuery(stop, isedit);	// NGSA (#2215): F8 on a selection stays editable
 }
 
 wyBool 

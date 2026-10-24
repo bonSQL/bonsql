@@ -1,4 +1,5 @@
 /* Copyright (C) 2013 Webyog Inc
+   Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -17,6 +18,8 @@
 */
 
 
+#include "ngsa/NgsaConnectionExt.h"   // NGSA: ReplayInitCommands
+#include "ngsa/NgsaTrace.h"
 #include "TunnelCommunity.h"
 
 MYSQL*
@@ -77,7 +80,30 @@ int
 TunnelCommunity::mysql_real_query( MYSQL *mysql, const char *q, unsigned long length, 
 								  bool isbadforxml, bool batch, bool isend, bool * stop, bool fksethttpimport)
 {
-    return ::mysql_real_query(mysql, q, length);
+    // NGSA (#2226): Connector/C may reconnect inside this call (MYSQL_OPT_RECONNECT) and the
+    // statement then runs on a fresh session whose init commands were undone by SET NAMES.
+    // The replay cannot run here (this statement's result set is still pending: 2014 "commands
+    // out of sync"), so it is done at the start of the next call. One statement runs with the
+    // server defaults; everything after it has the user's settings.
+    unsigned long   idbefore;
+    int             rc;
+
+    if(m_ngsareplaypending && mysql)
+    {
+        m_ngsareplaypending = false;
+        NgsaConn::ReplayInitCommands(m_ngsainitcommand, this, mysql);
+    }
+
+    idbefore = mysql ? (unsigned long)mysql->thread_id : 0;
+    rc = ::mysql_real_query(mysql, q, length);
+
+    if(mysql && (unsigned long)mysql->thread_id != idbefore)
+    {
+        NgsaTrace("mysql_real_query: reconnected inside the connector, rc=%d id %lu -> %lu; replay deferred", rc, idbefore, (unsigned long)mysql->thread_id);
+        m_ngsareplaypending = (m_ngsainitcommand.GetLength() > 0);
+    }
+
+    return rc;
 }
 
 MYSQL_RES*
@@ -343,7 +369,17 @@ TunnelCommunity::mysql_ping(MYSQL* mysql)
         return 0;
     }
 
-    ret = ::mysql_ping(mysql);
+    {
+        // NGSA (#2226): same silent reconnect through a keep-alive ping
+        unsigned long idbefore = mysql ? (unsigned long)mysql->thread_id : 0;
+        ret = ::mysql_ping(mysql);
+        if(mysql && ret == 0 && ((unsigned long)mysql->thread_id != idbefore || m_ngsareplaypending))
+        {
+            NgsaTrace("mysql_ping: reconnected inside the connector, rc=%d id %lu -> %lu", ret, idbefore, (unsigned long)mysql->thread_id);
+            m_ngsareplaypending = false;    // a ping has no pending result set: replay now
+            NgsaConn::ReplayInitCommands(m_ngsainitcommand, this, mysql);
+        }
+    }
 
     return ret;
 }
