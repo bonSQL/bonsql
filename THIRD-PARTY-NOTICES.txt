@@ -1339,26 +1339,6 @@ POSSIBILITY OF SUCH DAMAGE.
 End
 
 ==============================================================================
-curve25519-donna / ed25519-donna (as included in Crypto++)
-
-Version:    as shipped in Crypto++ 8.9.0
-Used as:    static library (part of cryptopp.lib; headers include/cryptlib/donna*.h)
-Copyright:  Andrew Moon (curve25519-donna, ed25519-donna); Jeffrey Walton (Crypto++ wrapper)
-Licence:    Public domain
-
-Header of include/cryptlib/donna.h (verbatim):
-
-// donna.h - written and placed in public domain by Jeffrey Walton
-//           Crypto++ specific implementation wrapped around Andrew
-//           Moon's public domain curve25519-donna and ed25519-donna,
-//           https://github.com/floodyberry/curve25519-donna and
-//           https://github.com/floodyberry/ed25519-donna.
-
-From the Crypto++ licence file (above):
-
-Andrew Moon - ed25519, x25519, donna_32.cpp, donna_64.cpp, donna_sse.cpp
-
-==============================================================================
 JsonCpp (amalgamated source)
 
 Version:    1.8.3 (JSONCPP_VERSION_STRING in include/jsoncpp.h)

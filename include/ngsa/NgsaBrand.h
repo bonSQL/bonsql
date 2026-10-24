@@ -35,7 +35,7 @@
 #define BRAND_DOWNLOAD_URL_A    "https://bonsql.org/download/"
 #define BRAND_UPDATE_URL_A      "https://bonsql.org/release/latest.json"   /* Check for Updates reads this (NgsaUpdateCheck.cpp) */
 #define BRAND_UPDATE_HOST_A     "bonsql.org"
-#define BRAND_HELP_BASE_A       ""      /* help pages; topic names are appended, e.g. ".../help/" + "create-index" */
+#define BRAND_HELP_BASE_A       "https://bonsql.org/help/"   /* topic names are appended: ".../help/" + "create-index" (live 24/10/2026) */
 #define BRAND_LICENCE_URL_A     "https://www.gnu.org/licenses/gpl-3.0.html"
 
 #endif
