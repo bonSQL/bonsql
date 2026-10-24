@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security problem
+    url: https://github.com/bonSQL/bonsql/security/advisories/new
+    about: Report a security problem privately instead of in a public issue.
+  - name: Help pages
+    url: https://bonsql.org/help/
+    about: How each part of bonSQL works.
