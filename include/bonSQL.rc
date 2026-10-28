@@ -767,7 +767,8 @@ IDR_MESSAGETAB_MENU MENU
 BEGIN
     POPUP "Menu"
     BEGIN
-        MENUITEM "Show Only Errors",            ID_MENU_SHOWONLYERRORS
+        MENUITEM "&Copy\tCtrl+C",               ID_MESSAGETAB_COPY
+        MENUITEM "Select &All\tCtrl+A",         ID_MESSAGETAB_SELECTALL
     END
 END
 

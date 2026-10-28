@@ -161,6 +161,19 @@ TabMessage::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
 	switch(message)
 	{
     case WM_COMMAND:
+        // NGSA (B17): the right-click menu
+        if(LOWORD(wparam) == ID_MESSAGETAB_COPY)
+        {
+            pcquerymessageedit->CopyTextToClipBoard();
+            return 0;
+        }
+
+        if(LOWORD(wparam) == ID_MESSAGETAB_SELECTALL)
+        {
+            SendMessage(hwnd, SCI_SELECTALL, 0, 0);
+            return 0;
+        }
+
         pcquerymessageedit->OnWMCommand(wparam);
         break;
 
@@ -174,7 +187,8 @@ TabMessage::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
 
      case SCI_COPY:
      case WM_KEYDOWN:
-        if(wparam == VK_INSERT || wparam == 'c' || wparam == 'C')
+        // NGSA (B17): Ctrl+C / Ctrl+Insert only; a plain C used to copy as well
+        if((wparam == VK_INSERT || wparam == 'C') && (GetKeyState(VK_CONTROL) & 0x8000))
         {
             pcquerymessageedit->CopyTextToClipBoard();
             return 1;
@@ -200,13 +214,13 @@ TabMessage::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
 	    pcquerymessageedit->m_hfont = NULL;
 	    break;
 
-    /*case WM_CONTEXTMENU:
+    case WM_CONTEXTMENU:    // NGSA (B17): enabled again, the menu is Copy / Select All
         if(pcquerymessageedit->OnContextMenu(lparam) == wyTrue)
         {
             return 0;
         }
 
-        break;*/
+        break;
     }
 
     return CallWindowProc(pcquerymessageedit->m_wporigproc, hwnd, message, wparam, lparam);

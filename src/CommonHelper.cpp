@@ -3383,6 +3383,24 @@ StartTransaction(Tunnel *tunnel, MYSQL *mysql)
 		sja_mysql_free_result(tunnel, res);
 	return wyTrue;
 }
+// NGSA (B8): roll back the batch when the import stops or aborts on an error
+wyBool
+RollbackTransaction(Tunnel *tunnel, MYSQL *mysql)
+{
+	wyString query;
+	MYSQL_RES *res;
+
+	query.Sprintf("rollback");
+	res = SjaExecuteAndGetResult(tunnel, &mysql, query);
+
+	if(!res && mysql->affected_rows == -1)
+		return wyFalse;
+
+	if(res)
+		sja_mysql_free_result(tunnel, res);
+	return wyTrue;
+}
+
 // commit after completed batch process
 wyBool
 EndTransaction(Tunnel *tunnel, MYSQL *mysql)

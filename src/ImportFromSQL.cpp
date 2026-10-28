@@ -362,6 +362,10 @@ ImportFromSQL::StartImport(wyBool * stopquery, MDIWindow *wnd)
 	
 	if(!DoImport(stopquery, isfkchkhttp))
     {
+		// NGSA (B8): in transaction mode nothing of a stopped or aborted import may stay behind
+		if(istransaction == wyTrue)
+			RollbackTransaction(m_tunnel, m_mysql);
+
 		if(*stopquery)
 			return IMPORTSTOPPED;
 		else

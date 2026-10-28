@@ -97,6 +97,7 @@ MySQLDump::MySQLDump()
     m_firstslave = wyFalse; 
     m_flushmaster = wyFalse; 
     m_flushlog = wyFalse;
+    m_flushlogdone = wyFalse;
     m_tablestructure = wyFalse; 
     m_completeinsert = wyFalse; 
     m_locktables = wyFalse;
@@ -1763,6 +1764,7 @@ MySQLDump::Dump(LPGUI_EXPORT_UPDATE_ROUTINE routine, void *lpparam, wyInt32 *sto
 	m_routine		= routine;
 	m_stopexport	= stopexport;
 
+    m_flushlogdone = wyFalse;   // NGSA (B7): one FLUSH LOGS per dump
     err = StartDump();
 
 	/*if abortonerr is true, if an error occured while exporting, it will stop exporting and 
@@ -3510,6 +3512,10 @@ MySQLDump::OnFlushLog()
     MYSQL_RES   *res;
     wyString    query;
 
+    // NGSA (B7): the option means "flush the logs before the dump", not before every table
+    if(m_flushlogdone == wyTrue)
+        return wyTrue;
+
     query.Sprintf("flush logs");
 	
     res = SjaExecuteAndGetResult(m_tunnel, &m_mysql, query);
@@ -3517,6 +3523,10 @@ MySQLDump::OnFlushLog()
 	if(!res && sja_mysql_affected_rows(m_tunnel, m_mysql) == -1)
 		return OnError();
 
+    if(res)
+        sja_mysql_free_result(m_tunnel, res);
+
+    m_flushlogdone = wyTrue;
     return wyTrue;
 }
 

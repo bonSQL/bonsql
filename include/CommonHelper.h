@@ -207,6 +207,14 @@ wyBool		StartTransaction(Tunnel *tunnel, MYSQL *mysql);
 */
 wyBool      EndTransaction(Tunnel *tunnel, MYSQL *mysql);
 
+/// NGSA (B8): rolls back the batch transaction (import stopped or aborted on error)
+/**
+@param tunnel           : IN Tunnel pointer
+@param mysql            : IN Mysql pointer
+@returns wyTrue if success else wyFalse.
+*/
+wyBool      RollbackTransaction(Tunnel *tunnel, MYSQL *mysql);
+
 #ifdef _WIN32
 
 ///Handle the ssh reconnection

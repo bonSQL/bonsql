@@ -2706,7 +2706,10 @@ TabIndexes::GetNewAndModifiedIndexes(wyString &query, wyBool  execute)
                 addpk.AddSprintf("\r\n  add primary key (%s)", columnsstr.GetString());
 			if(m_ismysql553 && indexcomment.GetLength())
 			{
-            	addpk.AddSprintf("Comment \"%s\" ", indexcomment.GetString());
+				// NGSA (B12): a single-quoted literal with quotes and backslashes escaped, and a space before the keyword
+				indexcomment.FindAndReplace("\\", "\\\\");
+				indexcomment.FindAndReplace("'", "''");
+				addpk.AddSprintf(" comment '%s'", indexcomment.GetString());
 			}
 			addpk.AddSprintf(",");
         }
@@ -2722,7 +2725,10 @@ TabIndexes::GetNewAndModifiedIndexes(wyString &query, wyBool  execute)
 			if(m_ismysql553 && indexcomment.GetLength())
 			{
 				indexcomment.LTrim();
-				tempstr.AddSprintf(" Comment \"%s\" ",indexcomment.GetString());
+				// NGSA (B12): see above
+				indexcomment.FindAndReplace("\\", "\\\\");
+				indexcomment.FindAndReplace("'", "''");
+				tempstr.AddSprintf(" comment '%s'", indexcomment.GetString());
 			}
 				tempstr.AddSprintf(",");
         }

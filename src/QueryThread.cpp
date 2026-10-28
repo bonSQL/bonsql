@@ -115,7 +115,12 @@ AddErrorOrMsg(wyInt32 errstatus, wyString& buffer, Tunnel * tunnel, PMYSQL mysql
 
         msg.Add("\r\n\r\n");
         affectedrows = tunnel->mysql_affected_rows(*mysql);
+		warningcount = tunnel->mysql_warning_count(*mysql);
 		msg.AddSprintf(_("%lu row(s) returned"), affectedrows);
+
+		if(warningcount > 0)
+			msg.AddSprintf(_(", %lu warning(s)"), warningcount);
+
 		msg.AddSprintf("\r\n%s", timestr.GetString());
 		break;
 
@@ -361,7 +366,7 @@ HelperExecuteQuery(QUERYTHREADPARAMS * param, const wyChar* query,wyBool ismulti
                     elem->param->m_limit = param->m_highlimitvalue;
 				}
                 	
-				AddErrorOrMsg(ERROR_NONRESULT, *param->str, param->tunnel, param->mysql, ptrquery, param->executestatus, exectime, transfertime, totaltime, param->m_iseditor);
+				AddErrorOrMsg(ERROR_RESULT /* NGSA (B14) */, *param->str, param->tunnel, param->mysql, ptrquery, param->executestatus, exectime, transfertime, totaltime, param->m_iseditor);
 				
 			} 
 			else if(param->tunnel->mysql_error(*param->mysql)[0] != '\0')

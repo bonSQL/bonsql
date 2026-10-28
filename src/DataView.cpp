@@ -1061,7 +1061,7 @@ DataView::AddDataToQuery(MYSQL_ROW data, wyString &query, const wyChar* delimite
             GetColumnName(colname, i);
 
             //for not null data
-            if(data[i] && strcmp(data[i], "NULL") != 0 && strcmp(data[i], "(NULL)") != 0)
+            if(data[i] && strcmp(data[i], "(NULL)") != 0)   /* NGSA (B16): the word NULL is data here; a typed NULL becomes NULL through AppendSpecialDataToQuery when keywords are smart */
 		    {	
                 // NGSA (B11): in a WHERE clause a FLOAT/DOUBLE compared with its printed value matches no row
                 // (measured on MariaDB 11.8 and MySQL 8.4); compare the server's own text of the column instead
@@ -1142,7 +1142,7 @@ DataView::AddDataToQueryJSON(MYSQL_ROW data, wyString &query, const wyChar* deli
 
 			if(isjson==wyFalse)
 			{
-				if(data[i] && strcmp(data[i], "NULL") != 0 && strcmp(data[i], "(NULL)") != 0)
+				if(data[i] && strcmp(data[i], "(NULL)") != 0)   /* NGSA (B16): the word NULL is data here; a typed NULL becomes NULL through AppendSpecialDataToQuery when keywords are smart */
 		    {	
                 // NGSA (B11): in a WHERE clause a FLOAT/DOUBLE compared with its printed value matches no row
                 // (measured on MariaDB 11.8 and MySQL 8.4); compare the server's own text of the column instead
@@ -1183,7 +1183,7 @@ DataView::AddDataToQueryJSON(MYSQL_ROW data, wyString &query, const wyChar* deli
             //for not null data
 			else
 			{
-			if(data[i] && strcmp(data[i], "NULL") != 0 && strcmp(data[i], "(NULL)") != 0)
+			if(data[i] && strcmp(data[i], "(NULL)") != 0)   /* NGSA (B16): the word NULL is data here; a typed NULL becomes NULL through AppendSpecialDataToQuery when keywords are smart */
 		    {	
                 query.AddSprintf("%s%s%s", 
                     isfirst == wyFalse ? " " : "",
@@ -4113,7 +4113,7 @@ DataView::AppendSpecialDataToQuery(wyChar* value, wyChar* fldname, wyString& que
         }
     } 
     //handle NULL
-    else if(!myrowstr.CompareI("NULL") || !myrowstr.Compare("(NULL)"))
+    else if(!myrowstr.Compare("(NULL)") || (issmartkw == wyTrue && !myrowstr.CompareI("NULL")))   // NGSA (B16): "(NULL)" is always NULL; the word NULL only when keywords are smart
     {
 	    query.Add("NULL");
 	    return wyTrue;

@@ -1495,6 +1495,9 @@ public:
 
 	/// File HANDLE.
 			HANDLE		 m_hfile;
+
+	/// NGSA (B18): set when the server refused a query (its message was shown), so the file message is not added
+			wyBool		 m_servererror;
 };
 
 

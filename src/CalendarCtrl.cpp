@@ -754,7 +754,7 @@ CalendarCtrl::GetPreferenceForNowButton()
 	// Get the complete path.
 	SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH, directory, &lpfileport);
 	dirstr.SetAs(directory);
-	ret = wyIni::IniGetInt(GENERALPREFA, "ShowServerDate", 1, dirstr.GetString());
+	ret = wyIni::IniGetInt(GENERALPREFA, "ShowServerDate", 0, dirstr.GetString());   // NGSA (B15): same default as Preferences (SERVERDATE_DEFAULT)
 
 	return(ret) ? (wyTrue) : (wyFalse);
 }

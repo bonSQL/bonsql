@@ -1632,6 +1632,8 @@
 #define ID_EXPORT_IMPORTCONNECTIONDETAILS 41771
 #define ACCEL_NOFORMATCOPY              41775
 #define ID_MENU_SHOWONLYERRORS          41776
+#define ID_MESSAGETAB_COPY              41779
+#define ID_MESSAGETAB_SELECTALL         41780
 #define ACCEL_ALTERTABLE                41777
 #define ACCEL_OBFILTER                  41778
 #define ID_EXPLAIN_EXPLAIN              41784

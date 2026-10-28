@@ -546,6 +546,9 @@ private:
 	/// Enables or disables flush log option
 	wyBool			m_flushlog;
 
+	/// NGSA (B7): set once FLUSH LOGS has run for this dump; it runs once per dump, not once per object
+	wyBool			m_flushlogdone;
+
 	/// Enables or disables bulk insert
 	wyBool			m_bulkinsert;
 

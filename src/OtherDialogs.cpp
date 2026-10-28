@@ -840,6 +840,7 @@ CSchema::CSchema()
 	m_tunnel		= NULL;
 	m_hwndparent	= NULL;
 	m_hfile			= NULL;
+	m_servererror	= wyFalse;
 	m_flg			= wyFalse;
 	m_change		= wyFalse;
 	
@@ -1016,6 +1017,7 @@ CSchema::Create(HWND hwnd)
 
 	SetCursor(LoadCursor(NULL, IDC_WAIT));
 
+	m_servererror = wyFalse;
 	ret = WriteHeaders();
 	if(!ret)
 		goto cleanup;
@@ -1043,7 +1045,8 @@ CSchema::Create(HWND hwnd)
 	return wyTrue;
 
 cleanup:
-	DisplayErrorText(GetLastError(), _("Could not write into file."));
+	if(m_servererror == wyFalse)   // NGSA (B18): the server's message was already shown
+		DisplayErrorText(GetLastError(), _("Could not write into file."));
 	VERIFY(CloseHandle(m_hfile));
 	pGlobals->m_pcmainwin->AddTextInStatusBar(_(L"Error In Creating Schema..."));
 	if(wnd)
@@ -1236,6 +1239,7 @@ CSchema::WriteFields(HWND hwndmessage, wyChar *table)
 	if(!myres)
 	{
 		ShowMySQLError(m_hwnddlg, m_tunnel, m_mysql, query.GetString());
+		m_servererror = wyTrue;   // NGSA (B18)
 		return wyFalse;
 	}
 
@@ -1297,6 +1301,7 @@ CSchema::WriteIndexes(HWND hwndmessage, wyChar *table)
 	if(!myres)
 	{
 		ShowMySQLError(m_hwnddlg, m_tunnel, m_mysql, query.GetString());
+		m_servererror = wyTrue;   // NGSA (B18)
 		return wyFalse;
 	}
 	if(myres->row_count == 0)
