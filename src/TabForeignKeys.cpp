@@ -1011,6 +1011,7 @@ TabForeignKeys::OnButtonUpDown(wyBool   up)
     wyInt32                 selrow = CustomGrid_GetCurSelRow(m_hdlggrid);
     wyInt32                 selcol = CustomGrid_GetCurSelCol(m_hdlggrid);
     wyUInt32                beforerow = -1;
+    wyUInt32                count = CustomGrid_GetRowCount(m_hdlggrid);
     void                    *pvoid1 = NULL, *pvoid2 = NULL;
     wyBool                  checkval1, checkval2;
     wyString                colname1, datatype1, colname2, datatype2;
@@ -1036,7 +1037,8 @@ TabForeignKeys::OnButtonUpDown(wyBool   up)
         beforerow = selrow + 1;
     }
 
-    if(beforerow == -1)
+    // NGSA: the same omission as TabIndexes: Down on the last row read past the grid
+    if(beforerow == -1 || beforerow >= count)
         return;
 
     if(CustomGrid_GetRowCheckState(m_hdlggrid, beforerow))

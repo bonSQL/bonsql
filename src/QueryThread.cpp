@@ -793,7 +793,7 @@ AddExplainQueryResults(QueryResultList * queryresult, wyString &str, TabMgmt * t
         }
 #ifdef COMMUNITY
         // bonSQL: the paid editions showed the plan in their profiler tab; without it the EXPLAIN ran and
-        // nothing showed its rows. Show them on Result tabs, as running EXPLAIN by hand does (HELP-FINDINGS B1).
+        // nothing showed its rows. Show them on Result tabs, as running EXPLAIN by hand does.
         tab->DeleteAllItem(wyFalse);
 #endif
         elem = (QueryResultElem*)queryresult->GetFirst();

@@ -18,6 +18,8 @@
 */
 
 #include "ConnectionCommunity.h"
+#include "MDIWindow.h"
+#include "AutoCompleteInterface.h"	// bonSQL: autocomplete
 #include "CommonHelper.h"
 #include "ExportMultiFormat.h"
 #include "FrameWindowHelper.h"
@@ -445,11 +447,13 @@ ConnectionCommunity::ConnectToMySQL(HWND hdlg, ConnectionInfo *coninfo)
 #endif
 	coninfo->m_origmysqlport = 0;
 
-#ifndef COMMUNITY	
+#ifndef COMMUNITY
 	//read only settings
 	ret =(SendMessage(GetDlgItem(hdlg, IDC_READONLY), BM_GETCHECK, 0, 0));
 //	if(pGlobals->m_entlicense.CompareI("Professional") != 0)
 	(ret == BST_CHECKED) ? coninfo->m_isreadonly = wyTrue : coninfo->m_isreadonly = wyFalse;
+#else
+	coninfo->m_isreadonly = wyFalse;	// NGSA: no read-only box in this build; the flag must still be a value
 #endif
 	//Compress protocol settings
 	ret =(SendMessage(GetDlgItem(hdlg, IDC_COMPRESS), BM_GETCHECK, 0, 0));
@@ -1851,4 +1855,11 @@ ConnectionCommunity::ConnectToMySQL(ConnectionInfo * coninfo)
 	SetCursor(LoadCursor(NULL, IDC_ARROW));
 
 	return mysql;
+}
+
+// bonSQL: every statement run on a window reaches its autocomplete; DDL makes it forget the affected database
+void ConnectionCommunity::HandlerAddToMessageQueue(MDIWindow *wnd, wyChar *query)
+{
+	if(wnd && wnd->m_acinterface)
+		wnd->m_acinterface->HandlerAddToMessageQueue(wnd, query);
 }

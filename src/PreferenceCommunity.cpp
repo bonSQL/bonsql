@@ -19,8 +19,14 @@
 #include "PreferenceCommunity.h"
 #include "EditorFont.h"
 #include "CommonHelper.h"
+#include "ngsa/NgsaAutoComplete.h"	// bonSQL: the Autocomplete page
 
 extern PGLOBALS		pGlobals;
+
+// bonSQL: Autocomplete page defaults
+#define		NGSA_AC_DEFAULT				1
+#define		NGSA_AC_ASYOUTYPE_DEFAULT	1
+#define		NGSA_AC_HELP_DEFAULT		1
 
 /* Applies all the changes or current values to the .ini file */
 void
@@ -33,6 +39,8 @@ PreferencesCommunity::Apply()
     SaveFontPreferences(m_hwnd, FONT_PAGE); 
 
 	SaveOthersPreferences(m_hwnd, OTHERS_PAGE);
+
+	SaveAcPreferences(m_hwnd, AC_PAGE);	// bonSQL
 
 	EnumChildWindows(pGlobals->m_hwndclient, EnumChildProc, (LPARAM)this);
 
@@ -48,39 +56,99 @@ PreferencesCommunity::RestoreAllDefaults()
 	SetGenPrefDefaultAllTabValues(m_hwnd, GENERALPREF_PAGE); //Setting General pref dialogue with default values
 	SetFontPrefDefAllTabValues(m_hwnd, FONT_PAGE);//Setting Font pref dialogue with default values
 	SetOthersPrefDefaultAllTabValues(m_hwnd, OTHERS_PAGE);//Setting Others pref dialogue with default values
+	SetAcPrefDefaultAllTabValues(m_hwnd, AC_PAGE);	// bonSQL
 
 	return;
 }
 
-//Disabling all the Enterprise-Powertools tab controls
+// bonSQL: the Autocomplete page (the IDD_PREF3 template, docs/ngsa/AUTOCOMPLETE-DESIGN.md): the three ticks from the ini
 void
-PreferencesCommunity::EnterprisePrefHandleWmInitDialog(HWND hwnd) 
+PreferencesCommunity::EnterprisePrefHandleWmInitDialog(HWND hwnd)
 {
-	HWND		hwndacgrp = NULL;
-	wyInt32     publicid[] = { IDC_PTGROUP, IDC_ACGROUP, IDC_DEFTABGROUP, IDC_AUTOCOMPLETE, 
-								IDC_AUTOCOMPLETEHELP, IDC_AUTOCOMPLETEREBUILD,
-								IDC_AUTOCOMPLETESHOWTOOLTIP, IDC_TAGDIRGROUP, 
-								IDC_AUTOCOMPLETETAGSDIR, IDC_DIRSEL, IDC_CONFIRMONSDCLOSE,	
-								IDC_POWERTOOLSRESTOREALL, IDC_POWERTOOLSRESTORETAB, IDC_PQA, 
-								IDC_PQAEXPLAIN, IDC_PQAEXPLAINEXT, IDC_PQAPROF, 
-								IDC_PQAADVISOR, IDC_PQASTATUS};
-
-    wyInt32     count = sizeof(publicid)/ sizeof(publicid[0]);
+	wyString	dirstr(m_directory);
+	wyInt32		v;
 
 	if(m_startpage == AC_PAGE)
         HandlerToSetWindowPos(hwnd);
-	EnableOrDisable(hwnd, publicid, count , wyFalse);	
 
-	//Power Tools Gropbox handle
-	hwndacgrp = GetDlgItem(hwnd, IDC_PTGROUP);
-	
-	//Sets the Groupbox options
-	SendMessage(hwndacgrp, WM_SETTEXT, 0, (LPARAM)COMMMUNITY_POWERTOOLS);	
+	v = wyIni::IniGetInt(GENERALPREFA, "Autocomplete", NGSA_AC_DEFAULT, dirstr.GetString());
+	SendMessage(GetDlgItem(hwnd, IDC_AUTOCOMPLETE), BM_SETCHECK, v ? BST_CHECKED : BST_UNCHECKED, 0);
+	v = wyIni::IniGetInt(GENERALPREFA, "AutocompleteAsYouType", NGSA_AC_ASYOUTYPE_DEFAULT, dirstr.GetString());
+	SendMessage(GetDlgItem(hwnd, IDC_AUTOCOMPLETESHOWTOOLTIP), BM_SETCHECK, v ? BST_CHECKED : BST_UNCHECKED, 0);
+	v = wyIni::IniGetInt(GENERALPREFA, "AutocompleteHelp", NGSA_AC_HELP_DEFAULT, dirstr.GetString());
+	SendMessage(GetDlgItem(hwnd, IDC_AUTOCOMPLETEHELP), BM_SETCHECK, v ? BST_CHECKED : BST_UNCHECKED, 0);
+	AcEnableSubTicks(hwnd);
+}
+
+void
+PreferencesCommunity::AcEnableSubTicks(HWND hwnd)
+{
+	BOOL on = SendMessage(GetDlgItem(hwnd, IDC_AUTOCOMPLETE), BM_GETCHECK, 0, 0) == BST_CHECKED;
+	EnableWindow(GetDlgItem(hwnd, IDC_AUTOCOMPLETESHOWTOOLTIP), on);
+	EnableWindow(GetDlgItem(hwnd, IDC_AUTOCOMPLETEHELP), on);
+}
+
+void
+PreferencesCommunity::SetAcPrefDefaultValues(HWND hwnd)
+{
+	SendMessage(GetDlgItem(hwnd, IDC_AUTOCOMPLETE), BM_SETCHECK, NGSA_AC_DEFAULT, 0);
+	SendMessage(GetDlgItem(hwnd, IDC_AUTOCOMPLETESHOWTOOLTIP), BM_SETCHECK, NGSA_AC_ASYOUTYPE_DEFAULT, 0);
+	SendMessage(GetDlgItem(hwnd, IDC_AUTOCOMPLETEHELP), BM_SETCHECK, NGSA_AC_HELP_DEFAULT, 0);
+	AcEnableSubTicks(hwnd);
+}
+
+void
+PreferencesCommunity::SetAcPrefDefaultAllTabValues(HWND hwndbase, wyInt32 page)
+{
+	HWND hwnd = PropSheet_IndexToHwnd(GetParent(hwndbase), page);
+
+	if(hwnd)
+		SetAcPrefDefaultValues(hwnd);
+}
+
+wyBool
+PreferencesCommunity::SaveAcPreferences(HWND hwndbase, wyInt32 page)
+{
+	HWND		hwnd = PropSheet_IndexToHwnd(GetParent(hwndbase), page);
+	wyString	dirstr(m_directory);
+
+	if(!hwnd)
+	{
+		// the page was never shown: only Restore All Defaults has something to write
+		if(m_isrestorealldefaults == wyTrue)
+		{
+			wyIni::IniWriteInt(GENERALPREFA, "Autocomplete", NGSA_AC_DEFAULT, dirstr.GetString());
+			wyIni::IniWriteInt(GENERALPREFA, "AutocompleteAsYouType", NGSA_AC_ASYOUTYPE_DEFAULT, dirstr.GetString());
+			wyIni::IniWriteInt(GENERALPREFA, "AutocompleteHelp", NGSA_AC_HELP_DEFAULT, dirstr.GetString());
+			NgsaAutoComplete::ReloadPrefs();
+		}
+		return wyFalse;
+	}
+
+	SetBoolProfileString(hwnd, GENERALPREF, L"Autocomplete", IDC_AUTOCOMPLETE);
+	SetBoolProfileString(hwnd, GENERALPREF, L"AutocompleteAsYouType", IDC_AUTOCOMPLETESHOWTOOLTIP);
+	SetBoolProfileString(hwnd, GENERALPREF, L"AutocompleteHelp", IDC_AUTOCOMPLETEHELP);
+	NgsaAutoComplete::ReloadPrefs();
+	return wyTrue;
 }
 
 void
 PreferencesCommunity::EntPrefHandleWmCommand(HWND hwnd, WPARAM wParam)
 {
+	switch(LOWORD(wParam))
+	{
+	case IDC_AUTOCOMPLETE:
+		AcEnableSubTicks(hwnd);
+		break;
+
+	case IDC_POWERTOOLSRESTORETAB:
+		SetAcPrefDefaultValues(hwnd);
+		break;
+
+	case IDC_POWERTOOLSRESTOREALL:
+		RestoreAllDefaults();
+		break;
+	}
 }
 void 
 PreferencesCommunity::FormatterPrefHandleWmNotify(HWND hwnd, LPARAM lParam)

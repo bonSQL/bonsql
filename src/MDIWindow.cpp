@@ -105,6 +105,7 @@ MDIWindow::MDIWindow(HWND hwnd, ConnectionInfo * conninfo, wyString &dbname, wyS
 	m_isobjbrowvis	= wyTrue;
 	m_bopenflag		= wyFalse;
 	m_psqlite		= NULL;
+	m_grpprocess	= wyFalse;	// bonSQL: never set in Community (SetGroupProcess only on Ultimate paths), yet my_query's statement hook tests it
     m_queryevt      = NULL;
 	m_dragged		= wyFalse;    
     m_isactivated   = wyFalse;
@@ -3606,8 +3607,7 @@ MDIWindow::AddFlushPersistence(HWND hwnd)
     m_p_flush->Create("FLUSH");
 
     // bonSQL: an option the server lacks is left out of the persistence list, so that its saved state really is
-    // kept for other servers (Persist wrote every box back when the dialog closed, saving them as unticked;
-    // HELP-FINDINGS B3)
+    // kept for other servers (Persist wrote every box back when the dialog closed, saving them as unticked)
     for(i = 0; i < count; i++)
     {
         if(NgsaFlushOptionAvailable(opts[i], m_ngsacaps) == wyTrue)

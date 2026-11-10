@@ -275,7 +275,7 @@ public:
 	@param query		: IN Query
 	@returns void
 	*/
-	void    HandlerAddToMessageQueue(MDIWindow *wnd, wyChar *query){return;};
+	void    HandlerAddToMessageQueue(MDIWindow *wnd, wyChar *query);	// bonSQL: DDL invalidates the autocomplete catalog (ConnectionCommunity.cpp)
 	
 	/// Handles the connection notification
 	/**

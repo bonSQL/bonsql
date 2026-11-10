@@ -16,107 +16,59 @@
 
 */
 
+/* bonSQL: the Ultimate implementation behind this interface was never published; since 2026.11 the
+   handlers drive bonSQL's own autocomplete (include/ngsa/NgsaAutoComplete.h,
+   docs/ngsa/AUTOCOMPLETE-DESIGN.md). The names stay so that the call sites in the editor, the window
+   and the query helpers are untouched. */
+
 #ifndef _AUTO_COMPLETE_INTERFACE_H_
 #define _AUTO_COMPLETE_INTERFACE_H_
+
 #include "MDIWindow.h"
 #include "DataType.h"
 
-class CAutoComplete;
+class NgsaAutoComplete;
 
 class AutoCompleteInterface
 {
 public:
-
     AutoCompleteInterface();
     ~AutoCompleteInterface();
 
-	/// Initializes the auto complete
-	/**
-	@param wnd		: IN Pointer to MDI class object
-	@returns wyTrue on success else wyFalse
-	*/
+    /// Creates the autocomplete object for this connection window (from MDIWindow::OnWmCreate)
     wyBool              HandlerInitAutoComplete(MDIWindow * wnd);
-    
-	/// Handler to stored objects
-	/**
-	@param wnd		: IN Pointer to MDI class object
-	@param rebuild	: IN Rebuild ?
-	returns void
-	*/
+
+    /// Kept for the old call sites: the catalog is built lazily, nothing to store
     void	            HandlerStoreObjects(MDIWindow *wnd, wyBool brebuild);
 
-	/// Initiates the tag building process
-	/**
-	@param wnd		: IN Pointer to MDI class object
-	returns void
-	*/
+    /// After a successful connect: a fresh catalog and the keywords of this engine
     void	            HandlerBuildTags(MDIWindow *wnd);
 
-	/// Function is called when a key is pressed on the keyboard
-	/**
-	@param hwnd		: IN HANDLE to a window
-	@param eb		: IN Pointer to editor base class object
-	@param			: IN Unsigned message pointer
-	@returns 1 on success else 0
-	*/
+    /// The object browser was refreshed: forget the catalog
+    void                HandlerInvalidate();
+
+    /// WM_CHAR before Scintilla; 1 = consumed. Otherwise keeps the editor's auto-indentation.
     wyInt32             HandlerOnWMChar(HWND hwnd, EditorBase *eb, WPARAM wparam);
 
-	/// Function is called when  down key is pressed on the keyboard
-	/**
-	@param hwnd		: IN HANDLE to a window
-	@param eb		: IN Pointer to editor base class object
-	@param			: IN Unsigned message pointer
-	@returns 1 on success else 0
-	*/
+    /// WM_KEYDOWN before Scintilla; 1 = consumed (Ctrl+Space, Ctrl+Shift+Space)
     wyInt32             HandlerOnWMKeyDown(HWND hwnd, EditorBase *eb, WPARAM wparam);
 
-	/// Function is called when up key is pressed on the keyboard
-	/**
-	@param hwnd		: IN HANDLE to a window
-	@param eb		: IN Pointer to editor base class object
-	@param			: IN Unsigned message pointer
-	@returns 1 on success else 0
-	*/
+    /// WM_KEYUP before Scintilla; always 0
     wyInt32             HandlerOnWMKeyUp(HWND hwnd, EditorBase *eb, WPARAM wparam);
 
-	/// Adds messages to message queue
-	/**
-	@param wnd		: IN Pointer to MDI class object
-	@param query	: IN Query string
-	returns wyTrue if success, else wyFalse
-	*/
+    /// A statement ran on this window's connection (FrameWindowHelper): DDL invalidates the catalog
     wyBool              HandlerAddToMessageQueue(MDIWindow*	wnd, wyChar *query);
 
-    /// Processes messages in the message queue
-	/**
-	@param wnd		: IN Pointer to MDI class object
-	@param query	: IN Query string
-	returns void
-	*/
-    void              HandlerProcessMessageQueue(MDIWindow *wnd);
-
-	/// Shows tool tips 
-	/**
-	@param wnd		: IN Pointer to MDI class object
-	returns wyTrue if success, else wyFalse
-	*/
+    void                HandlerProcessMessageQueue(MDIWindow *wnd);
     wyBool              HandlerShowToolTip(MDIWindow *wnd);
-
-	/// Rebuilds keywords when autocomplete thread exits
-	/**
-	@param wnd		: IN Pointer to MDI class object
-	@param lparam	: IN Long message pointer
-	*/
     void                HandlerOnAutoThreadExit(MDIWindow *wnd, LPARAM lparam);
-
-	//Update the 'AutocompleteTagbuilded' flag to '1' once the build tag is completed
     VOID				UpdateTagBuildFlag();
-    
-    wyBool                OnACNotification(WPARAM wparam, LPARAM lparam);
-    
-	/// Auto complete pointer
-	CAutoComplete       *m_autocomplete;
 
+    /// SCN_* notifications of the active editor (TabModule); wyTrue = handled, stop
+    wyBool              OnACNotification(WPARAM wparam, LPARAM lparam);
 
+    /// The autocomplete object, NULL until HandlerInitAutoComplete
+    NgsaAutoComplete    *m_autocomplete;
 };
+
 #endif

@@ -1692,10 +1692,10 @@ InitConInfo(ConnectionInfo &consrc, ConnectionInfo &contgt)
 	contgt.m_port = consrc.m_port;
 
 	contgt.m_iscompress = consrc.m_iscompress;
-#ifndef COMMUNITY
-//	if(pGlobals->m_entlicense.CompareI("Professional") != 0)
+	/* NGSA: copied in every build. The Community build left the window's m_isreadonly uninitialised
+	   (ConnectionInfo is a plain struct), and the Paste SQL Statement handlers, which test it, then skipped INSERT /
+	   UPDATE / DELETE while SELECT (no test) pasted. */
 	contgt.m_isreadonly = consrc.m_isreadonly;
-#endif	
 	contgt.m_isdeftimeout = consrc.m_isdeftimeout;
 	contgt.m_strwaittimeout.SetAs(consrc.m_strwaittimeout);
 	//contgt.m_ispwdcleartext = consrc.m_ispwdcleartext;
@@ -1891,13 +1891,22 @@ WriteConnDetails(HWND hdlg)
 	
 	dirstr.SetAs(directory);
 
-	VERIFY((index = SendMessage(hcb, CB_GETCURSEL, 0, 0))!= CB_ERR);
+	// bonSQL (05/11/2026, found by the test system's debug heap on every connect): the selection, count and text
+	// length must be asked of the real combo (hwndCombo); the CCustomComboBox wrapper (hcb) does not forward CB_*
+	// messages, DefWindowProc answered 0, and CB_GETLBTEXT then wrote the whole name into a 4-byte buffer.
+	index = SendMessage(hwndCombo, CB_GETCURSEL, 0, 0);
 
-	if (index == -1) {
-		index = SendMessage(hcb, CB_GETCOUNT, index, 0) - 1;
+	if (index == CB_ERR) {
+		index = SendMessage(hwndCombo, CB_GETCOUNT, 0, 0) - 1;
 	}
-	
-	txtlen = (SendMessage(hcb, CB_GETLBTEXTLEN, index, 0));
+
+	if (index < 0)
+		return;
+
+	txtlen = (SendMessage(hwndCombo, CB_GETLBTEXTLEN, index, 0));
+
+	if (txtlen == CB_ERR)
+		return;
 
 	conname = AllocateBuffWChar(txtlen + 1);
 

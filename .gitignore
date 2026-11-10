@@ -10,3 +10,7 @@ include/ngsa/NgsaBuildInfo.h
 bin/installer/
 # per-user Visual Studio settings
 *.vcxproj.user
+# Chocolatey push key (never commit)
+Chocolatey_api_key
+tools/ngsa/ac-test/bin/
+tools/ngsa/ac-test/obj/

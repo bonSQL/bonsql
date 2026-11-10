@@ -859,7 +859,7 @@ FrameWindow::CreateMainWindow(HINSTANCE hinstance)
 	tempstr.SetAs(pGlobals->m_appname.GetAsWideChar());
 #ifndef ENTERPRISE
 
-	// bonSQL: the title is the product name only (no "64"/"32", Andre 13/10/2026)
+	// bonSQL: the title is the product name only (no "64" or "32")
 
 #endif
 	appname = tempstr.GetAsWideChar();
@@ -909,7 +909,7 @@ FrameWindow::SetMainWindowTitle()
 	if(pGlobals->m_entlicense.GetLength() == 0)
 		return;
 	tempstr.SetAs(pGlobals->m_appname.GetAsWideChar());
-	// bonSQL: the title is the product name only (no "64"/"32", Andre 13/10/2026)
+	// bonSQL: the title is the product name only (no "64" or "32")
 	SetWindowText(m_hwndmain, tempstr.GetAsWideChar());
 }
 
@@ -2790,6 +2790,10 @@ FrameWindow::OnWmCommand(WPARAM wParam)
         break;
     case ID_EXPLAIN_EXTENDED:
         if(!ptabeditor)
+            break;
+        /* NGSA (test system harness note): the menu greys EXPLAIN EXTENDED from MySQL 5.7.3 (ISSUE 2259), but a
+           posted command id still reached this handler and sent a statement the server no longer knows */
+        if(IsMySQL573(pcquerywnd->m_tunnel, &pcquerywnd->m_mysql))
             break;
         HandleExecuteExplain(hwndactive, pcquerywnd, peditorbase, wyTrue);
         break;

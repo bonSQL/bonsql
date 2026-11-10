@@ -16,12 +16,13 @@
 
 */
 
+/* bonSQL: the handlers drive bonSQL's own autocomplete (include/ngsa/NgsaAutoComplete.h). The Ultimate
+   code (tag files, build thread) that stood behind them was never published; see the header. */
 
 #include "AutoCompleteInterface.h"
-
-#ifndef COMMUNITY
-#include "AutoCompleteEnt.h"
-#endif
+#include "EditorBase.h"
+#include "Scintilla.h"
+#include "ngsa/NgsaAutoComplete.h"
 
 AutoCompleteInterface::AutoCompleteInterface()
 {
@@ -30,174 +31,102 @@ AutoCompleteInterface::AutoCompleteInterface()
 
 AutoCompleteInterface::~AutoCompleteInterface()
 {
-#ifndef COMMUNITY
     if(m_autocomplete)
         delete m_autocomplete;
 
     m_autocomplete = NULL;
-#endif
 }
 
-wyBool 
+wyBool
 AutoCompleteInterface::HandlerInitAutoComplete(MDIWindow * wnd)
 {
-#ifndef COMMUNITY
-    if(IsAutoComplete() == wyTrue)
-    {
-        m_autocomplete = InitAutoComplete(wnd);
+    if(!m_autocomplete)
+        m_autocomplete = new NgsaAutoComplete(wnd);
 
-        if(m_autocomplete)
-            return wyTrue;
-    }
-#endif
-    return wyFalse;
+    return wyTrue;
 }
 
-void	            
+void
 AutoCompleteInterface::HandlerBuildTags(MDIWindow *wnd)
 {
-#ifndef COMMUNITY
-    if(pGlobals->m_isautocomplete == wyTrue)
-		if(wnd->m_psqlite->m_refcount == 1)
-            HandlerStoreObjects(wnd, wyFalse);
-#endif
+    if(!m_autocomplete)
+        HandlerInitAutoComplete(wnd);
+
+    m_autocomplete->OnConnected();
 }
 
-void 
+void
 AutoCompleteInterface::HandlerStoreObjects(MDIWindow *wnd, wyBool rebuild)
 {
-#ifndef COMMUNITY
-    if(m_autocomplete)
-    {
-        StoreObjects(wnd, m_autocomplete, rebuild);
-    }
-#endif
 }
 
-wyInt32 
+void
+AutoCompleteInterface::HandlerInvalidate()
+{
+    if(m_autocomplete)
+        m_autocomplete->InvalidateAll();
+}
+
+wyInt32
 AutoCompleteInterface::HandlerOnWMChar(HWND hwnd, EditorBase *eb, WPARAM wparam)
 {
-#ifndef COMMUNITY
-    if(m_autocomplete)
-    {
-        return m_autocomplete->OnWMChar(hwnd, wparam, NULL);
-    }
-#endif
+    if(m_autocomplete && m_autocomplete->OnChar(hwnd, wparam))
+        return 1;
+
 	 eb->SetAutoIndentation(hwnd, wparam);
 	 return 0;
 }
 
-wyInt32 
+wyInt32
 AutoCompleteInterface::HandlerOnWMKeyDown(HWND hwnd, EditorBase *eb, WPARAM wparam)
 {
-#ifndef COMMUNITY
-    if(m_autocomplete)
-    {
-        return m_autocomplete->OnWMKeyDown(hwnd, eb, wparam);
-    }
-#endif
+    if(m_autocomplete && m_autocomplete->OnKeyDown(hwnd, wparam))
+        return 1;
+
     return 0;
 }
 
-wyInt32 
+wyInt32
 AutoCompleteInterface::HandlerOnWMKeyUp(HWND hwnd, EditorBase *eb, WPARAM wparam)
 {
-#ifndef COMMUNITY
-    if(m_autocomplete)
-    {
-        return m_autocomplete->OnWMKeyUp(hwnd, eb, wparam);
-    }
-#endif
     return 0;
 }
 
-wyBool 
+wyBool
 AutoCompleteInterface::HandlerAddToMessageQueue(MDIWindow*	wnd, wyChar *query)
 {
-#ifndef COMMUNITY
-    if(m_autocomplete)
-    {
-        return m_autocomplete->HandlerAddToMessageQueue(wnd, query);
-    }
-#endif
+    if(m_autocomplete && query)
+        m_autocomplete->OnStatement(query);
+
     return wyFalse;
 }
 
-void 
+void
 AutoCompleteInterface::HandlerProcessMessageQueue(MDIWindow *wnd)
 {
-#ifndef COMMUNITY
-    if(m_autocomplete)
-    {
-        m_autocomplete->ProcessMessageQueue(wnd);
-    }
-#endif
 }
 
+wyBool
+AutoCompleteInterface::HandlerShowToolTip(MDIWindow *wnd)
+{
+    return wyFalse;
+}
 
 void
 AutoCompleteInterface::HandlerOnAutoThreadExit(MDIWindow *wnd, LPARAM lparam)
 {
-#ifndef COMMUNITY
-    if(m_autocomplete)
-    {
-        return m_autocomplete->OnAutoThreadExit(wnd, lparam);
-    }
-#endif
 }
 
-//Sets the "AutocompleteTagbuilded" to '1' once the Build tags process is completed
 VOID
 AutoCompleteInterface::UpdateTagBuildFlag()
 {
-	wyString	dirstr;
-	wyInt32		ret = 0, value = 0;;
-	wyWChar		directory[MAX_PATH] = {0}, *lpfileport = 0;
-	ConnectionBase *conbase = pGlobals->m_pcmainwin->m_connection;
-
-	ret = SearchFilePath(BRAND_CFG_STEM_W, L".ini", MAX_PATH - 1, directory, &lpfileport);
-	if(ret == 0)
-		return;
-
-	dirstr.SetAs(directory);
-
-	//write to .ini the 'Building' tag file is completed successful(AutocompleteTagbuilded = 1)
-	if(conbase)
-	{
-		value = conbase->m_isbuiltactagfile == wyTrue ? 1 : 0;
-        
-		wyIni::IniWriteInt(conbase->m_consectionname.GetString(), 
-			"AutocompleteTagbuilded", value, dirstr.GetString());		
-	}
 }
 
-wyBool 
+wyBool
 AutoCompleteInterface::OnACNotification(WPARAM wparam, LPARAM lparam)
 {
-#ifndef COMMUNITY
-    if(m_autocomplete)
-    {
-        if(((LPNMHDR)lparam)->code == SCN_AUTOCSELECTION)
-        {
-            CAutoComplete::OnACSelection(wparam, lparam);
-            return wyTrue;
-        }
-        else if(((LPNMHDR)lparam)->code == SCN_CALLTIPCLICK)
-        {
-            m_autocomplete->OnCallTipClick(((LPNMHDR)lparam)->hwndFrom, wparam, lparam);
-            return wyTrue;
-        }
-        else if(((LPNMHDR)lparam)->code == SCN_CHARADDED)
-        {
-            m_autocomplete->OnWMChar(((LPNMHDR)lparam)->hwndFrom, wparam, lparam);
-            return wyFalse;
-        }
-        else if(((LPNMHDR)lparam)->code == SCN_UPDATEUI)
-        {
-            m_autocomplete->OnUpdateUI(wparam, lparam);
-            return wyFalse;
-        }
-    }
-#endif
+    if(m_autocomplete && lparam && m_autocomplete->OnNotify((SCNotification*)lparam))
+        return wyTrue;
+
     return wyFalse;
 }

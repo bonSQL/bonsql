@@ -966,7 +966,7 @@ TabIndexes::ScanEntireRow(wyUInt32  currentrow, wyInt32 currentcol, wyString& cu
 		CustomGrid_SetText(m_hgridindexes, row, INDEXVISIBILITY, cwrapobj->m_newval->m_visible.GetString());
 	}
 	// bonSQL: Visibility can be edited on its own; it used to be read-only until another cell in the row had
-	// changed (HELP-FINDINGS B11). The PRIMARY index keeps its guard in OnBeginEdit.
+	// changed. The PRIMARY index keeps its guard in OnBeginEdit.
     return wyTrue;
 }
 
@@ -1882,7 +1882,9 @@ TabIndexes::OnButtonUpDown(HWND hwnd, wyBool up)
         otherrow = selrow + 1;
     }
 
-    if(otherrow == -1)
+    // NGSA: Down on the last row read row "count", past the grid, and crashed in
+    // CustomGrid_GetRowCheckState; Up on the first row was already guarded by the -1 check
+    if(otherrow == -1 || otherrow >= count)
         return;
 
     //..Fetching Selected row values
@@ -2047,7 +2049,7 @@ TabIndexes::FillInitValues()
 		
 		// could be invisible, in whihc case value is "", but set it anyhow even if only for clarity
 		CustomGrid_SetText(m_hgridindexes, row, INDEXVISIBILITY, cwrapobj->m_oldval->m_visible.GetString());
-		// bonSQL: not read-only (HELP-FINDINGS B11)
+		// bonSQL: not read-only
 			
 		if(m_ismysql553)
 			CustomGrid_SetText(m_hgridindexes, row, INDEXCOMMENT,cwrapobj->m_oldval->m_indexcomment.GetString());

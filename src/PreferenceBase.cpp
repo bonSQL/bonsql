@@ -20,6 +20,7 @@
 
 #include "PreferenceBase.h"
 #include "ngsa/NgsaDark.h"   // NGSA (#2158)
+#include "ClientMySQLWrapper.h"   // NGSA: Get_Max_Allowed_Packet_Size
 #include "EditorFont.h"
 #include "CommonHelper.h"
 #include "GUIHelper.h"
@@ -124,7 +125,7 @@ PreferenceBase::Create(wyInt32 startpage)
     psp.pszTemplate =   MAKEINTRESOURCE(IDD_PREF3);
     psp.pszTitle    =   _(L"Power Tools");
     
-#ifndef COMMUNITY	// bonSQL: Ultimate-only page, every control disabled in Community
+#ifndef COMMUNITY	// bonSQL: in Community this template is the Autocomplete page, added after Others (below)
     ahpsp[pagecount++] =          CreatePropertySheetPage(&psp);
 #endif
     
@@ -164,6 +165,18 @@ PreferenceBase::Create(wyInt32 startpage)
     psp.pszTitle    =   _(L"Others");
 
     ahpsp[pagecount++] =          CreatePropertySheetPage(&psp);
+
+#ifdef COMMUNITY	// bonSQL: the Autocomplete page (AC_PAGE = 3, docs/ngsa/AUTOCOMPLETE-DESIGN.md)
+	psp.dwSize		=	sizeof(psp);
+    psp.dwFlags		=	PSP_DEFAULT | PSH_NOAPPLYNOW | PSP_USETITLE;
+    psp.hInstance	=	pGlobals->m_hinstance;
+    psp.lParam		=   (LPARAM)this;
+    psp.pfnDlgProc	=   ACPrefDlgProc;
+    psp.pszTemplate =   MAKEINTRESOURCE(IDD_PREF3);
+    psp.pszTitle    =   _(L"Autocomplete");
+
+    ahpsp[pagecount++] =          CreatePropertySheetPage(&psp);
+#endif
 
 	//////////////////////////////////////////////////////////////////
 	// Display the page using additional code
@@ -330,9 +343,32 @@ PreferenceBase::GenPrefHandleWmCommand(HWND hwnd, WPARAM wParam)
 
 	case IDC_DEF_BULK_SIZE:
 		if(SendMessage(GetDlgItem(hwnd, IDC_DEF_BULK_SIZE), BM_GETCHECK, 0, 0)== BST_CHECKED)
+		{
+			/* NGSA: the greyed box used to keep whatever was typed; it now shows the value the
+			   box stands for, the connected server's max_allowed_packet (in the same KB-ish unit the exports use),
+			   when a connection is open. The typed value comes back when the box is unticked, and is not written
+			   to the ini while the box is ticked (see the save). */
+			MDIWindow *wnd = GetActiveWin();
+			if(wnd && wnd->m_tunnel)
+			{
+				wyInt32 server = Get_Max_Allowed_Packet_Size(wnd->m_tunnel, &wnd->m_mysql);
+				if(server > 0)
+				{
+					wyWChar text[32] = {0};
+					_snwprintf(text, 31, L"%d", server);
+					SetWindowText(GetDlgItem(hwnd, IDC_BULKINSERT), text);
+				}
+			}
 			EnableWindow(GetDlgItem(hwnd, IDC_BULKINSERT), FALSE);
+		}
 		else
+		{
+			wyString dirstr(m_directory);
+			wyWChar  text[32] = {0};
+			_snwprintf(text, 31, L"%d", wyIni::IniGetInt(GENERALPREFA, "BulkSize", BULKINSERT_DEFAULT, dirstr.GetString()));
+			SetWindowText(GetDlgItem(hwnd, IDC_BULKINSERT), text);
 			EnableWindow(GetDlgItem(hwnd, IDC_BULKINSERT), TRUE);
+		}
 
 		break;
 
@@ -1744,8 +1780,9 @@ PreferenceBase::SaveGeneralPreferences(HWND hwndbase, wyInt32 page)
     SetBoolProfileString(hwnd, GENERALPREF, L"SetMaxRow", IDC_SETMAXROW);
 	SetIntProfileString(hwnd, GENERALPREF, L"RowLimit", IDC_ROW_LIMIT);
 
-	SetIntProfileString(hwnd, GENERALPREF, L"BulkSize", IDC_BULKINSERT);
-    SetBoolProfileString(hwnd, GENERALPREF, L"DefBulkSize", IDC_DEF_BULK_SIZE);	
+	if(SendMessage(GetDlgItem(hwnd, IDC_DEF_BULK_SIZE), BM_GETCHECK, 0, 0) != BST_CHECKED)   // NGSA: the edit shows the server's value while the box is ticked
+		SetIntProfileString(hwnd, GENERALPREF, L"BulkSize", IDC_BULKINSERT);
+    SetBoolProfileString(hwnd, GENERALPREF, L"DefBulkSize", IDC_DEF_BULK_SIZE);
 
 
 	SetBoolProfileString(hwnd, GENERALPREF, L"ShowWarnings", IDC_SHOWWARNING);

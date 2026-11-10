@@ -416,6 +416,8 @@
     <ClCompile Include="..\src\ngsa\NgsaSshTunnel.cpp" />
     <ClCompile Include="..\src\ngsa\NgsaCaps.cpp" />
     <ClCompile Include="..\src\ngsa\NgsaServerOps.cpp" />
+    <ClCompile Include="..\src\ngsa\NgsaAcCore.cpp" />
+    <ClCompile Include="..\src\ngsa\NgsaAutoComplete.cpp" />
     <ClCompile Include="..\src\ngsa\NgsaTrace.cpp" />
     <ClCompile Include="..\src\ngsa\NgsaConfig.cpp" />
     <ClCompile Include="..\src\ngsa\NgsaJson.cpp" />
@@ -552,6 +554,8 @@
     <ClInclude Include="..\include\wyTheme.h" />
     <ClInclude Include="..\include\ngsa\NgsaConnectionExt.h" />
     <ClInclude Include="..\include\ngsa\NgsaSshTunnel.h" />
+    <ClInclude Include="..\include\ngsa\NgsaAcCore.h" />
+    <ClInclude Include="..\include\ngsa\NgsaAutoComplete.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\include\bonSQL.rc" />

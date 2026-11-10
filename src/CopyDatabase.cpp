@@ -2388,6 +2388,15 @@ CopyDatabase::ExportData(LPGUI_COPYDB_UPDATE_ROUTINE gui_routine, void * lpParam
 	}
 	
 	VERIFY(hwndtree = GetDlgItem(m_hwnddlg, IDC_TREE));
+
+	/* NGSA: the source's sequences first: a table may default to NEXTVAL(sequence) */
+	if(IsMySQL5010(m_newtargettunnel, &m_newtargetmysql) == wyTrue)
+	{
+		ret = ExportSequences();
+		if(ret == wyFalse || IsCopyStopped() == wyTrue)
+			return ret;
+	}
+
     hrootitem = GetObjectsHtreeItem(hwndtree, TXT_TABLES);
 	if(hrootitem)
 		HandleTables(hwndtree, hrootitem);
@@ -3691,7 +3700,99 @@ CopyDatabase::ExportEvent(const wyChar *db, const wyChar *event)
 
 }
 
-wyBool 
+/* NGSA: MariaDB sequences are not tables (Table_type SEQUENCE), so PrepareShowTable left them out
+   and Copy Database copied every other object but them. Each one is created in the target from its SHOW CREATE
+   SEQUENCE (unqualified: the target database is the session's current one, ChangeTargetDB). A server without
+   sequences answers an empty set. */
+wyBool
+CopyDatabase::ExportSequences()
+{
+	MYSQL_RES	*res, *cres;
+	MYSQL_ROW	row, crow;
+	wyString	query, name, def;
+	wyInt32		index, count = 0;
+	wyBool		ismysql41 = ((GetActiveWin())->m_ismysql41);
+
+	query.Sprintf("show full tables from `%s` where Table_type = 'SEQUENCE'", m_srcdb.GetString());
+	res = SjaExecuteAndGetResult(m_newsrctunnel, &m_newsrcmysql, query);
+	if(!res)
+		return wyTrue;		/* a server that does not know the type (very old MySQL) has no sequences to copy */
+
+	while((row = m_newsrctunnel->mysql_fetch_row(res)) != NULL)
+	{
+		if(IsCopyStopped() == wyTrue)
+		{
+			m_newsrctunnel->mysql_free_result(res);
+			return wyFalse;
+		}
+		if(count == 0)
+			m_gui_routine((void*)m_gui_lparam, "sequences", 0, wyFalse, COPYSTART);
+
+		name.SetAs(row[0], ismysql41);
+
+		if(m_dropobjects == wyTrue)
+		{
+			query.Sprintf("drop sequence if exists `%s`.`%s`", m_targetdb.GetString(), name.GetString());
+			cres = SjaExecuteAndGetResult(m_newtargettunnel, &m_newtargetmysql, query);
+			if(!cres && (m_newtargetmysql)->affected_rows == -1)
+			{
+				ShowMySQLError(m_hwnddlg, m_newtargettunnel, &m_newtargetmysql, query.GetString());
+				m_newsrctunnel->mysql_free_result(res);
+				return wyFalse;
+			}
+			if(cres)
+				m_newtargettunnel->mysql_free_result(cres);
+		}
+
+		query.Sprintf("show create sequence `%s`.`%s`", m_srcdb.GetString(), name.GetString());
+		cres = SjaExecuteAndGetResult(m_newsrctunnel, &m_newsrcmysql, query);
+		if(!cres)
+		{
+			ShowMySQLError(m_hwnddlg, m_newsrctunnel, &m_newsrcmysql, query.GetString());
+			m_newsrctunnel->mysql_free_result(res);
+			return wyFalse;
+		}
+		crow = m_newsrctunnel->mysql_fetch_row(cres);
+		/* MariaDB 11.8 names the columns "Table" and "Create Table" (checked 09/11/2026), not "Create Sequence": the
+		   statement is the second column whatever its heading */
+		index = GetFieldIndex(m_newsrctunnel, cres, "Create Sequence");
+		if(index == -1)
+			index = GetFieldIndex(m_newsrctunnel, cres, "Create Table");
+		if(index == -1 && m_newsrctunnel->mysql_num_fields(cres) >= 2)
+			index = 1;
+		if(!crow || index == -1)
+		{
+			ShowMySQLError(m_hwnddlg, m_newsrctunnel, &m_newsrcmysql, query.GetString());
+			m_newsrctunnel->mysql_free_result(cres);
+			m_newsrctunnel->mysql_free_result(res);
+			return wyFalse;
+		}
+		def.SetAs(crow[index], ismysql41);
+		m_newsrctunnel->mysql_free_result(cres);
+
+		cres = SjaExecuteAndGetResult(m_newtargettunnel, &m_newtargetmysql, def);
+		if(!cres && (m_newtargetmysql)->affected_rows == -1)
+		{
+			ShowMySQLError(m_hwnddlg, m_newtargettunnel, &m_newtargetmysql, def.GetString());
+			m_newsrctunnel->mysql_free_result(res);
+			return wyFalse;
+		}
+		if(cres)
+			m_newtargettunnel->mysql_free_result(cres);
+
+		count++;
+		if(m_isobjecttoexport == wyFalse)
+			m_isobjecttoexport = wyTrue;
+	}
+	m_newsrctunnel->mysql_free_result(res);
+
+	if(count > 0)
+		m_gui_routine((void*)m_gui_lparam, "sequence(s)", count, wyFalse, OBJECTSCOPIED);
+
+	return wyTrue;
+}
+
+wyBool
 CopyDatabase::ExportTrigger(const wyChar *db, const wyChar *triggername)
 {
 	MYSQL_RES	*res = NULL, *tgtres = NULL,*myres1=NULL;

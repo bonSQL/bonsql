@@ -2847,7 +2847,7 @@ CCustGrid::DrawColumnIcons(HDC hdcmem, wyInt32 *ncurcol, RECT *recttemp)
 		VERIFY(icon = (HICON)LoadImage(pGlobals->m_hinstance, MAKEINTRESOURCE(iconid == GV_ASCENDING ? IDI_SORTASC : IDI_SORTDSC),
 									   IMAGE_ICON, 16, 16, LR_SHARED));
 
-		// bonSQL (Andre, 13/10/2026): the heading stays where it is; the visible part of the icon is centred in
+		// bonSQL: the heading stays where it is; the visible part of the icon is centred in
 		// the space between the column's left edge (3 px left of recttemp) and the heading (SORTICONWIDTH right
 		// of it), across and down
 		RECT    ink = NgsaIconInk(icon);

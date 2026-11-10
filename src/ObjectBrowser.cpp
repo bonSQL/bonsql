@@ -22,6 +22,7 @@
 #include "MDIWindow.h"
 #include "Global.h"
 #include "ObjectBrowser.h"
+#include "ngsa/NgsaTrace.h"   // NGSA: paste statement trace
 #include "FrameWindowHelper.h"
 #include "MySQLVersionHelper.h"
 #include "ExportMultiFormat.h"
@@ -1262,6 +1263,7 @@ CQueryObject::CreateImageList()
 void
 CQueryObject::RefreshObjectBrowser(Tunnel * tunnel, PMYSQL mysql,MDIWindow* wnd)
 {
+	if(wnd && wnd->m_acinterface) wnd->m_acinterface->HandlerInvalidate();	// bonSQL: autocomplete forgets its catalog
 	wyBool              ret;
 	wyString            server, oldserver;
 	TVITEM				tvi;
@@ -2570,14 +2572,18 @@ CQueryObject::CreateInsertStmt()
 
 	// if the user does not have permission then we return wyFalse;
 	if(!ret)
+	{
+		NgsaTrace("Paste INSERT: TreeView_Expand of the table node returned 0, nothing pasted");
+		SendMessage(m_hwnd, WM_SETREDRAW,  TRUE, NULL);
 		return wyFalse;
-	 
+	}
+
 	hitem	=	TreeView_GetChild(m_hwnd, hitem);
-	
+
 	 //Read the .ini file
     isbacktick = AppendBackQuotes();
 
-    query.Sprintf("\r\ninsert into %s%s%s.%s%s%s \r\n\t(", IsBackTick(isbacktick), strdbname.GetString(), IsBackTick(isbacktick), 
+    query.Sprintf("\r\ninsert into %s%s%s.%s%s%s \r\n\t(", IsBackTick(isbacktick), strdbname.GetString(), IsBackTick(isbacktick),
                     IsBackTick(isbacktick), strtable.GetString(), IsBackTick(isbacktick));
 
     ncount = 0;
@@ -2585,6 +2591,8 @@ CQueryObject::CreateInsertStmt()
 	fieldres = ExecuteAndGetResult(wnd,wnd->m_tunnel, &wnd->m_mysql, execquery);
 	if(fieldres == NULL)
 	{
+		NgsaTrace("Paste INSERT: no result for [%s]: error %u (%s)", execquery.GetString(), wnd->m_tunnel->mysql_errno(wnd->m_mysql), wnd->m_tunnel->mysql_error(wnd->m_mysql));
+		SendMessage(m_hwnd, WM_SETREDRAW,  TRUE, NULL);
 		return wyFalse;
 	}
 
@@ -2637,9 +2645,11 @@ CQueryObject::CreateInsertStmt()
 
 	if(wnd->GetActiveTabEditor() == NULL)
         {
-           SendMessage(m_hwnd, WM_SETREDRAW,  TRUE, NULL);        
+           NgsaTrace("Paste INSERT: no active query editor tab, nothing pasted");
+           SendMessage(m_hwnd, WM_SETREDRAW,  TRUE, NULL);
            return wyFalse;
         }
+	NgsaTrace("Paste INSERT: %u chars for %s.%s", compquery.GetLength(), strdbname.GetString(), strtable.GetString());
 
 	peditorbase = wnd->GetActiveTabEditor()->m_peditorbase;
 	/* add it to the current editor */
@@ -2762,7 +2772,9 @@ CQueryObject::CreateUpdateStmt()
 	wyString    temp;
 	for(hitem = TreeView_GetChild(m_hwnd, hitem); hitem != NULL; hitem = TreeView_GetNextSibling(m_hwnd, hitem))
 		{
-			TreeView_GetItem(m_hwnd, &tvi);
+			/* NGSA: a TreeView_GetItem(m_hwnd, &tvi) stood here with tvi never filled in
+			   (hItem garbage): comctl32 took an access violation per column, swallowed by its own handler (crashcatch
+			   saw 23 first-chance exceptions in one paste). Its result was never used. */
 
             GetNodeText(m_hwnd, hitem, colname, SIZE_512);
 
@@ -2938,7 +2950,9 @@ CQueryObject::CreateDeleteStmt()
 	{
 		for(hitem = TreeView_GetChild(m_hwnd, hitem); hitem != NULL; hitem = TreeView_GetNextSibling(m_hwnd, hitem))
 		{
-			TreeView_GetItem(m_hwnd, &tvi);
+			/* NGSA: a TreeView_GetItem(m_hwnd, &tvi) stood here with tvi never filled in
+			   (hItem garbage): comctl32 took an access violation per column, swallowed by its own handler (crashcatch
+			   saw 23 first-chance exceptions in one paste). Its result was never used. */
 
             GetNodeText(m_hwnd, hitem, colname, SIZE_512);
 			
@@ -5506,7 +5520,7 @@ CQueryObject::ProcessF4()
         //}
 		//break;
 		// bonSQL: F4 on a table's Columns or Indexes folder opens that table's designer on that tab; it opened a
-		// new-table designer, although the Indexes folder's menu offers Create Index with F4 (HELP-FINDINGS B13)
+		// new-table designer, although the Indexes folder's menu offers Create Index with F4
 		{
 			wyWChar     item[SIZE_512] = {0};
 			wyString    itemstr;
@@ -6055,10 +6069,20 @@ CQueryObject::TruncateDatabase(HWND hwnd, Tunnel * tunnel, PMYSQL mysql)
 		myrowstr.SetAs(myrow[0], ismysql41);
 		query.Sprintf("truncate table `%s`.`%s`", m_seldatabase.GetString(), myrowstr.GetString());
         //res = ExecuteAndGetResult(wnd, tunnel, mysql, query);
-		
+
 		//Executes the TRUNCATE TABLE query
-		retval = HandleExecuteQuery(tunnel, mysql, query, istunnel);
-		
+		retval = HandleExecuteQuery(tunnel, mysql, query, istunnel, wyTrue);
+
+		if(retval == wyFalse && tunnel->mysql_errno(*mysql) == 4137)
+		{
+			/* NGSA: MariaDB refuses TRUNCATE on a system-versioned table (ER_VERS_NOT_SUPPORTED,
+			   4137); its documented way is DELETE, which keeps the history rows, so the table is emptied that way */
+			query.Sprintf("delete from `%s`.`%s`", m_seldatabase.GetString(), myrowstr.GetString());
+			retval = HandleExecuteQuery(tunnel, mysql, query, istunnel);
+		}
+		else if(retval == wyFalse)
+			ShowMySQLError(hwnd, tunnel, mysql, query.GetString());
+
 		if(retval == wyFalse)
 		{
 			flag = wyFalse;
@@ -6198,16 +6222,16 @@ This wapper added when disabled FK-CHECK during http.
 With http each query send as Batch, includes Set SQL-MODE, and SET FK-CHECK = 0
 */
 wyBool		
-CQueryObject::HandleExecuteQuery(Tunnel *tunnel, PMYSQL mysql, wyString &query, wyBool istunnel)
+CQueryObject::HandleExecuteQuery(Tunnel *tunnel, PMYSQL mysql, wyString &query, wyBool istunnel, wyBool quiet)
 {
 	MYSQL_RES   *res;
 	wyBool force, batch, isfkchbatch;
 	wyInt32 isintransaction = 1;
 
 	force = batch = isfkchbatch = ((istunnel == wyTrue) ? wyTrue : wyFalse);
-		
+
 	//For http batch = true, force = true, isimporthtttp = true(thia makes SET SQL-MODE and SET FK-CHECK add to each script)
-	res = ExecuteAndGetResult(GetActiveWin(), tunnel, mysql, query, wyTrue, batch, wyTrue, 
+	res = ExecuteAndGetResult(GetActiveWin(), tunnel, mysql, query, wyTrue, batch, wyTrue,
 		                      false, force, wyFalse, 0, isfkchbatch, &isintransaction);
 
 	if(isintransaction == 1)
@@ -6215,7 +6239,8 @@ CQueryObject::HandleExecuteQuery(Tunnel *tunnel, PMYSQL mysql, wyString &query, 
 
 	if(!res && tunnel->mysql_affected_rows(*mysql)== -1)
 	{
-		ShowMySQLError(m_hwnd, tunnel, mysql, query.GetString());
+		if(quiet == wyFalse)	// NGSA: a caller may decide on the error itself
+			ShowMySQLError(m_hwnd, tunnel, mysql, query.GetString());
 		return  wyFalse;
 	}
 	

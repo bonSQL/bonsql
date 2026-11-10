@@ -2428,7 +2428,9 @@ CExportResultSet::SaveDataAsXML(HANDLE hfile)
 	SetCursor(LoadCursor(NULL, IDC_WAIT));
 
 	//Add to buffer then to file
-	buffer.Add("<data>");
+	/* NGSA: the file is UTF-8 (the connection's charset): say so, so a reader (Import XML's
+	   charset detection included) need not guess from the bytes */
+	buffer.Add("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<data xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">");
 
 	m_tunnel->mysql_data_seek(myres,(my_ulonglong)0);
 
@@ -2489,64 +2491,33 @@ CExportResultSet::SaveDataAsXML(HANDLE hfile)
 			if(m_selectedfields[j] == wyFalse)
 				continue;
 			
-			buffer.Add("<");
-			
-			// we output the fields but before we check if there is a space in between.
-			k=0;
-
-			while(myfield[j].name[k])
+			// the tag is the column name with spaces turned into underscores
+			wyString tag;
+			for(k = 0; myfield[j].name[k]; k++)
 			{
-				switch(myfield[j].name[k])
-				{
-				case C_SPACE:
-					buffer.Add("_");
-					break;
-
-				default:
-					buffer.AddSprintf("%c", *(myfield[j].name+k));
-					break;
-				}
-				
-				k++;
+				if(myfield[j].name[k] == C_SPACE)
+					tag.Add("_");
+				else
+					tag.AddSprintf("%c", *(myfield[j].name+k));
 			}
 
-			
-			buffer.Add(">");
-			
 			if(myrow[j] != NULL)
 			{
+				buffer.AddSprintf("<%s>", tag.GetString());
 				myrowstr.SetAs(myrow[j], ismysql41);
 
 				//function to add text to buffer in an xml file handling characters.
 				if(myfield[j].type == MYSQL_TYPE_BIT)	// NGSA (#2152): BIT bytes as a number
 					NgsaBitToDecimal((const unsigned char*)myrow[j], NGSA_BIT_BYTES(myfield[j]), myrowstr);
 				AddXMLToBuffer(&buffer, myrowstr.GetString(), wyFalse);
+				buffer.AddSprintf("</%s>", tag.GetString());
 			}
 			else
-				buffer.Add(STRING_NULL);
-				
-			buffer.Add("</");
-
-			// we output the fields but before we check if there is a space in between.
-			k=0;
-			
-			while(myfield[j].name[k])
 			{
-			switch(myfield[j].name[k])
-				{
-				case C_SPACE:
-					buffer.Add("_");
-					break;
-
-				default:
-					buffer.AddSprintf("%c", *(myfield[j].name+k));
-					break;
-				}
-				
-				k++;
+				/* NGSA: a NULL used to be written as the text "(NULL)", which LOAD XML loaded as a
+				   string (or warned on). xsi:nil="true" is the XML way and what LOAD XML turns back into NULL. */
+				buffer.AddSprintf("<%s xsi:nil=\"true\"></%s>", tag.GetString(), tag.GetString());
 			}
-			
-			buffer.Add(">");
 		}
 
 		buffer.Add("</row>");

@@ -1800,27 +1800,19 @@ END
 
 IDD_PREF3 DIALOGEX 0, 0, 255, 291
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION
-CAPTION "Power Tools"
+CAPTION "Autocomplete"
 FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
-    GROUPBOX        "",IDC_ACGROUP,4,3,247,78
-    CONTROL         "&Enable Autocomplete",IDC_AUTOCOMPLETE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,8,2,82,10
-    CONTROL         "&Show Autocomplete help in SQL editor",IDC_AUTOCOMPLETEHELP,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,12,14,190,8
-    CONTROL         "Always &rebuild tag files on startup",IDC_AUTOCOMPLETEREBUILD,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,12,26,181,8
-    CONTROL         "S&how suggestion as you type in SQL editor",IDC_AUTOCOMPLETESHOWTOOLTIP,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,12,37,197,8
-    GROUPBOX        "Tags Directory ",IDC_TAGDIRGROUP,12,48,231,29
-    EDITTEXT        IDC_AUTOCOMPLETETAGSDIR,17,60,197,13,ES_AUTOHSCROLL
-    PUSHBUTTON      "...",IDC_DIRSEL,218,60,20,13
-    GROUPBOX        "",IDC_PQAGROUP,4,85,247,60
-    CONTROL         "Enable &Query Profiler",IDC_PQA,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,8,84,82,10
-    CONTROL         "Sh&ow Profile",IDC_PQAPROF,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,12,96,136,10
-    CONTROL         "Status &Variables",IDC_PQASTATUS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,12,120,122,10
-    CONTROL         "E&XPLAIN Result",IDC_PQAEXPLAIN,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,12,108,136,10
-    CONTROL         "EXPLAIN EXTENDED &info (if supported)",IDC_PQAEXPLAINEXT,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,12,132,136,10
+    GROUPBOX        "SQL editor ",IDC_ACGROUP,4,3,247,70
+    CONTROL         "&Enable autocomplete",IDC_AUTOCOMPLETE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,9,14,230,10
+    CONTROL         "&Show suggestions as you type (Ctrl+Space opens the list at any time)",IDC_AUTOCOMPLETESHOWTOOLTIP,
+                    "Button",BS_AUTOCHECKBOX | BS_MULTILINE | WS_TABSTOP,18,27,228,18
+    CONTROL         "Show &function and routine help when a ( is typed (Ctrl+Shift+Space at any time)",IDC_AUTOCOMPLETEHELP,
+                    "Button",BS_AUTOCHECKBOX | BS_MULTILINE | WS_TABSTOP,18,47,228,18
+    GROUPBOX        "How names are found ",IDC_TAGDIRGROUP,4,78,247,90
+    LTEXT           "Database, table, column and routine names are read from the server when a list first needs them, one short statement at a time, and kept in memory for this connection.",IDC_AUTOCOMPLETETAGSDIR,9,89,237,26
+    LTEXT           "They are read again after CREATE, ALTER, DROP or RENAME run here, after Refresh in the object browser, and after a few minutes. Nothing is written to disk.",IDC_DIRSEL,9,116,237,26
+    LTEXT           "Keywords and functions come from the editor's own list for the server's engine and version.",IDC_AUTOCOMPLETEREBUILD,9,144,237,18
     PUSHBUTTON      "Restore &All Defaults",IDC_POWERTOOLSRESTOREALL,97,273,75,15
     PUSHBUTTON      "Restore &Tab Defaults",IDC_POWERTOOLSRESTORETAB,176,273,75,15
 END
@@ -2502,6 +2494,9 @@ IDI_REMOVE_FILTER       ICON                    "bitmaps\\bonsql\\IDI_REMOVE_FIL
 IDI_OVERLAYFILTER       ICON                    "bitmaps\\bonsql\\IDI_OVERLAYFILTER.ico"
 
 IDI_CHECKCONSTRAINT     ICON                    "bitmaps\\bonsql\\IDI_CHECKCONSTRAINT.ico"
+IDI_AC_KEYWORD          ICON                    "bitmaps\\bonsql\\IDI_AC_KEYWORD.ico"
+IDI_AC_FUNCTION         ICON                    "bitmaps\\bonsql\\IDI_AC_FUNCTION.ico"
+IDI_AC_ALIAS            ICON                    "bitmaps\\bonsql\\IDI_AC_ALIAS.ico"
 
 
 /////////////////////////////////////////////////////////////////////////////

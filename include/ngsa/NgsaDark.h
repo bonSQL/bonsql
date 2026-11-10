@@ -47,6 +47,10 @@ namespace NgsaDark
 
     /* NM_CUSTOMDRAW for a tree view: the selected row in the selection colour, white text. */
     LRESULT     TreeCustomDraw(LPNMTVCUSTOMDRAW pcd);
+    /// NGSA: a disabled list view's rows in the dark colours (comctl32 paints them in COLOR_3DFACE)
+    LRESULT     ListCustomDraw(LPNMLVCUSTOMDRAW pcd);
+    /// NGSA: a disabled push button drawn flat and dim, so it reads as disabled
+    LRESULT     ButtonCustomDraw(LPNMCUSTOMDRAW pcd);
 
     /* A WH_CBT hook on the UI thread. The main window, every dialog built from this module's own
        templates, message boxes (user32), property-sheet frames (comctl32) and the dialogs flagged with

@@ -29,6 +29,8 @@ Ctrl+Shift+L		Make Selection Lowercase
 Ctrl+Shift+C		Comment Selection In SQL Window
 Ctrl+Shift+R		Remove Comment From Selection
 Ctrl+Shift+T		Insert Templates
+Ctrl+Space		Autocomplete: open the list of names and keywords
+Ctrl+Shift+Space		Autocomplete: show the function or routine arguments
 
 Query Execution
 F8			Execute Current Query And Edit Result

@@ -606,7 +606,13 @@ class UserManager
         */
         wyBool                  SavePassword();
 
-		
+        /// NGSA: the message for a plugin change typed without the password; the save is refused
+        void                    RefusePluginOnlyChange();
+
+        /// NGSA: password edits and plugin combo disabled while the Role box is ticked
+        void                    ApplyRoleControls();
+
+
         ///Helper function to execute FLUSH PRVILEGES
         /**
         @returns wyTrue on success else wyFalse

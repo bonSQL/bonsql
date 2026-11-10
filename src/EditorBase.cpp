@@ -31,6 +31,7 @@
 #include "commonhelper.h"
 #include "TabEditorSplitter.h"
 #include "ngsa/NgsaScintilla.h"   // NGSA (M13): Scintilla 5 lexer selection
+#include "ngsa/NgsaAutoComplete.h"   // bonSQL: list icons and colours
 
 extern	PGLOBALS		pGlobals;
 
@@ -758,14 +759,7 @@ EditorBase::SetScintillaValues(HWND hwndedit)
     NgsaScintilla::SetLexer(m_hwnd, "MySQL");	// NGSA (M13)
 	SendMessage(m_hwnd, SCI_USEPOPUP, 0, 0);
     SendMessage(hwndedit, SCI_CLEARREGISTEREDIMAGES, 0, 0);
-	SendMessage(hwndedit, SCI_REGISTERIMAGE, 8, (LPARAM)alias_xpm);
-	SendMessage(hwndedit, SCI_REGISTERIMAGE, 7, (LPARAM)func_xpm);
-	SendMessage(hwndedit, SCI_REGISTERIMAGE, 6, (LPARAM)sp_xpm);
-	SendMessage(hwndedit, SCI_REGISTERIMAGE, 5, (LPARAM)field_xpm);
-	SendMessage(hwndedit, SCI_REGISTERIMAGE, 4, (LPARAM)table_xpm);
-	SendMessage(hwndedit, SCI_REGISTERIMAGE, 3, (LPARAM)database_xpm);
-	SendMessage(hwndedit, SCI_REGISTERIMAGE, 2, (LPARAM)function_xpm);
-	SendMessage(hwndedit, SCI_REGISTERIMAGE, 1, (LPARAM)keyword_xpm);
+	NgsaAutoComplete::RegisterImages(hwndedit);	// bonSQL: the list icons from the icon set (the *_xpm arrays are history)
 
     if(IsInsertSpacesForTab() == wyTrue)
         SendMessage(hwndedit,SCI_SETUSETABS, FALSE, 0);

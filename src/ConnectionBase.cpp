@@ -203,7 +203,7 @@ ConnectionBase::OnAboutInitDialog(HWND hwnd)
 
 	SetWindowLongPtr(hwndstatic, GWLP_USERDATA,(LONG_PTR)origWndProc);
 
-	// bonSQL: version and build and the copyright holder (no agent line: Andre, 13/10/2026); the SQLyog origin is on the line below
+	// bonSQL: version and build and the copyright holder (no agent line); the SQLyog origin is on the line below
 	// (IDC_REGINFO, ConnectionCommunity::AboutRegInfo)
 	msg.Sprintf("%s %s, build %s", appname.GetString(), APPVERSION, NGSA_COMMIT);
 	{

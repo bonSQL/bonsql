@@ -1573,7 +1573,47 @@ ObjectInfo::ShowAllSequences(MDIWindow *pcquerywnd, const wyChar *db, OBJECT obj
 		VERIFY(SendMessage(m_hwnd, SCI_APPENDTEXT, temptitle.GetLength(),(LPARAM)temptitle.GetString()));
 	}
 
-	SendMessage(m_hwnd, SCI_APPENDTEXT, 2, (LPARAM)"\r\n");	
+	SendMessage(m_hwnd, SCI_APPENDTEXT, 2, (LPARAM)"\r\n");
+	if(pcquerywnd->m_ngsacaps.engine == NGSA_ENGINE_MARIADB && pcquerywnd->m_ngsacaps.version < 110500)
+	{
+		/* NGSA: information_schema.SEQUENCES exists from MariaDB 11.5 (mariadb.com/kb, the
+		   table's page); 10.3 to 11.4 answered error 1109 "Unknown table 'SEQUENCES'" in a box every time the
+		   folder was selected or a database refreshed. There the sequences are listed with SHOW FULL TABLES and
+		   each one's own row gives the values (a sequence is a one-row table). */
+		wyString    list, seq, lit;
+		MYSQL_RES   *seqres;
+		MYSQL_ROW   seqrow;
+
+		list.Sprintf("show full tables from `%s` where Table_type = 'SEQUENCE'", db);
+		seqres = ExecuteAndGetResult(pcquerywnd, pcquerywnd->m_tunnel, &pcquerywnd->m_mysql, list);
+		query.Clear();
+		if(seqres)
+		{
+			while((seqrow = pcquerywnd->m_tunnel->mysql_fetch_row(seqres)) != NULL)
+			{
+				seq.SetAs(seqrow[0], pcquerywnd->m_ismysql41);
+				lit.Clear();
+				for(const wyChar *p = seq.GetString(); *p; p++)   // the name as a string literal
+				{
+					if(*p == '\'' || *p == '\\')
+						lit.AddSprintf("%c%c", *p == '\'' ? '\'' : '\\', *p);
+					else
+						lit.AddSprintf("%c", *p);
+				}
+				if(query.GetLength())
+					query.Add(" union all ");
+				query.AddSprintf("select '%s' as `Sequence`, 'bigint(21)' as `Type`, `start_value` as `Start`, `minimum_value` as `Minimum`, "
+								 "`maximum_value` as `Maximum`, `increment` as `Increment`, if(`cycle_option`, 'YES', 'NO') as `Cycle` from `%s`.`%s`",
+								 lit.GetString(), db, seq.GetString());
+			}
+			pcquerywnd->m_tunnel->mysql_free_result(seqres);
+		}
+		if(query.GetLength() == 0)
+			query.SetAs("select null as `Sequence`, null as `Type`, null as `Start`, null as `Minimum`, null as `Maximum`, null as `Increment`, null as `Cycle` limit 0");
+		else
+			query.Add(" order by `Sequence`");
+	}
+	else
 	query.Sprintf("select `SEQUENCE_NAME` as `Sequence`, `DATA_TYPE` as `Type`, `START_VALUE` as `Start`, `MINIMUM_VALUE` as `Minimum`, "
 				  "`MAXIMUM_VALUE` as `Maximum`, `INCREMENT` as `Increment`, `CYCLE_OPTION` as `Cycle` "
 				  "from `INFORMATION_SCHEMA`.`SEQUENCES` where `SEQUENCE_SCHEMA` = '%s' order by `SEQUENCE_NAME`", db);

@@ -290,6 +290,9 @@ public:
 	*/
 	wyInt32 PrepareQueryXML(wyString &query);
 
+	/// NGSA: the charset combo's current entry into m_importfilecharset, read when Import is pressed
+	void	ReadCharsetCombo();
+
 	/// Escape char details
 	ESCAPECHAR	m_esch;
 

@@ -21,6 +21,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string>
 
 #include "ClientMySQLWrapper.h"
 #include "MySQLVersionHelper.h"
@@ -962,12 +963,31 @@ GetDefaultAuthenticationPlugin(Tunnel * tunnel, PMYSQL mysql, wyInt32 serververn
 	}
 
 	if (!ismariadb && serververno > 50700) {
+		/* MySQL 5.7 to 8.3: default_authentication_plugin. NGSA: MySQL 8.4 removed the variable
+		   (and ships mysql_native_password disabled, 9.x has no such plugin at all), so the old fallback to
+		   mysql_native_password made every Add New User fail there. 8.0.27+ has authentication_policy instead:
+		   its first element is the default plugin, '*' meaning the server's own default, caching_sha2_password. */
 		var.SetAs("default_authentication_plugin");
 		GetSystemEnvironment(tunnel, mysql, &var, &res);
-		if (res.Compare("") != 0)
-			GetSystemEnvironment(tunnel, mysql, &var, &res);
-		else
-			res.SetAs("mysql_native_password");
+		if (res.GetLength() == 0 && serververno >= 80027) {
+			wyString policy("");
+			var.SetAs("authentication_policy");
+			GetSystemEnvironment(tunnel, mysql, &var, &policy);
+			if (policy.GetLength()) {
+				std::string first(policy.GetString());
+				size_t comma = first.find(',');
+				if (comma != std::string::npos)
+					first.erase(comma);
+				while (!first.empty() && (first[0] == ' ' || first[0] == '\t'))
+					first.erase(0, 1);
+				while (!first.empty() && (first[first.size() - 1] == ' ' || first[first.size() - 1] == '\t'))
+					first.erase(first.size() - 1);
+				if (!first.empty() && first != "*")
+					res.SetAs(first.c_str());
+			}
+		}
+		if (res.GetLength() == 0)
+			res.SetAs(serververno >= 80000 ? "caching_sha2_password" : "mysql_native_password");
 	}
 
 	plugin->SetAs(res);

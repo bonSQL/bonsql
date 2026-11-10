@@ -1702,6 +1702,9 @@
 #define IDC_PLUGIN_PROMPT				44144
 #define IDC_AUTHPLUGIN					44145
 #define IDR_THEME_DARK					44146
+#define IDI_AC_KEYWORD					44147	// bonSQL: autocomplete list glyphs (keyword, built-in function, alias)
+#define IDI_AC_FUNCTION					44148
+#define IDI_AC_ALIAS					44149
 
 
 // Next default values for new objects

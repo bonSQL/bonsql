@@ -470,7 +470,7 @@ public:
 	@param istunnel: IN sets wyTRue if use http tunnel else sets wyFalse
 	@return wyTrue on success else return wyFalse
 	*/
-	wyBool		HandleExecuteQuery(Tunnel *tunnel, PMYSQL mysql, wyString &query, wyBool istunnel);
+	wyBool		HandleExecuteQuery(Tunnel *tunnel, PMYSQL mysql, wyString &query, wyBool istunnel, wyBool quiet = wyFalse);   // NGSA: quiet = the caller reports the error
 
     /// Function to drop all views if the mysql version is greater than/equal to 5.0.10 */
     /**

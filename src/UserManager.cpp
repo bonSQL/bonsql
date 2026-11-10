@@ -744,6 +744,23 @@ UserManager::OnResize()
     }
 }
 
+// NGSA: a plugin change without a password used to go out as
+// "ALTER USER ... IDENTIFIED WITH <plugin>" (MySQL) / "IDENTIFIED VIA <plugin>" (MariaDB 10.4+), which both servers
+// take as an EMPTY credential: the account's password is wiped (MySQL also expires it) and the next login fails. Done
+// on the connected account it locks the user out of the server. A stored hash cannot be converted between plugins,
+// so the password has to be typed again with the new plugin; the save is refused until it is.
+void
+UserManager::RefusePluginOnlyChange()
+{
+    wyString msg;
+    msg.Sprintf(_("The authentication plugin of '%s'@'%s' cannot be changed on its own: the server would store an empty "
+                  "password with the new plugin and the account could no longer log in.\n\nType the password (twice) "
+                  "together with the new plugin and save again."),
+                m_username.GetString(), m_host.GetString());
+    MessageBox(m_hwnd, msg.GetAsWideChar(), pGlobals->m_appname.GetAsWideChar(), MB_OK | MB_ICONWARNING);
+    SetFocus(GetDlgItem(m_hwnd, IDC_PASSWORD));
+}
+
 //function executes the query to save the password if necessary and Authentication plugin
 // If password changes or plugin changes, and Server is any of:
 // Mysql 5.7 or higher, or Mariadb 10.4 - Saves plugin and/or Password (if it has changed)
@@ -794,17 +811,10 @@ UserManager::SavePassword()
 					}
 					m_authpluginname.SetAs(pluginname.GetString());
 				}
-				else  // just plugin updated.
+				else  // just plugin updated: refused, see RefusePluginOnlyChange
 				{
-					query.Sprintf("ALTER USER '%s'@'%s' IDENTIFIED VIA %s ",
-						EscapeMySQLString(m_username.GetString(), tempuser).GetString(),
-						EscapeMySQLString(m_host.GetString(), temphost).GetString(),
-						EscapeMySQLString(pluginname.GetString(), temppluginname).GetString());
-					if (ExecuteUMQuery(query) == wyFalse)
-					{
-						return wyFalse;
-					}
-					m_authpluginname.SetAs(pluginname.GetString());
+					RefusePluginOnlyChange();
+					return wyFalse;
 				}
 			}
 			else if (!m_ismariadb) // for sanity sake... it is mysql > 5.7 
@@ -840,17 +850,9 @@ UserManager::SavePassword()
 					}
 					m_authpluginname.SetAs(pluginname.GetString());
 				}
-				else { // just plugin updated
-					query.Sprintf("ALTER USER '%s'@'%s' IDENTIFIED WITH %s",
-						EscapeMySQLString(m_username.GetString(), tempuser).GetString(),
-						EscapeMySQLString(m_host.GetString(), temphost).GetString(),
-						EscapeMySQLString(pluginname.GetString(), temppluginname).GetString());
-
-					if (ExecuteUMQuery(query) == wyFalse)
-					{
-						return wyFalse;
-					}
-					m_authpluginname.SetAs(pluginname.GetString());
+				else { // just plugin updated: refused, see RefusePluginOnlyChange
+					RefusePluginOnlyChange();
+					return wyFalse;
 				}
 			}
 			else {
@@ -1084,7 +1086,15 @@ UserManager::OnWMCommand(WPARAM wparam, LPARAM lparam)
 		case IDC_AUTHPLUGIN:
 			if (HIWORD(wparam) == CBN_SELCHANGE && m_initcompleted)
 			{
-				SetDirtyFlag(); 
+				SetDirtyFlag();
+			}
+			break;
+		case IDC_UM_ISROLE:     // NGSA: a role has no password or plugin: the edits follow the box
+			if (HIWORD(wparam) == BN_CLICKED)
+			{
+				ApplyRoleControls();
+				if (m_initcompleted)
+					SetDirtyFlag();
 			}
 			break;
         case IDC_CANCEL_CHANGES:
@@ -1524,13 +1534,9 @@ UserManager::PopulateAuthPluginCombo()
 		OnUMError(query.GetString(), wyTrue);
 		return -1;
 	}
-	int defaultidx = 0;
 	while ((row = m_hmdi->m_tunnel->mysql_fetch_row(myres)))
 	{
 		temp.SetAs(row[0], m_hmdi->m_ismysql41);
-		if (temp.Compare(m_defaultAuthPlugin.GetString())!=0 ){
-			defaultidx++;
-		}
 
 		length = temp.GetLength();
 		index = SendMessage(hwndPlugincombo, CB_ADDSTRING, 0, (LPARAM)temp.GetAsWideChar());
@@ -1540,8 +1546,11 @@ UserManager::PopulateAuthPluginCombo()
 
 	m_hmdi->m_tunnel->mysql_free_result(myres);
 
-	//set the initial selection index in the combo box
-	m_selindex = defaultidx;
+	/* NGSA: the initial selection is the server's default plugin. The old count of
+	   non-matching rows selected the LAST entry whenever the default was not the last one (and a plugin
+	   that was not even loaded on MySQL 8.4), so Add New User sent IDENTIFIED WITH mysql_native_password. */
+	index = SendMessage(hwndPlugincombo, CB_FINDSTRINGEXACT, (WPARAM)-1, (LPARAM)m_defaultAuthPlugin.GetAsWideChar());
+	m_selindex = (index == CB_ERR) ? 0 : index;
 	SendMessage(hwndPlugincombo, CB_SETCURSEL, (WPARAM)m_selindex, 0);
 	SetCursor(LoadCursor(NULL, IDC_ARROW));
 	return retflag;
@@ -3201,6 +3210,22 @@ UserManager::DropUser()
     return wyTrue;
 }
 
+// NGSA: with the Role box ticked (a new role, or an existing role account) the password edits and
+// the plugin combo are disabled: a role has neither. Unticked, they follow the usual server-version rule.
+void
+UserManager::ApplyRoleControls()
+{
+    wyBool isrole = (IsDlgButtonChecked(m_hwnd, IDC_UM_ISROLE) == BST_CHECKED) ? wyTrue : wyFalse;
+    wyBool pluginvis = wyFalse;
+
+    if (m_serververno > 50700 && ((m_ismariadb && m_serververno > 100400) || m_ismariadb == wyFalse))
+        pluginvis = wyTrue;
+
+    EnableWindow(GetDlgItem(m_hwnd, IDC_PASSWORD), isrole ? FALSE : TRUE);
+    EnableWindow(GetDlgItem(m_hwnd, IDC_PASSWORD_CONFIRM), isrole ? FALSE : TRUE);
+    EnableWindow(GetDlgItem(m_hwnd, IDC_AUTHPLUGIN), (isrole || pluginvis == wyFalse) ? FALSE : TRUE);
+}
+
 //function sets the texts of various controls
 void
 UserManager::FillUserInfo()
@@ -3225,6 +3250,7 @@ UserManager::FillUserInfo()
 	
     SetDlgItemText(m_hwnd, IDC_PASSWORD, U_PASSWORD);
     SetDlgItemText(m_hwnd, IDC_PASSWORD_CONFIRM, U_REPASSWORD);
+    ApplyRoleControls();
 
     for(i = 0; i < U_MAXLIMITATIONS; ++i)
     {

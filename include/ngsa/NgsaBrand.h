@@ -24,7 +24,7 @@
 #define BRAND_INI_SECTION_A     "bonSQL"
 
 /* Copyright belongs to André Walsh personally; S.A.R.L. Walsh-Howard Consulting manages and promotes bonSQL
-   and is authorised to act as his agent (Andre, 13/10/2026). NOTICE.md says so; the About box does not. */
+   and is authorised to act as his agent. NOTICE.md says so; the About box does not. */
 #define BRAND_COPYRIGHT_W       L"Copyright \u00A9 2026 Andr\u00E9 Walsh"
 #define BRAND_ORIGIN_W          L"Based on SQLyog Community 13.3.1, \u00A9 2001-2025 Webyog Inc., GNU GPL."
 #define BRAND_DISCLAIMER_W      L"SQLyog and Webyog are trademarks of their owners. bonSQL is not affiliated with or endorsed by Webyog."

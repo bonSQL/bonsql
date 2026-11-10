@@ -683,6 +683,9 @@ private:
     */
 	wyBool      ExportEvent(const wyChar *db, const wyChar *event);
 
+	/// NGSA: MariaDB sequences of the source database, created in the target (before the tables)
+	wyBool      ExportSequences();
+
     /// Checks for the target db whether it is on 5x server or not
     /** if it is in 5x server we will enable all the options otherwise we will disable some
     @return void

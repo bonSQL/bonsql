@@ -1166,7 +1166,7 @@ TableTabInterface::OnWMSysKeyDown(wyUInt32 currenttab, WPARAM wParam, LPARAM lPa
         return 0;
 
     // bonSQL: the tabs are 1 Columns, 2 Indexes, 3 Foreign Keys, 4 Check Constraint, 5 Advanced, 6 SQL Preview;
-    // the keys below used the order from before the Check Constraint tab existed (HELP-FINDINGS B10)
+    // the keys below used the order from before the Check Constraint tab existed
     case VK_KEY_4:
         if(m_ptabintmgmt->GetActiveTabImage() != IDI_CHECKCONSTRAINT)
             m_ptabintmgmt->SelectTab(3);

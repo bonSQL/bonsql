@@ -22,6 +22,7 @@
 
 #include "FrameWindowHelper.h"
 #include "MySQLVersionHelper.h"
+#include "ngsa/NgsaTrace.h"   // NGSA: charset trace
 #include "ExportMultiFormat.h"
 #include "ExportMultiFormat.h"
 #include "OtherDialogs.h"
@@ -319,9 +320,12 @@ ExportMultiFormat::OnWmCommand(HWND hwnd, WPARAM wparam, LPARAM lparam)
 
 	case IDC_CHARSETCOMBO:
 		{
-			if((HIWORD(wparam))== CBN_SELENDOK)
+			/* NGSA: CBN_SELCHANGE too: a selection made with the keyboard (or posted to the
+			   combo) changes the selection without CBN_SELENDOK, and the chosen charset was never read */
+			if((HIWORD(wparam))== CBN_SELENDOK || (HIWORD(wparam))== CBN_SELCHANGE)
 			{
 				FetchSelectedCharset(hwnd, &tempcharset, wyFalse);
+				NgsaTrace("Import: charset combo notification %u -> [%s]", (unsigned)HIWORD(wparam), tempcharset.GetString());
 				if(tempcharset.GetLength())
 					m_importfilecharset.SetAs(tempcharset);              
 			}	
@@ -427,9 +431,12 @@ ExportMultiFormat::OnWmCommandXML(HWND hwnd, WPARAM wparam, LPARAM lparam)
 
 	case IDC_CHARSETCOMBO:
 		{
-			if((HIWORD(wparam))== CBN_SELENDOK)
+			/* NGSA: CBN_SELCHANGE too: a selection made with the keyboard (or posted to the
+			   combo) changes the selection without CBN_SELENDOK, and the chosen charset was never read */
+			if((HIWORD(wparam))== CBN_SELENDOK || (HIWORD(wparam))== CBN_SELCHANGE)
 			{
 				FetchSelectedCharset(hwnd, &tempcharset, wyFalse);
+				NgsaTrace("Import: charset combo notification %u -> [%s]", (unsigned)HIWORD(wparam), tempcharset.GetString());
 				if(tempcharset.GetLength())
 					m_importfilecharset.SetAs(tempcharset);              
 			}	
@@ -546,10 +553,39 @@ ExportMultiFormat::SetComboText()
 
 		//Detect the file format & set the Charset combo box
 		fileformat = DetectFileFormat(data, dwbytestoread, &headersize);
-		
-		if(fileformat == NCP_UTF16)
+
+		/* NGSA: an XML declaration names its encoding; bonSQL's own XML export writes UTF-8 and
+		   says so since this fix, and a file that says so is not guessed at from its bytes */
+		wyString declared;
+		if(fileformat != NCP_UTF16 && strncmp(data + headersize, "<?xml", 5) == 0)
+		{
+			const wyChar *end = strstr(data + headersize, "?>"), *enc = strstr(data + headersize, "encoding=");
+			if(enc && end && enc < end && (enc[9] == '"' || enc[9] == '\''))
+			{
+				const wyChar *close = strchr(enc + 10, enc[9]);
+				if(close && close < end)
+				{
+					wyString name;
+					name.SetAs(enc + 10);
+					name.Strip(name.GetLength() - (wyUInt32)(close - (enc + 10)));
+					if(name.CompareI("UTF-8") == 0 || name.CompareI("UTF8") == 0)
+						declared.SetAs("utf8");
+					else if(name.CompareI("ISO-8859-1") == 0 || name.CompareI("latin1") == 0)
+						declared.SetAs("latin1");
+					else if(name.CompareI("UTF-16") == 0)
+						declared.SetAs("ucs2");
+					else
+						declared.SetAs(name);
+				}
+			}
+		}
+
+		if(declared.GetLength())
+			datastr.SetAs(declared);
+
+		else if(fileformat == NCP_UTF16)
 			datastr.SetAs("ucs2");
-		
+
 		else if(fileformat != NCP_UTF8)
 		{
 			datastr.SetAs(data + headersize);
@@ -572,8 +608,24 @@ ExportMultiFormat::SetComboText()
 		data = NULL;
 	}
 	m_importfilecharset.SetAs(datastr.GetString());
-	VERIFY(hwndcombo = GetDlgItem(m_hwnd, IDC_CHARSETCOMBO));	
+	VERIFY(hwndcombo = GetDlgItem(m_hwnd, IDC_CHARSETCOMBO));
 	ret = SendMessage(hwndcombo, CB_FINDSTRINGEXACT, (WPARAM)-1, (LPARAM)datastr.GetAsWideChar());
+	if(ret == CB_ERR && datastr.CompareI("utf8") == 0)
+	{
+		/* NGSA: MariaDB 10.6+ and MySQL 8 list utf8mb4 / utf8mb3, not "utf8"; the detected UTF-8
+		   file takes the server's own name for it, so the combo shows what the statement will say */
+		ret = SendMessage(hwndcombo, CB_FINDSTRINGEXACT, (WPARAM)-1, (LPARAM)L"utf8mb4");
+		if(ret == CB_ERR)
+			ret = SendMessage(hwndcombo, CB_FINDSTRINGEXACT, (WPARAM)-1, (LPARAM)L"utf8mb3");
+		if(ret != CB_ERR)
+		{
+			wyWChar name[64] = {0};
+			if(SendMessage(hwndcombo, CB_GETLBTEXTLEN, ret, 0) < 64)
+				SendMessage(hwndcombo, CB_GETLBTEXT, ret, (LPARAM)name);
+			if(name[0])
+				m_importfilecharset.SetAs(name);
+		}
+	}
 	if(ret == CB_ERR)
 		SendMessage(hwndcombo, CB_SETCURSEL,(WPARAM)0, 0);
 	else
@@ -779,8 +831,25 @@ cleanup:
 	return wyFalse;
 }
 
+// NGSA: the charset combo's current entry (when the combo exists and has a selection), into
+// m_importfilecharset; the combo is the user's choice, whatever notifications were or were not seen
+void
+ExportMultiFormat::ReadCharsetCombo()
+{
+	wyString	cur;
+	HWND		hwndcombo = GetDlgItem(m_hwnd, IDC_CHARSETCOMBO);
+
+	if(!hwndcombo || !IsWindowEnabled(hwndcombo) || SendMessage(hwndcombo, CB_GETCURSEL, 0, 0) == CB_ERR)
+		return;
+	FetchSelectedCharset(m_hwnd, &cur, wyFalse);
+	/* "[default]" left selected means "as detected from the file": the detection's choice stands (it is also what
+	   the combo shows when the detected name has no entry of its own on this server) */
+	if(cur.GetLength() && cur.CompareI(STR_DEFAULT) != 0)
+		m_importfilecharset.SetAs(cur);
+}
+
 ///Create queryy for Load inifile , use charset if version >= 5.0.38
-wyInt32 
+wyInt32
 ExportMultiFormat::PrepareQuery(wyString &query)
 {
     wyWChar	    fieldname[SIZE_512] = {0}, ignore[SIZE_64+1] = {0};
@@ -818,6 +887,10 @@ ExportMultiFormat::PrepareQuery(wyString &query)
 	query.AddSprintf("into table `%s`.`%s` ", m_db.GetString(), m_table.GetString());
 
 	///Add 'Charcter set' if importing to mysql version >= 5.0.38
+	/* NGSA: the charset is what the combo shows when Import is pressed, read here rather than
+	   remembered from a notification (a selection made without CBN_SELENDOK was never seen) */
+	ReadCharsetCombo();
+	NgsaTrace("Import CSV: charset [%s] (5.0.38+: %d)", m_importfilecharset.GetString(), (int)ismysql538);
 	if(ismysql538 == wyTrue && m_importfilecharset.GetLength() != 0 && m_importfilecharset.CompareI(STR_DEFAULT) != 0)
           query.AddSprintf("character set '%s' ", m_importfilecharset.GetString());
     	
@@ -941,6 +1014,7 @@ ExportMultiFormat::PrepareQueryXML(wyString &query)
 	query.AddSprintf("into table `%s`.`%s` ", m_db.GetString(), m_table.GetString());
 
 	///Add 'Charcter set' if importing to mysql version >= 5.0.38
+	ReadCharsetCombo();	// NGSA: what the combo shows when Import is pressed
 	if( m_importfilecharset.GetLength() != 0 && m_importfilecharset.CompareI(STR_DEFAULT) != 0)
           query.AddSprintf("character set '%s' ", m_importfilecharset.GetString());
  

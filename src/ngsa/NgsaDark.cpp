@@ -10,6 +10,7 @@
 #include "ngsa/NgsaDark.h"
 #include <uxtheme.h>
 #include <dwmapi.h>
+#include <vector>
 #include "wyTheme.h"
 
 #pragma comment(lib, "uxtheme.lib")
@@ -33,7 +34,7 @@ namespace
     const COLORREF kDisabled = RGB(0x8A, 0x8A, 0x8A);   /* disabled text on the panel */
     const COLORREF kFrame    = RGB(0x5A, 0x5A, 0x5A);   /* group box frame */
 
-    enum { KIND_NONE = 0, KIND_FIELD, KIND_LIST, KIND_TREE, KIND_LISTVIEW, KIND_PUSH, KIND_CHECK, KIND_GROUP, KIND_TAB, KIND_HEADER, KIND_STATIC, KIND_SCROLL, KIND_PROGRESS };
+    enum { KIND_NONE = 0, KIND_FIELD, KIND_LIST, KIND_TREE, KIND_LISTVIEW, KIND_PUSH, KIND_CHECK, KIND_GROUP, KIND_TAB, KIND_HEADER, KIND_STATIC, KIND_SCROLL, KIND_PROGRESS, KIND_LINE };
 
     /* uxtheme's dark-mode switches (Windows 10 1809/1903+, exported by ordinal only): without them the
        DarkMode_Explorer theme leaves scroll bars light */
@@ -103,7 +104,14 @@ namespace
             case SS_RIGHT:
             case SS_SIMPLE:
             case SS_LEFTNOWORDWRAP:
-                return KIND_STATIC;     /* text labels; icons, bitmaps, frames and owner-drawn stay as they are */
+                return KIND_STATIC;     /* text labels; icons, bitmaps and owner-drawn stay as they are */
+            case SS_BLACKFRAME:
+            case SS_GRAYFRAME:
+            case SS_WHITEFRAME:
+            case SS_ETCHEDFRAME:
+            case SS_ETCHEDHORZ:
+            case SS_ETCHEDVERT:
+                return KIND_LINE;       /* separators and empty frames: one muted line */
             }
         }
         if(!_wcsicmp(cls, L"Button"))
@@ -147,6 +155,16 @@ namespace
         return _wcsicmp(cls, L"ComboLBox") == 0;
     }
 
+    /* the list inside Scintilla's autocompletion popup (class ListBoxX, a popup owned by the editor) */
+    bool IsAcList(HWND parent)
+    {
+        wchar_t cls[64] = {0};
+        if(!parent)
+            return false;
+        GetClassNameW(parent, cls, 63);
+        return _wcsicmp(cls, L"ListBoxX") == 0;
+    }
+
     bool IsOurDialog(HWND hwnd)
     {
         DWORD_PTR dummy;
@@ -158,8 +176,17 @@ namespace
     bool IsOurs(HWND hwndparent)
     {
         for(HWND h = hwndparent; h; h = GetParent(h))
+        {
             if(IsMainClass(h) || IsOurDialog(h))
                 return true;
+            /* NGSA: a dialog of another module (the common file dialogs,
+               comdlg32) on top of ours: GetParent walks on to its owner, our main window, and its controls
+               were themed dark inside Windows' light dialog. Nothing inside such a dialog is ours. */
+            wchar_t cls[16] = {0};
+            GetClassNameW(h, cls, 15);
+            if(!_wcsicmp(cls, L"#32770"))
+                return false;
+        }
         return false;
     }
 
@@ -254,6 +281,9 @@ namespace
         case KIND_CHECK:
         case KIND_GROUP:
         case KIND_STATIC:
+        case KIND_LINE:
+            if(kind == KIND_LINE)
+                SetWindowPos(hwnd, NULL, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_DRAWFRAME);
             break;      /* painted by ControlProc when the Dark theme is on */
         case KIND_TREE:
             AllowDark(hwnd, on);
@@ -309,6 +339,63 @@ namespace
     }
 
     /* ---- custom paint for the parts no window theme covers ---- */
+
+    /* NGSA: a plain list box draws its selected rows in the system highlight colours, which
+       the dark theme cannot change (SQL Templates, Create Schema in HTML, the Export field lists: white on
+       white, 1:1). After the control has painted, its selected visible rows are painted again in the dark
+       selection colour with the row's text; owner-drawn lists and the combo / autocomplete popups keep theirs. */
+    void PaintListSelection(HWND hwnd)
+    {
+        LONG    style = (LONG)GetWindowLongPtr(hwnd, GWL_STYLE);
+        RECT    client, rc, tr;
+        int     count, top, caret, hscroll, len;
+        HDC     hdc;
+        HFONT   font, oldfont;
+        HBRUSH  sel;
+        bool    enabled = IsWindowEnabled(hwnd) != FALSE, focused = GetFocus() == hwnd;
+
+        if(style & (LBS_OWNERDRAWFIXED | LBS_OWNERDRAWVARIABLE | LBS_MULTICOLUMN))
+            return;
+        count = (int)SendMessage(hwnd, LB_GETCOUNT, 0, 0);
+        if(count <= 0)
+            return;
+        GetClientRect(hwnd, &client);
+        top = (int)SendMessage(hwnd, LB_GETTOPINDEX, 0, 0);
+        caret = (int)SendMessage(hwnd, LB_GETCARETINDEX, 0, 0);
+        hscroll = (style & WS_HSCROLL) ? GetScrollPos(hwnd, SB_HORZ) : 0;
+        hdc = GetDC(hwnd);
+        /* a list box is CS_PARENTDC: GetDC hands back the parent's clipping, so a row partly below the last
+           visible line painted over the frame and the dialog under it (Create Schema, Export) and stayed there
+           when the selection went */
+        IntersectClipRect(hdc, client.left, client.top, client.right, client.bottom);
+        font = (HFONT)SendMessage(hwnd, WM_GETFONT, 0, 0);
+        oldfont = (HFONT)SelectObject(hdc, font ? font : GetStockObject(DEFAULT_GUI_FONT));
+        sel = CreateSolidBrush(NgsaDark::kSelection);
+        SetBkMode(hdc, TRANSPARENT);
+        SetTextColor(hdc, enabled ? RGB(0xFF, 0xFF, 0xFF) : kDisabled);
+        for(int i = top; i < count; ++i)
+        {
+            if(SendMessage(hwnd, LB_GETITEMRECT, i, (LPARAM)&rc) == LB_ERR || rc.top >= client.bottom)
+                break;
+            if(SendMessage(hwnd, LB_GETSEL, i, 0) <= 0)
+                continue;
+            len = (int)SendMessage(hwnd, LB_GETTEXTLEN, i, 0);
+            if(len == LB_ERR)
+                continue;
+            std::vector<wchar_t> text(len + 1);
+            SendMessage(hwnd, LB_GETTEXT, i, (LPARAM)&text[0]);
+            rc.right = client.right;
+            FillRect(hdc, &rc, sel);
+            tr = rc;
+            tr.left += 2 - hscroll;
+            DrawTextW(hdc, &text[0], -1, &tr, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_EXPANDTABS);
+            if(focused && i == caret)
+                DrawFocusRect(hdc, &rc);
+        }
+        DeleteObject(sel);
+        SelectObject(hdc, oldfont);
+        ReleaseDC(hwnd, hdc);
+    }
 
     void PaintHeader(HWND hwnd)
     {
@@ -423,6 +510,133 @@ namespace
     {
         HBRUSH hbr = (HBRUSH)SendMessage(GetParent(hwnd), WM_CTLCOLORSTATIC, (WPARAM)hdc, (LPARAM)hwnd);
         return hbr ? hbr : NgsaDark::PanelBrush();
+    }
+
+    /* NGSA: the 3D edges user32 draws outside a control's client area (WS_EX_CLIENTEDGE,
+       WS_EX_STATICEDGE, SS_SUNKEN, WS_EX_DLGMODALFRAME) come in the light system colours: the Preview box in
+       Preferences, the separator and the double-framed text of Keyboard Shortcuts were thick bright frames.
+       Repaint the whole edge ring in the control's own background with one muted line at its outside. */
+    bool HasLightEdge(HWND hwnd, int kind)
+    {
+        LONG ex = (LONG)GetWindowLongPtr(hwnd, GWL_EXSTYLE);
+        if(kind == KIND_STATIC)
+            return (ex & (WS_EX_CLIENTEDGE | WS_EX_STATICEDGE | WS_EX_DLGMODALFRAME)) != 0;
+        if(kind == KIND_FIELD)
+            return (ex & WS_EX_DLGMODALFRAME) != 0;     /* a plain field's edge is the theme's, already dark */
+        if(kind == KIND_LIST && !IsDropList(hwnd) && !IsAcList(GetParent(hwnd)))
+            return (ex & (WS_EX_CLIENTEDGE | WS_EX_STATICEDGE)) != 0;   /* the Explorer theme's list edge turns white with the focus */
+        if(kind == KIND_LISTVIEW)   /* a plain WS_BORDER is as light as a 3D edge (Duplicate Table's field list) */
+            return (ex & (WS_EX_CLIENTEDGE | WS_EX_STATICEDGE)) != 0 || (GetWindowLongPtr(hwnd, GWL_STYLE) & WS_BORDER) != 0;
+        return false;
+    }
+
+    /* the scroll bars of a control, as a region in screen coordinates (WM_NCPAINT's), or NULL when it shows none */
+    HRGN ScrollBarRegion(HWND hwnd)
+    {
+        HRGN            rgn = NULL;
+        SCROLLBARINFO   sbi;
+
+        for(LONG obj = OBJID_VSCROLL; obj >= OBJID_HSCROLL; --obj)
+        {
+            ZeroMemory(&sbi, sizeof(sbi));
+            sbi.cbSize = sizeof(sbi);
+            if(!GetScrollBarInfo(hwnd, obj, &sbi) || (sbi.rgstate[0] & STATE_SYSTEM_INVISIBLE))
+                continue;
+            HRGN bar = CreateRectRgnIndirect(&sbi.rcScrollBar);
+            if(!rgn)
+                rgn = bar;
+            else
+            {
+                CombineRgn(rgn, rgn, bar, RGN_OR);
+                DeleteObject(bar);
+            }
+        }
+        if(rgn && GetScrollBarInfo(hwnd, OBJID_VSCROLL, &sbi))
+        {
+            /* the size box between two bars */
+            SCROLLBARINFO h = {sizeof(h)};
+            if(GetScrollBarInfo(hwnd, OBJID_HSCROLL, &h) && !(h.rgstate[0] & STATE_SYSTEM_INVISIBLE) && !(sbi.rgstate[0] & STATE_SYSTEM_INVISIBLE))
+            {
+                HRGN box = CreateRectRgn(sbi.rcScrollBar.left, h.rcScrollBar.top, sbi.rcScrollBar.right, h.rcScrollBar.bottom);
+                CombineRgn(rgn, rgn, box, RGN_OR);
+                DeleteObject(box);
+            }
+        }
+        return rgn;
+    }
+
+    /* a separator or empty frame static (SS_*FRAME, SS_ETCHED*, often with SS_SUNKEN): the whole window,
+       edge included, becomes the panel with one muted line: across the middle of a thin one, round a box */
+    void PaintLine(HWND hwnd)
+    {
+        RECT    win, ln;
+        HDC     hdc = GetWindowDC(hwnd);
+        HBRUSH  line;
+        int     w, h;
+
+        if(!hdc)
+            return;
+        GetWindowRect(hwnd, &win);
+        OffsetRect(&win, -win.left, -win.top);
+        w = win.right;
+        h = win.bottom;
+        if(w > 4 && h > 4)  /* a box may be a placeholder something else sits in: only its edge is ours */
+            ExcludeClipRect(hdc, 3, 3, w - 3, h - 3);
+        FillRect(hdc, &win, AskParentBrush(hwnd, hdc));
+        line = CreateSolidBrush(kBorder);
+        if(w > 4 && h > 4)
+            FrameRect(hdc, &win, line);
+        else
+        {
+            if(w >= h)
+                SetRect(&ln, 0, h / 2, w, h / 2 + 1);
+            else
+                SetRect(&ln, w / 2, 0, w / 2 + 1, h);
+            FillRect(hdc, &ln, line);
+        }
+        DeleteObject(line);
+        ReleaseDC(hwnd, hdc);
+    }
+
+    void PaintEdgeRing(HWND hwnd, int kind)
+    {
+        RECT            win, inner;
+        HDC             hdc = GetWindowDC(hwnd);
+        HBRUSH          fill, line, own = NULL;
+        SCROLLBARINFO   sbi;
+        LONG            style = (LONG)GetWindowLongPtr(hwnd, GWL_STYLE);
+
+        if(!hdc)
+            return;
+        GetWindowRect(hwnd, &win);
+        GetClientRect(hwnd, &inner);
+        MapWindowPoints(hwnd, NULL, (LPPOINT)&inner, 2);
+        /* the scroll bars sit between the client area and the edge: they stay as painted */
+        for(LONG obj = OBJID_VSCROLL; obj >= OBJID_HSCROLL; --obj)
+        {
+            ZeroMemory(&sbi, sizeof(sbi));
+            sbi.cbSize = sizeof(sbi);
+            if(GetScrollBarInfo(hwnd, obj, &sbi) && !(sbi.rgstate[0] & STATE_SYSTEM_INVISIBLE))
+                UnionRect(&inner, &inner, &sbi.rcScrollBar);
+        }
+        OffsetRect(&inner, -win.left, -win.top);
+        OffsetRect(&win, -win.left, -win.top);
+        ExcludeClipRect(hdc, inner.left, inner.top, inner.right, inner.bottom);
+        if(kind == KIND_FIELD && !(style & ES_READONLY))
+            fill = (HBRUSH)SendMessage(GetParent(hwnd), WM_CTLCOLOREDIT, (WPARAM)hdc, (LPARAM)hwnd);
+        else if(kind == KIND_LIST)
+            fill = (HBRUSH)SendMessage(GetParent(hwnd), WM_CTLCOLORLISTBOX, (WPARAM)hdc, (LPARAM)hwnd);
+        else if(kind == KIND_LISTVIEW)
+            fill = own = CreateSolidBrush(ListView_GetBkColor(hwnd));   /* the ring continues the list's own background */
+        else
+            fill = AskParentBrush(hwnd, hdc);
+        FillRect(hdc, &win, fill ? fill : NgsaDark::PanelBrush());
+        line = CreateSolidBrush(kBorder);
+        FrameRect(hdc, &win, line);
+        DeleteObject(line);
+        if(own)
+            DeleteObject(own);
+        ReleaseDC(hwnd, hdc);
     }
 
     COLORREF TextColorFor(HWND hwnd, HDC hdc)
@@ -804,7 +1018,7 @@ namespace
             }
             break;
         case WM_ERASEBKGND:
-            if(NgsaDark::IsOn() && (kind == KIND_TAB || kind == KIND_HEADER || kind == KIND_GROUP || kind == KIND_CHECK || kind == KIND_STATIC))
+            if(NgsaDark::IsOn() && (kind == KIND_TAB || kind == KIND_HEADER || kind == KIND_GROUP || kind == KIND_CHECK || kind == KIND_STATIC || kind == KIND_LINE))
                 return 1;
             if(NgsaDark::IsOn() && kind == KIND_LISTVIEW && !IsWindowEnabled(hwnd))
             {
@@ -825,10 +1039,11 @@ namespace
             }
             break;
         case WM_SHOWWINDOW:
-            if(wp && NgsaDark::IsOn() && kind == KIND_LIST && IsDropList(hwnd))
+            if(wp && NgsaDark::IsOn() && kind == KIND_LIST && (IsDropList(hwnd) || IsAcList(GetParent(hwnd))))
             {
                 /* the theme applied in WM_CREATE does not stick (comctl32 sets the list up after, and
-                   shows it once while doing so): apply it whenever it drops down */
+                   shows it once while doing so): apply it whenever it drops down; the autocompletion
+                   list is shown again and again, same treatment */
                 SetPropW(hwnd, L"NgsaDarkList", (HANDLE)1);
                 ThemeKind(hwnd, KIND_LIST);
             }
@@ -843,6 +1058,22 @@ namespace
                 case KIND_GROUP:    PaintGroup(hwnd);   return 0;
                 case KIND_CHECK:    PaintCheck(hwnd);   return 0;
                 case KIND_STATIC:   PaintStatic(hwnd);  return 0;
+                case KIND_LINE:
+                    {
+                        PAINTSTRUCT ps;
+                        BeginPaint(hwnd, &ps);
+                        EndPaint(hwnd, &ps);
+                        PaintLine(hwnd);
+                    }
+                    return 0;
+                case KIND_LIST:
+                    if(!IsDropList(hwnd) && !IsAcList(GetParent(hwnd)))
+                    {
+                        LRESULT r = DefSubclassProc(hwnd, msg, wp, lp);
+                        PaintListSelection(hwnd);
+                        return r;
+                    }
+                    break;
                 }
             }
             break;
@@ -867,6 +1098,27 @@ namespace
             }
             break;
         case WM_NCPAINT:
+            if(NgsaDark::IsOn() && kind == KIND_LINE)
+            {
+                PaintLine(hwnd);
+                return 0;
+            }
+            if(NgsaDark::IsOn() && HasLightEdge(hwnd, kind))
+            {
+                /* the control paints only its scroll bars: letting it paint its edge and painting over that
+                   showed the light frame for a moment each time the theme redrew it on hover */
+                HRGN    bars = ScrollBarRegion(hwnd);
+                LRESULT r = 0;
+                if(bars)
+                {
+                    if(wp != 1)
+                        CombineRgn(bars, bars, (HRGN)wp, RGN_AND);
+                    r = DefSubclassProc(hwnd, msg, (WPARAM)bars, lp);
+                    DeleteObject(bars);
+                }
+                PaintEdgeRing(hwnd, kind);
+                return r;
+            }
             if(NgsaDark::IsOn() && kind == KIND_LIST && IsDropList(hwnd))
             {
                 /* a combo's drop-down list has a 1 px border: paint it dark */
@@ -892,6 +1144,38 @@ namespace
         return DefSubclassProc(hwnd, msg, wp, lp);
     }
 
+    /* NGSA: the custom-draw answers a parent gives for the controls the window themes cannot
+       colour: a tree's selection, a DISABLED list view's rows (comctl32 paints them in COLOR_3DFACE whatever
+       colours were set) and a DISABLED push button (the Explorer theme's disabled face is hard to tell from an
+       enabled one). Enabled list views and buttons are left to the theme and to the dialog's own handler. */
+    bool DarkCustomDraw(LPNMHDR hdr, LRESULT& result)
+    {
+        wchar_t cls[64] = {0};
+        GetClassNameW(hdr->hwndFrom, cls, 63);
+        if(!_wcsicmp(cls, WC_TREEVIEWW))
+        {
+            result = NgsaDark::TreeCustomDraw((LPNMTVCUSTOMDRAW)hdr);
+            return true;
+        }
+        if(IsWindowEnabled(hdr->hwndFrom))
+            return false;
+        if(!_wcsicmp(cls, WC_LISTVIEWW))
+        {
+            result = NgsaDark::ListCustomDraw((LPNMLVCUSTOMDRAW)hdr);
+            return true;
+        }
+        if(!_wcsicmp(cls, L"Button"))
+        {
+            LONG type = (LONG)GetWindowLongPtr(hdr->hwndFrom, GWL_STYLE) & BS_TYPEMASK;
+            if(type == BS_PUSHBUTTON || type == BS_DEFPUSHBUTTON)
+            {
+                result = NgsaDark::ButtonCustomDraw((LPNMCUSTOMDRAW)hdr);
+                return true;
+            }
+        }
+        return false;
+    }
+
     LRESULT CALLBACK ParentProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR)
     {
         switch(msg)
@@ -899,6 +1183,14 @@ namespace
         case WM_COMMAND:
             if(HIWORD(wp) == CBN_DROPDOWN)
                 ThemeDropList((HWND)lp);
+            break;
+        case WM_NOTIFY:     /* the Connect dialog's page controls live in a tab control: their notifications come here */
+            if(NgsaDark::IsOn() && lp && ((LPNMHDR)lp)->code == NM_CUSTOMDRAW)
+            {
+                LRESULT r;
+                if(DarkCustomDraw((LPNMHDR)lp, r))
+                    return r;
+            }
             break;
         case WM_CTLCOLOREDIT:
         case WM_CTLCOLORLISTBOX:
@@ -1013,10 +1305,9 @@ namespace
         case WM_NOTIFY:
             if(NgsaDark::IsOn() && lp && ((LPNMHDR)lp)->code == NM_CUSTOMDRAW)
             {
-                wchar_t cls[64] = {0};
-                GetClassNameW(((LPNMHDR)lp)->hwndFrom, cls, 63);
-                if(!_wcsicmp(cls, WC_TREEVIEWW))
-                    return NgsaDark::TreeCustomDraw((LPNMTVCUSTOMDRAW)lp);
+                LRESULT r;
+                if(DarkCustomDraw((LPNMHDR)lp, r))
+                    return r;
             }
             break;
         case WM_NCDESTROY:
@@ -1083,6 +1374,8 @@ namespace
                         s_combo_ours = ours;
                     else if(!_wcsicmp(cls, L"ComboLBox"))
                         ours = ours || s_combo_ours;
+                    else if(kind == KIND_LIST && IsAcList(cs->hwndParent))
+                        ours = true;    /* bonSQL autocomplete: the editor's list popup */
                     if(kind != KIND_NONE && ((cs->style & WS_CHILD) || kind == KIND_LIST) && ours)
                     {
                         SetWindowSubclass(hwnd, ControlProc, kControlSubclass, (DWORD_PTR)kind);
@@ -1372,4 +1665,58 @@ NgsaDark::TreeCustomDraw(LPNMTVCUSTOMDRAW pcd)
         return CDRF_DODEFAULT;
     }
     return CDRF_DODEFAULT;
+}
+
+/* NGSA: only called for a DISABLED list view (DarkCustomDraw): its rows in the dark base colour
+   with dimmed text, instead of comctl32's COLOR_3DFACE (the Duplicate Table column list while "With all fields"
+   is ticked measured a light box in a dark window) */
+LRESULT
+NgsaDark::ListCustomDraw(LPNMLVCUSTOMDRAW pcd)
+{
+    if(!IsOn())
+        return CDRF_DODEFAULT;
+    switch(pcd->nmcd.dwDrawStage)
+    {
+    case CDDS_PREPAINT:
+        return CDRF_NOTIFYITEMDRAW;
+    case CDDS_ITEMPREPAINT:
+        pcd->clrText   = kDisabled;
+        pcd->clrTextBk = kBase;
+        return CDRF_NEWFONT;
+    }
+    return CDRF_DODEFAULT;
+}
+
+/* NGSA: only called for a DISABLED push button (DarkCustomDraw): drawn flat in the panel colour
+   with a dim frame and dim text, so it reads as disabled next to the enabled ones (Connect to Server's New / Clone
+   / Save / Rename / Delete row) */
+LRESULT
+NgsaDark::ButtonCustomDraw(LPNMCUSTOMDRAW pcd)
+{
+    if(!IsOn() || pcd->dwDrawStage != CDDS_PREPAINT)
+        return CDRF_DODEFAULT;
+
+    HWND    hwnd = pcd->hdr.hwndFrom;
+    HDC     hdc = pcd->hdc;
+    RECT    rc = pcd->rc;
+    wchar_t text[256] = {0};
+    HFONT   font = (HFONT)SendMessage(hwnd, WM_GETFONT, 0, 0), oldfont;
+    HPEN    pen = CreatePen(PS_SOLID, 1, kBorder), oldpen;
+    HBRUSH  oldbr;
+
+    FillRect(hdc, &rc, PanelBrush());
+    oldpen = (HPEN)SelectObject(hdc, pen);
+    oldbr = (HBRUSH)SelectObject(hdc, GetStockObject(NULL_BRUSH));
+    Rectangle(hdc, rc.left, rc.top, rc.right, rc.bottom);
+    SelectObject(hdc, oldbr);
+    SelectObject(hdc, oldpen);
+    DeleteObject(pen);
+
+    GetWindowTextW(hwnd, text, 255);
+    oldfont = (HFONT)SelectObject(hdc, font ? font : GetStockObject(DEFAULT_GUI_FONT));
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, kDisabled);
+    DrawTextW(hdc, text, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_HIDEPREFIX);
+    SelectObject(hdc, oldfont);
+    return CDRF_SKIPDEFAULT;
 }

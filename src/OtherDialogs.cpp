@@ -473,8 +473,8 @@ CShowValue::ShowValueDialogProc(HWND hwnd, wyUInt32 message, WPARAM wparam, LPAR
 		break;
 
 	case WM_SIZE:
-		// bonSQL: Hide sleeping belongs to the Processlist only; it was seen on the Variables and Status windows
-		// (HELP-FINDINGS B5), so it is hidden again here, where the filter row is laid out
+		// bonSQL: Hide sleeping belongs to the Processlist only; it was seen on the Variables and Status windows,
+		// so it is hidden again here, where the filter row is laid out
 		if(pcshowvalue->m_valtype != PROCESSLIST)
 			ShowWindow(GetDlgItem(hwnd, IDC_NGSA_PLHIDESLEEP), SW_HIDE);
 		ShowValueResize(hwnd, pcshowvalue->m_hwndgrid);
@@ -596,7 +596,7 @@ CShowValue::CreateColumnsWithProperLength(MYSQL_RES * result, PGVCOLUMN	gvcol, w
 		gvcol->cx   = (width > 0)? width : GetColWidth(m_hwndgrid, &fields[k], k);
 
 		// bonSQL: the name column of Variables and Status is sized to the longest name, which pushed the Value
-		// column off the right edge at the default window size (HELP-FINDINGS B5); keep 180 px for the value
+		// column off the right edge at the default window size; keep 180 px for the value
 		if(width <= 0 && k == 0 && count == 2 && (m_valtype == VARIABLES || m_valtype == STATUS) && m_hwnddlg)
 		{
 			RECT    rcdlg = {0};
@@ -2327,12 +2327,18 @@ CCopyTable::GetKeysPrimeKeyCheck(MYSQL_ROW *myrow, MYSQL_RES *myres, wyString &p
 	wyInt32		flag = 0; 	
 	comment.SetAs("");
 
+	wyBool		partial = wyFalse;	// NGSA: a key column left out of the copy
+	wyString	colwide;
+
 	while(*myrow = m_tunnel->mysql_fetch_row(myres))
 	{
 		if(stricmp((*myrow)[GetFieldIndex(myres,"key_name", m_tunnel, m_mysql)], "primary") == 0)
         {
+			colwide.SetAs((*myrow)[GetFieldIndex(myres,"column_name", m_tunnel, m_mysql)]);
+			if(IsColSelected(colwide.GetAsWideChar()) == wyFalse)
+				partial = wyTrue;
 			primary.AddSprintf("`%s`", (*myrow)[GetFieldIndex(myres,"column_name", m_tunnel, m_mysql)]);
-            
+
 			if(flag == 0)
 			{
 				flag++;			
@@ -2354,13 +2360,20 @@ CCopyTable::GetKeysPrimeKeyCheck(MYSQL_ROW *myrow, MYSQL_RES *myres, wyString &p
 			break;
 	}
 
-    if(flgprimary)
+    /* NGSA: the key clause used to be taken from the source table whatever columns were ticked, so
+       "create table ... (primary key(id)) select <columns without id>" was refused by the server ("Key column 'id'
+       doesn't exist in table"). A primary key with a column left out of the copy is left out whole: a key over
+       the remaining columns would have another meaning (and may not even be unique). */
+    if(flgprimary && partial == wyFalse)
     {
         primary.Strip(1);
 		primary.Add(")");
     }
 	else
+	{
 		primary.Clear();
+		flgprimary = wyFalse;
+	}
 
 	if(comment.GetLength() != 0)
 		primary.AddSprintf(" Comment \"%s\" ", comment.GetString());
@@ -2391,26 +2404,33 @@ CCopyTable::GetKeysOtherIndex(MYSQL_ROW *myrow, MYSQL_RES *myres, wyString &inde
     wyBool   flgindex = wyFalse, ismysql41 = IsMySQL41(m_tunnel, m_mysql), ismysql553=   IsMySQL553(m_tunnel,m_mysql);
 	wyString comment;
 	
+    /* NGSA: each key is built on its own and kept only with the columns that are ticked in the
+       column list; a key none of whose columns is copied is left out (the statement used to name columns the
+       SELECT did not carry and the server refused the whole CREATE TABLE). */
+    wyString onekey;
+    wyInt32  cols;
+
     while(*myrow)
 	{
-        flgindex = wyTrue;
 		comment.SetAs("");
+		onekey.Clear();
+		cols = 0;
 
 		tempindex.SetAs((*myrow)[GetFieldIndex(myres, "key_name", m_tunnel, m_mysql)], (GetActiveWin())->m_ismysql41);
-		
+
 		if(IsMySQL402(m_tunnel, m_mysql))
 			ftindex = GetFieldIndex(myres, "index_type", m_tunnel, m_mysql);
 		else
 			ftindex = 0;
-		
+
 		myrowstr.SetAs((*myrow)[ftindex], ismysql41);
 
-		if(IsMySQL402(m_tunnel, m_mysql) && myrowstr.GetString() && !stricmp(myrowstr.GetString(), "fulltext"))	
-			index.AddSprintf("FULLTEXT KEY `%s`(", tempindex.GetString());
+		if(IsMySQL402(m_tunnel, m_mysql) && myrowstr.GetString() && !stricmp(myrowstr.GetString(), "fulltext"))
+			onekey.AddSprintf("FULLTEXT KEY `%s`(", tempindex.GetString());
 		else
-		{	
+		{
 			myrowstr1.SetAs((*myrow)[UNIQUECOL], ismysql41);
-            index.AddSprintf("%s `%s`(",((stricmp(myrowstr1.GetString(), "0")==0)?("UNIQUE"): (!myrowstr.CompareI("SPATIAL") ? "SPATIAL KEY" : "KEY")), tempindex.GetString());		
+            onekey.AddSprintf("%s `%s`(",((stricmp(myrowstr1.GetString(), "0")==0)?("UNIQUE"): (!myrowstr.CompareI("SPATIAL") ? "SPATIAL KEY" : "KEY")), tempindex.GetString());
 		}
 
 		if(ismysql553)
@@ -2422,41 +2442,43 @@ CCopyTable::GetKeysOtherIndex(MYSQL_ROW *myrow, MYSQL_RES *myres, wyString &inde
 		while(1)
 		{
 			myrowstr.SetAs((*myrow)[GetFieldIndex(myres, "column_name", m_tunnel, m_mysql)], ismysql41);
-			
-			index.AddSprintf(" `%s` ", myrowstr.GetString());
-            
-            if((*myrow)[GetFieldIndex(myres, "sub_part", m_tunnel, m_mysql)])
-                index.AddSprintf("(%s),", (*myrow)[GetFieldIndex(myres, "sub_part", m_tunnel, m_mysql)]);
-            else
-                index.AddSprintf(",");
+
+			if(IsColSelected(myrowstr.GetAsWideChar()) == wyTrue)
+			{
+				onekey.AddSprintf(" `%s` ", myrowstr.GetString());
+
+				if((*myrow)[GetFieldIndex(myres, "sub_part", m_tunnel, m_mysql)])
+					onekey.AddSprintf("(%s),", (*myrow)[GetFieldIndex(myres, "sub_part", m_tunnel, m_mysql)]);
+				else
+					onekey.AddSprintf(",");
+				cols++;
+			}
 
 			(*myrow) = m_tunnel->mysql_fetch_row(myres);
 
 			if(!(*myrow))
 				break;
-			
+
 			myrowstr1.SetAs((*myrow)[GetFieldIndex(myres, "key_name", m_tunnel, m_mysql)], ismysql41);
 
 			if((*myrow) && (tempindex.Compare(myrowstr1.GetString()) != 0))
-			{
-				index.Strip(1);
-				index.Add(")");
-				if(comment.GetLength() != 0)
-					index.AddSprintf(" Comment \"%s\" ", comment.GetString());
-				index.Add(", ");
 				break;
-			}
+		}
+
+		if(cols > 0)
+		{
+			onekey.Strip(1);
+			onekey.Add(")");
+			if(comment.GetLength() != 0)
+				onekey.AddSprintf(" Comment \"%s\" ", comment.GetString());
+			index.AddSprintf("%s, ", onekey.GetString());
+			flgindex = wyTrue;
 		}
     }
 
     // now see if the indexg has been set otherwise we handle it differently
 	if(flgindex)
-    {
-        index.Strip(1);
-		index.Add(")");
-		if(comment.GetLength() != 0)
-					index.AddSprintf(" Comment \"%s\" ", comment.GetString());
-    }
+		index.Strip(2);		// the ", " after the last key
 	else
 		index.Clear();
 
