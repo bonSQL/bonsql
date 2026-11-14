@@ -28,7 +28,7 @@
 //.CSS Classes
 //#define CSS_WARNING ".tabcaptionstyle{font: 14px \"Trebuchet MS\", Verdana, Arial, Helvetica; text-align:left; color:grey;}"
 
-#define QA_ULTIMATE _("")	// bonSQL: was an Ultimate upsell with a webyog.com buy link (docs/ngsa/UPSELLS.md)
+#define QA_ULTIMATE _("")	// bonSQL: was an Ultimate upsell with a webyog.com buy link
 
 
 class QueryAnalyzerBase : public TabQueryTypes 

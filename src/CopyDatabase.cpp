@@ -18,6 +18,7 @@
 */
 #include <Shlwapi.h>
 #include "ngsa/NgsaDark.h"   // NGSA (#2158)
+#include "ngsa/NgsaCaps.h"        // NGSA: sequences
 #include "ExportMultiFormat.h"
 #include "FrameWindowHelper.h"
 #include "MySQLVersionHelper.h"
@@ -64,6 +65,7 @@ CopyDatabase::CopyDatabase()
 	m_issrceventsupport = wyFalse;
 	m_istrgeventsupports  = wyFalse;
 	m_bulkinsert       = wyFalse;
+	m_seqstate         = wyTrue;	// NGSA
 	m_maxallowedsize   = 0;
 	m_isobjecttoexport = wyFalse;
 	m_isstoredpgrms	= wyFalse;	
@@ -433,6 +435,19 @@ CopyDatabase::OnUmCopydatabase(HWND hwnd)
 			VERIFY(CloseHandle(evt.m_copydbevent));
 		return;
     }
+
+	// NGSA: tables whose default calls a sequence that is left out
+	if(CheckSequenceDefaults(hwndtree) == wyFalse)
+	{
+		EnableDlgWindows(wyTrue);
+		m_copying   = wyFalse;
+		RemoveInstances();
+		if(evt.m_copydbevent)
+			VERIFY(CloseHandle(evt.m_copydbevent));
+		if(hwndmsg)
+			SendMessage(hwndmsg, WM_SETTEXT, 0, (LPARAM)L"");
+		return;
+	}
 
     ret = InitExportData(hwndtree);
     if(ret == wyFalse)
@@ -1019,6 +1034,7 @@ CopyDatabase::AddInitData()
 	m_p->Add(m_hwnddlg, IDC_CPY_BULKINSERT, "CpyBulkInsert", "1", CHECKBOX);
 	m_p->Add(m_hwnddlg, IDC_CPY_DEFINER, "RemoveDefiner", "0", CHECKBOX);
 	m_p->Add(m_hwnddlg, IDC_CPY_ASCTRIGGERS, "Coppyasctriggers", "0", CHECKBOX);
+	m_p->Add(m_hwnddlg, IDC_CPY_SEQSTATE, "CpySeqState", "1", CHECKBOX);	// NGSA
     if(wnd)
         m_srcinfo = &wnd->m_conninfo;
 	
@@ -1348,8 +1364,56 @@ CopyDatabase::OnItemExpandingHelper(HWND hwnd , LPNMTREEVIEW pnmtv)
 	return wyFalse;
 }
 
+// NGSA: the folders of the objects that came with MySQL 5 (below), then the Sequences folder. It is the last
+// folder, as in the object browser, and is there when the source and the target both have sequences;
+// it is ticked or not like every other folder, and only what is ticked in it is copied.
 wyBool
 CopyDatabase::HandleTreeviewOnComboChange(wyBool issinglesrcdb, wyBool cbselchange)
+{
+	HWND		hwndtree = GetDlgItem(m_hwnddlg, IDC_TREE);
+	HTREEITEM	hseq;
+	wyBool		ret, want, tick;
+
+	ret = HandleTreeview5XOnComboChange(issinglesrcdb, cbselchange);
+
+	if(!hwndtree)
+		return ret;
+
+	want = (m_srcmysql && NgsaCapsCompute::HasSequences(m_srcmysql) == wyTrue &&
+			(issinglesrcdb == wyTrue || (m_targetmysql && NgsaCapsCompute::HasSequences(m_targetmysql) == wyTrue))) ? wyTrue : wyFalse;
+
+	hseq = GetObjectsHtreeItem(hwndtree, TXT_SEQUENCES, wyTrue);
+
+	// the tick of a folder that is put in after the dialog was opened (the target was changed from a server
+	// without sequences to one with them): as it was when the folder is only moved, else ticked like the other
+	// folders when a database is copied, and not ticked when one table is
+	tick = hseq ? (TreeView_GetCheckState(hwndtree, hseq) ? wyTrue : wyFalse) : (m_table.GetLength() ? wyFalse : wyTrue);
+
+	// other folders were put back after it: it goes to the end again
+	if(want == wyTrue && hseq && TreeView_GetNextSibling(hwndtree, hseq))
+	{
+		TreeView_DeleteItem(hwndtree, hseq);
+		hseq = NULL;
+	}
+
+	if(want == wyTrue && !hseq)
+	{
+		InsertSequences(hwndtree, TVI_ROOT);
+		if(cbselchange == wyTrue && (hseq = GetObjectsHtreeItem(hwndtree, TXT_SEQUENCES, wyTrue)) != NULL)
+		{
+			TreeView_SetCheckState(hwndtree, hseq, (tick == wyTrue) ? 1 : 0);
+		}
+	}
+	else if(want == wyFalse && hseq)
+		TreeView_DeleteItem(hwndtree, hseq);
+
+	EnableWindow(GetDlgItem(m_hwnddlg, IDC_CPY_SEQSTATE), (want == wyTrue) ? TRUE : FALSE);
+
+	return ret;
+}
+
+wyBool
+CopyDatabase::HandleTreeview5XOnComboChange(wyBool issinglesrcdb, wyBool cbselchange)
 {
 	HWND		hwndtree = NULL;
 	HTREEITEM	htreeitem = NULL;
@@ -1583,6 +1647,8 @@ CopyDatabase::InitExportData(HWND hwndtree)
 		m_isremdefiner = wyTrue;
 	else
 		m_isremdefiner = wyFalse;
+	// NGSA: sequence positions
+	m_seqstate = (SendMessage(GetDlgItem(m_hwnddlg, IDC_CPY_SEQSTATE), BM_GETCHECK, 0, 0) == BST_CHECKED) ? wyTrue : wyFalse;
 	InitTargetServer();	
 
 	SetNamesToUTF8();
@@ -2389,10 +2455,11 @@ CopyDatabase::ExportData(LPGUI_COPYDB_UPDATE_ROUTINE gui_routine, void * lpParam
 	
 	VERIFY(hwndtree = GetDlgItem(m_hwnddlg, IDC_TREE));
 
-	/* NGSA: the source's sequences first: a table may default to NEXTVAL(sequence) */
-	if(IsMySQL5010(m_newtargettunnel, &m_newtargetmysql) == wyTrue)
+	/* NGSA: the ticked sequences first: a table may default to NEXTVAL(sequence) */
+	hrootitem = GetObjectsHtreeItem(hwndtree, TXT_SEQUENCES);
+	if(hrootitem)
 	{
-		ret = ExportSequences();
+		ret = ExportSequences(hwndtree, hrootitem);
 		if(ret == wyFalse || IsCopyStopped() == wyTrue)
 			return ret;
 	}
@@ -2921,6 +2988,10 @@ CopyDatabase::CreateTableInTarget(wyChar  *table)
 	if(myres)
 		m_newsrctunnel->mysql_free_result(myres);
 	
+	// NGSA: sequence calls follow the table into the target database
+	if(m_srcdb.Compare(m_targetdb.GetString()) != 0)
+		NgsaUnqualifySequences(query, m_srcdb.GetString());
+
 	//Create in target
 	if(m_newtargettunnel->IsTunnel() == true)
 	{
@@ -2954,6 +3025,10 @@ CopyDatabase::CreateTableInTarget2(wyChar *table)
 		return wyFalse;
 	}
 	
+	// NGSA: sequence calls follow the table into the target database
+	if(m_srcdb.Compare(m_targetdb.GetString()) != 0)
+		NgsaUnqualifySequences(query, m_srcdb.GetString());
+
 	//Create query execution at target
 	if(m_newtargettunnel->IsTunnel() == true)
 	{
@@ -3526,6 +3601,9 @@ CopyDatabase::ExportView(const wyChar *db, const wyChar *view)
 	if(m_isremdefiner)
 		RemoveDefiner(tquery, pattern.GetString(), 12);
     //StripDatabase(tquery, m_srcdb.GetString());
+	// NGSA: sequence calls follow the view into the target database
+	if(m_srcdb.Compare(m_targetdb.GetString()) != 0)
+		NgsaUnqualifySequences(tquery, m_srcdb.GetString());
 
     tgtres = SjaExecuteAndGetResult(m_newtargettunnel, &m_newtargetmysql, tquery);
 		
@@ -3700,94 +3778,559 @@ CopyDatabase::ExportEvent(const wyChar *db, const wyChar *event)
 
 }
 
-/* NGSA: MariaDB sequences are not tables (Table_type SEQUENCE), so PrepareShowTable left them out
-   and Copy Database copied every other object but them. Each one is created in the target from its SHOW CREATE
-   SEQUENCE (unqualified: the target database is the session's current one, ChangeTargetDB). A server without
-   sequences answers an empty set. */
-wyBool
-CopyDatabase::ExportSequences()
+// NGSA: the sequences a table default or a view calls. The server stores NEXTVAL(seq), NEXT VALUE FOR seq,
+// LASTVAL(seq) and PREVIOUS VALUE FOR seq alike as nextval(`db`.`seq`) / lastval(`db`.`seq`); text in quotes
+// is not looked at. Sequences of database db are added to own as "seq\n", those of any other database to
+// other as "db\tseq\n".
+static void
+NgsaStatementSequences(const wyChar *text, const wyChar *db, wyString &own, wyString &other)
 {
-	MYSQL_RES	*res, *cres;
-	MYSQL_ROW	row, crow;
-	wyString	query, name, def;
-	wyInt32		index, count = 0;
+	const wyChar	*p = text;
+	wyString		first, second;
+
+	while(p && *p)
+	{
+		if(*p == '\'')
+		{
+			for(++p; *p; ++p)
+			{
+				if(*p == '\\' && p[1])
+				{
+					++p;
+					continue;
+				}
+				if(*p == '\'')
+				{
+					if(p[1] != '\'')
+						break;
+					++p;
+				}
+			}
+			if(*p)
+				++p;
+			continue;
+		}
+
+		if(_strnicmp(p, "nextval(", 8) == 0 || _strnicmp(p, "lastval(", 8) == 0)
+		{
+			p += 8;
+			while(*p == ' ')
+				++p;
+			NgsaSequenceIdent(p, first);
+			if(*p == '.')
+			{
+				++p;
+				NgsaSequenceIdent(p, second);
+				if(!second.GetLength())
+					continue;
+				if(first.Compare(db) == 0)
+					own.AddSprintf("%s\n", second.GetString());
+				else
+					other.AddSprintf("%s\t%s\n", first.GetString(), second.GetString());
+			}
+			else if(first.GetLength())
+				own.AddSprintf("%s\n", first.GetString());
+			continue;
+		}
+
+		++p;
+	}
+}
+
+// NGSA: a name as the inside of a quoted SQL text
+static void
+NgsaSqlLiteral(const wyChar *name, wyString &out)
+{
+	wyChar	one[2] = {0, 0};
+
+	out.SetAs("");
+
+	for(; name && *name; ++name)
+	{
+		if(*name == '\'' || *name == '\\')
+		{
+			one[0] = *name;
+			out.Add(one);
+		}
+		one[0] = *name;
+		out.Add(one);
+	}
+}
+
+// NGSA: one line of a list in a message, once, the first twelve
+static void
+NgsaAddLine(wyString &lines, wyInt32 &count, const wyChar *line)
+{
+	if(strstr(lines.GetString(), line))
+		return;
+
+	count++;
+	if(count <= 12)
+		lines.Add(line);
+}
+
+/* NGSA: the names in a folder of the tree that will be copied, as "\nname\nname\n". all is set when the
+   folder is ticked and was never opened: everything in it is copied, and the names are not in the tree. */
+void
+CopyDatabase::TickedNames(HWND hwndtree, HTREEITEM hfolder, wyString &names, wyBool &all)
+{
+	HTREEITEM	hitem;
+	TVITEM		tvi = {0};
+	wyWChar		temptext[SIZE_512] = {0};
+	wyString	name;
+
+	names.SetAs("\n");
+	all = wyFalse;
+
+	if(!hfolder || !TreeView_GetCheckState(hwndtree, hfolder))
+		return;
+
+	if(!(TreeView_GetItemState(hwndtree, hfolder, TVIS_EXPANDEDONCE) & TVIS_EXPANDEDONCE))
+	{
+		all = wyTrue;
+		return;
+	}
+
+	for(hitem = TreeView_GetChild(hwndtree, hfolder); hitem; hitem = TreeView_GetNextSibling(hwndtree, hitem))
+	{
+		if(!TreeView_GetCheckState(hwndtree, hitem))
+			continue;
+
+		tvi.mask = TVIF_HANDLE | TVIF_TEXT;
+		tvi.hItem = hitem;
+		tvi.pszText = temptext;
+		tvi.cchTextMax = SIZE_512 - 1;
+		if(!TreeView_GetItem(hwndtree, &tvi))
+			continue;
+
+		name.SetAs(temptext);
+		if(name.GetLength())
+			names.AddSprintf("%s\n", name.GetString());
+	}
+}
+
+/* NGSA: is there a sequence of that name in that database on the target server */
+wyBool
+CopyDatabase::SequenceOnTarget(const wyChar *db, const wyChar *sequence)
+{
+	MYSQL_RES	*res;
+	wyString	query, dblit, seqlit;
+	wyBool		found = wyFalse;
+
+	NgsaSqlLiteral(db, dblit);
+	NgsaSqlLiteral(sequence, seqlit);
+	query.Sprintf("select 1 from `information_schema`.`TABLES` where `TABLE_SCHEMA` = '%s' and `TABLE_NAME` = '%s' "
+				  "and `TABLE_TYPE` = 'SEQUENCE'", dblit.GetString(), seqlit.GetString());
+	res = SjaExecuteAndGetResult(m_newtargettunnel, &m_newtargetmysql, query);
+	if(res)
+	{
+		if(m_newtargettunnel->mysql_fetch_row(res) != NULL)
+			found = wyTrue;
+		m_newtargettunnel->mysql_free_result(res);
+	}
+
+	return found;
+}
+
+/* NGSA: a table whose column default calls a sequence, or a view that calls one, cannot be created (error
+   1146) while that sequence is missing. Before the copy starts the ticked tables and views are looked at:
+   - a sequence of ANOTHER database is never copied and never renamed. Where it is not on the target server
+     the copy does not start; where it is, the copies will share it with the originals, and that is said.
+   - a sequence of the source database that is neither being copied nor already in the target database:
+     the answer adds those sequences to the copy, goes on as selected, or goes back to the dialog. With a
+     target that has no sequences there is nothing to add.
+   Returns wyFalse when the copy is not to start. */
+wyBool
+CopyDatabase::CheckSequenceDefaults(HWND hwndtree)
+{
+	MYSQL_RES	*res;
+	MYSQL_ROW	row;
+	HTREEITEM	hseqfolder, hitem;
+	TVITEM		tvi = {0};
+	wyWChar		temptext[SIZE_512] = {0};
+	wyString	query, seqs, tables, views, present, need, lines, shared, absent, msg, name, own, other, probe, one, two, dblit;
+	wyBool		allseqs, alltables, allviews, wasticked, ismysql41 = ((GetActiveWin())->m_ismysql41);
+	wyInt32		hits = 0, nshared = 0, nabsent = 0, answer, pass;
+	const wyChar *p, *q, *tab;
+
+	if(!m_srcmysql || NgsaCapsCompute::HasSequences(m_srcmysql) == wyFalse)
+		return wyTrue;
+
+	TickedNames(hwndtree, GetObjectsHtreeItem(hwndtree, TXT_TABLES), tables, alltables);
+	TickedNames(hwndtree, GetObjectsHtreeItem(hwndtree, TXT_VIEWS), views, allviews);
+	if(alltables == wyFalse && tables.GetLength() <= 1 && allviews == wyFalse && views.GetLength() <= 1)
+		return wyTrue;
+
+	// the folder also when it is not ticked: it is there to be ticked by the answer
+	hseqfolder = GetObjectsHtreeItem(hwndtree, TXT_SEQUENCES, wyTrue);
+	TickedNames(hwndtree, hseqfolder, seqs, allseqs);
+
+	// the sequences the target database already holds: none when it is new, or on a server without sequences
+	present.SetAs("\n");
+	query.Sprintf("show full tables from `%s` where Table_type = 'SEQUENCE'", m_targetdb.GetString());
+	res = SjaExecuteAndGetResult(m_newtargettunnel, &m_newtargetmysql, query);
+	if(res)
+	{
+		while((row = m_newtargettunnel->mysql_fetch_row(res)) != NULL)
+		{
+			name.SetAs(row[0], ismysql41);
+			present.AddSprintf("%s\n", name.GetString());
+		}
+		m_newtargettunnel->mysql_free_result(res);
+	}
+
+	need.SetAs("\n");
+	lines.SetAs("");
+	shared.SetAs("");
+	absent.SetAs("");
+	NgsaSqlLiteral(m_srcdb.GetString(), dblit);
+
+	// pass 0: the column defaults of the tables (a view's columns show the default of the table column they
+	// come from, and are left out); pass 1: the views
+	for(pass = 0; pass < 2; pass++)
+	{
+		if(pass == 0)
+			query.Sprintf("select `TABLE_NAME`, `COLUMN_DEFAULT` from `information_schema`.`COLUMNS` "
+						  "where `TABLE_SCHEMA` = '%s' and (`COLUMN_DEFAULT` like '%%nextval(%%' or `COLUMN_DEFAULT` like '%%lastval(%%') "
+						  "and `TABLE_NAME` not in (select `TABLE_NAME` from `information_schema`.`VIEWS` where `TABLE_SCHEMA` = '%s') "
+						  "order by `TABLE_NAME`", dblit.GetString(), dblit.GetString());
+		else
+			query.Sprintf("select `TABLE_NAME`, `VIEW_DEFINITION` from `information_schema`.`VIEWS` "
+						  "where `TABLE_SCHEMA` = '%s' and (`VIEW_DEFINITION` like '%%nextval(%%' or `VIEW_DEFINITION` like '%%lastval(%%') "
+						  "order by `TABLE_NAME`", dblit.GetString());
+
+		res = SjaExecuteAndGetResult(m_newsrctunnel, &m_newsrcmysql, query);
+		if(!res)
+			continue;
+
+		while((row = m_newsrctunnel->mysql_fetch_row(res)) != NULL)
+		{
+			if(!row[0] || !row[1])
+				continue;
+
+			name.SetAs(row[0], ismysql41);
+			probe.Sprintf("\n%s\n", name.GetString());
+			if(pass == 0 && alltables == wyFalse && !strstr(tables.GetString(), probe.GetString()))
+				continue;
+			if(pass == 1 && allviews == wyFalse && !strstr(views.GetString(), probe.GetString()))
+				continue;
+
+			one.SetAs(row[1], ismysql41);
+			own.SetAs("");
+			other.SetAs("");
+			NgsaStatementSequences(one.GetString(), m_srcdb.GetString(), own, other);
+
+			// sequences of another database
+			for(p = other.GetString(); p && *p; p = q + 1)
+			{
+				q = strchr(p, '\n');
+				tab = strchr(p, '\t');
+				if(!q || !tab || tab > q)
+					break;
+
+				one.SetAsDirect(p, (wyUInt32)(tab - p));
+				two.SetAsDirect(tab + 1, (wyUInt32)(q - tab - 1));
+				probe.Sprintf("    %s  (sequence %s.%s)\n", name.GetString(), one.GetString(), two.GetString());
+
+				if(strstr(shared.GetString(), probe.GetString()) || strstr(absent.GetString(), probe.GetString()))
+					continue;
+
+				if(SequenceOnTarget(one.GetString(), two.GetString()) == wyTrue)
+					NgsaAddLine(shared, nshared, probe.GetString());
+				else
+					NgsaAddLine(absent, nabsent, probe.GetString());
+			}
+
+			// sequences of the source database
+			for(p = own.GetString(); allseqs == wyFalse && p && *p; p = q + 1)
+			{
+				q = strchr(p, '\n');
+				if(!q)
+					break;
+
+				one.SetAsDirect(p, (wyUInt32)(q - p));
+				probe.Sprintf("\n%s\n", one.GetString());
+				if(strstr(seqs.GetString(), probe.GetString()) || strstr(present.GetString(), probe.GetString()))
+					continue;
+
+				if(!strstr(need.GetString(), probe.GetString()))
+					need.AddSprintf("%s\n", one.GetString());
+
+				probe.Sprintf("    %s  (sequence %s)\n", name.GetString(), one.GetString());
+				NgsaAddLine(lines, hits, probe.GetString());
+			}
+		}
+
+		m_newsrctunnel->mysql_free_result(res);
+	}
+
+	if(hits > 12)
+		lines.AddSprintf("    ... and %d more\n", hits - 12);
+	if(nshared > 12)
+		shared.AddSprintf("    ... and %d more\n", nshared - 12);
+	if(nabsent > 12)
+		absent.AddSprintf("    ... and %d more\n", nabsent - 12);
+
+	if(nabsent > 0)
+	{
+		msg.Sprintf(_("These objects call a sequence of another database, and that sequence is not on the target server:\n\n%s\n"
+					  "They cannot be created there. Untick them, or create the sequence on the target server first."),
+					absent.GetString());
+		yog_message(m_hwnddlg, msg.GetAsWideChar(), pGlobals->m_appname.GetAsWideChar(), MB_OK | MB_ICONWARNING);
+		return wyFalse;
+	}
+
+	if(nshared > 0)
+	{
+		msg.Sprintf(_("These objects call a sequence of another database:\n\n%s\n"
+					  "It is not copied. The copies will call the sequence of that name on the target server. On the same "
+					  "server that is the sequence the originals use: every value a copy draws is one the originals will skip.\n\nOK - copy\nCancel - go back to the dialog"), shared.GetString());
+		answer = yog_message(m_hwnddlg, msg.GetAsWideChar(), pGlobals->m_appname.GetAsWideChar(),
+							 MB_OKCANCEL | MB_ICONWARNING);
+		if(answer != IDOK)
+			return wyFalse;
+	}
+
+	if(hits == 0)
+		return wyTrue;
+
+	if(!hseqfolder)
+	{
+		msg.Sprintf(_("The target server has no sequences. These objects call a sequence:\n\n%s\n"
+					  "They cannot be created there, and the copy stops at the first one.\n\n"
+					  "OK - copy as selected\nCancel - go back to the dialog"), lines.GetString());
+		answer = yog_message(m_hwnddlg, msg.GetAsWideChar(), pGlobals->m_appname.GetAsWideChar(),
+							 MB_OKCANCEL | MB_ICONWARNING | MB_DEFBUTTON2);
+		return (answer == IDOK) ? wyTrue : wyFalse;
+	}
+
+	msg.Sprintf(_("These objects call a sequence that is not selected for copying and is not in the target database:\n\n%s\n"
+				  "They cannot be created without their sequence, and the copy stops at the first one.\n\n"
+				  "Yes - copy these sequences as well\nNo - copy as selected\nCancel - go back to the dialog"),
+				lines.GetString());
+	answer = yog_message(m_hwnddlg, msg.GetAsWideChar(), pGlobals->m_appname.GetAsWideChar(),
+						 MB_YESNOCANCEL | MB_ICONWARNING);
+
+	if(answer == IDNO)
+		return wyTrue;
+	if(answer != IDYES)
+		return wyFalse;
+
+	// Yes: the sequences are ticked in the tree, so the dialog shows what was copied
+	wasticked = TreeView_GetCheckState(hwndtree, hseqfolder) ? wyTrue : wyFalse;
+	if(!(TreeView_GetItemState(hwndtree, hseqfolder, TVIS_EXPANDEDONCE) & TVIS_EXPANDEDONCE))
+		TreeView_Expand(hwndtree, hseqfolder, TVE_EXPAND);
+
+	for(hitem = TreeView_GetChild(hwndtree, hseqfolder); hitem; hitem = TreeView_GetNextSibling(hwndtree, hitem))
+	{
+		tvi.mask = TVIF_HANDLE | TVIF_TEXT;
+		tvi.hItem = hitem;
+		tvi.pszText = temptext;
+		tvi.cchTextMax = SIZE_512 - 1;
+		if(!TreeView_GetItem(hwndtree, &tvi))
+			continue;
+
+		name.SetAs(temptext);
+		probe.Sprintf("\n%s\n", name.GetString());
+		if(strstr(need.GetString(), probe.GetString()))
+		{
+			TreeView_SetCheckState(hwndtree, hitem, 1);
+		}
+		else if(wasticked == wyFalse)
+		{
+			TreeView_SetCheckState(hwndtree, hitem, 0);
+		}
+	}
+
+	TreeView_SetCheckState(hwndtree, hseqfolder, 1);
+
+	return wyTrue;
+}
+
+/* NGSA: MariaDB sequences are not tables (Table_type SEQUENCE), so PrepareShowTable leaves them out;
+   they have a folder of their own in the tree. Only what is ticked there is copied (and, with the drop
+   option, dropped in the target first): every sequence when the folder is ticked and was never opened,
+   else the ticked ones. */
+wyBool
+CopyDatabase::ExportSequences(HWND hwndtree, HTREEITEM hrootitem)
+{
+	MYSQL_RES	*res;
+	MYSQL_ROW	row;
+	HTREEITEM	hseq;
+	TVITEM		tvi = {0};
+	wyWChar		temptext[SIZE_512] = {0};
+	wyString	query, name;
+	wyInt32		count = 0, state, checkstate;
 	wyBool		ismysql41 = ((GetActiveWin())->m_ismysql41);
 
-	query.Sprintf("show full tables from `%s` where Table_type = 'SEQUENCE'", m_srcdb.GetString());
-	res = SjaExecuteAndGetResult(m_newsrctunnel, &m_newsrcmysql, query);
-	if(!res)
-		return wyTrue;		/* a server that does not know the type (very old MySQL) has no sequences to copy */
+	state = TreeView_GetItemState(hwndtree, hrootitem, TVIS_EXPANDEDONCE);
+	checkstate = TreeView_GetCheckState(hwndtree, hrootitem);
 
-	while((row = m_newsrctunnel->mysql_fetch_row(res)) != NULL)
+	if(!checkstate)
+		return wyTrue;
+
+	if(state & TVIS_EXPANDEDONCE)
 	{
-		if(IsCopyStopped() == wyTrue)
+		for(hseq = TreeView_GetChild(hwndtree, hrootitem); hseq; hseq = TreeView_GetNextSibling(hwndtree, hseq))
 		{
-			m_newsrctunnel->mysql_free_result(res);
+			if(!TreeView_GetCheckState(hwndtree, hseq))
+				continue;
+
+			if(IsCopyStopped() == wyTrue)
+				return wyFalse;
+
+			tvi.mask = TVIF_HANDLE | TVIF_TEXT;
+			tvi.hItem = hseq;
+			tvi.pszText = temptext;
+			tvi.cchTextMax = SIZE_512 - 1;
+			VERIFY(TreeView_GetItem(hwndtree, &tvi));
+			name.SetAs(temptext);
+
+			if(!name.GetLength())
+				continue;
+
+			if(count == 0)
+				m_gui_routine((void*)m_gui_lparam, "sequences", 0, wyFalse, COPYSTART);
+
+			if(ExportSequence(name.GetString()) == wyFalse)
+				return wyFalse;
+
+			count++;
+		}
+	}
+	else
+	{
+		query.Sprintf("show full tables from `%s` where Table_type = 'SEQUENCE'", m_srcdb.GetString());
+		res = SjaExecuteAndGetResult(m_newsrctunnel, &m_newsrcmysql, query);
+		if(!res)
+		{
+			ShowMySQLError(m_hwnddlg, m_newsrctunnel, &m_newsrcmysql, query.GetString());
 			return wyFalse;
 		}
-		if(count == 0)
-			m_gui_routine((void*)m_gui_lparam, "sequences", 0, wyFalse, COPYSTART);
 
-		name.SetAs(row[0], ismysql41);
-
-		if(m_dropobjects == wyTrue)
+		while((row = m_newsrctunnel->mysql_fetch_row(res)) != NULL)
 		{
-			query.Sprintf("drop sequence if exists `%s`.`%s`", m_targetdb.GetString(), name.GetString());
-			cres = SjaExecuteAndGetResult(m_newtargettunnel, &m_newtargetmysql, query);
-			if(!cres && (m_newtargetmysql)->affected_rows == -1)
+			if(IsCopyStopped() == wyTrue)
 			{
-				ShowMySQLError(m_hwnddlg, m_newtargettunnel, &m_newtargetmysql, query.GetString());
 				m_newsrctunnel->mysql_free_result(res);
 				return wyFalse;
 			}
-			if(cres)
-				m_newtargettunnel->mysql_free_result(cres);
+
+			if(count == 0)
+				m_gui_routine((void*)m_gui_lparam, "sequences", 0, wyFalse, COPYSTART);
+
+			name.SetAs(row[0], ismysql41);
+
+			if(ExportSequence(name.GetString()) == wyFalse)
+			{
+				m_newsrctunnel->mysql_free_result(res);
+				return wyFalse;
+			}
+
+			count++;
 		}
 
-		query.Sprintf("show create sequence `%s`.`%s`", m_srcdb.GetString(), name.GetString());
-		cres = SjaExecuteAndGetResult(m_newsrctunnel, &m_newsrcmysql, query);
-		if(!cres)
-		{
-			ShowMySQLError(m_hwnddlg, m_newsrctunnel, &m_newsrcmysql, query.GetString());
-			m_newsrctunnel->mysql_free_result(res);
-			return wyFalse;
-		}
-		crow = m_newsrctunnel->mysql_fetch_row(cres);
-		/* MariaDB 11.8 names the columns "Table" and "Create Table" (checked 09/11/2026), not "Create Sequence": the
-		   statement is the second column whatever its heading */
-		index = GetFieldIndex(m_newsrctunnel, cres, "Create Sequence");
-		if(index == -1)
-			index = GetFieldIndex(m_newsrctunnel, cres, "Create Table");
-		if(index == -1 && m_newsrctunnel->mysql_num_fields(cres) >= 2)
-			index = 1;
-		if(!crow || index == -1)
-		{
-			ShowMySQLError(m_hwnddlg, m_newsrctunnel, &m_newsrcmysql, query.GetString());
-			m_newsrctunnel->mysql_free_result(cres);
-			m_newsrctunnel->mysql_free_result(res);
-			return wyFalse;
-		}
-		def.SetAs(crow[index], ismysql41);
-		m_newsrctunnel->mysql_free_result(cres);
+		m_newsrctunnel->mysql_free_result(res);
+	}
 
-		cres = SjaExecuteAndGetResult(m_newtargettunnel, &m_newtargetmysql, def);
+	if(count > 0)
+	{
+		if(m_isobjecttoexport == wyFalse)
+			m_isobjecttoexport = wyTrue;
+
+		m_gui_routine((void*)m_gui_lparam, "sequence(s)", count, wyFalse, OBJECTSCOPIED);
+	}
+
+	return wyTrue;
+}
+
+/* NGSA: one sequence: created in the target from its SHOW CREATE SEQUENCE (unqualified: the target database is
+   the session's current one, ChangeTargetDB). With the "sequence state" option its position comes along as
+   well, DO SETVAL(sequence, next_not_cached_value, 0) as a dump writes it: rows that are copied hold values
+   the sequence has already given out, and a sequence that started again would hand them out a second time.
+   Without the option the sequence starts where its definition says. */
+wyBool
+CopyDatabase::ExportSequence(const wyChar *sequence)
+{
+	MYSQL_RES	*cres;
+	MYSQL_ROW	crow;
+	wyString	query, def, nextval;
+	wyInt32		index;
+	wyBool		ismysql41 = ((GetActiveWin())->m_ismysql41);
+
+	if(m_dropobjects == wyTrue)
+	{
+		query.Sprintf("drop sequence if exists `%s`.`%s`", m_targetdb.GetString(), sequence);
+		cres = SjaExecuteAndGetResult(m_newtargettunnel, &m_newtargetmysql, query);
 		if(!cres && (m_newtargetmysql)->affected_rows == -1)
 		{
-			ShowMySQLError(m_hwnddlg, m_newtargettunnel, &m_newtargetmysql, def.GetString());
-			m_newsrctunnel->mysql_free_result(res);
+			ShowMySQLError(m_hwnddlg, m_newtargettunnel, &m_newtargetmysql, query.GetString());
 			return wyFalse;
 		}
 		if(cres)
 			m_newtargettunnel->mysql_free_result(cres);
-
-		count++;
-		if(m_isobjecttoexport == wyFalse)
-			m_isobjecttoexport = wyTrue;
 	}
-	m_newsrctunnel->mysql_free_result(res);
 
-	if(count > 0)
-		m_gui_routine((void*)m_gui_lparam, "sequence(s)", count, wyFalse, OBJECTSCOPIED);
+	query.Sprintf("show create sequence `%s`.`%s`", m_srcdb.GetString(), sequence);
+	cres = SjaExecuteAndGetResult(m_newsrctunnel, &m_newsrcmysql, query);
+	if(!cres)
+	{
+		ShowMySQLError(m_hwnddlg, m_newsrctunnel, &m_newsrcmysql, query.GetString());
+		return wyFalse;
+	}
+	crow = m_newsrctunnel->mysql_fetch_row(cres);
+	/* MariaDB 11.8 names the columns "Table" and "Create Table", not "Create Sequence": the statement is the
+	   second column whatever its heading */
+	index = GetFieldIndex(m_newsrctunnel, cres, "Create Sequence");
+	if(index == -1)
+		index = GetFieldIndex(m_newsrctunnel, cres, "Create Table");
+	if(index == -1 && m_newsrctunnel->mysql_num_fields(cres) >= 2)
+		index = 1;
+	if(!crow || index == -1)
+	{
+		ShowMySQLError(m_hwnddlg, m_newsrctunnel, &m_newsrcmysql, query.GetString());
+		m_newsrctunnel->mysql_free_result(cres);
+		return wyFalse;
+	}
+	def.SetAs(crow[index], ismysql41);
+	m_newsrctunnel->mysql_free_result(cres);
+
+	cres = SjaExecuteAndGetResult(m_newtargettunnel, &m_newtargetmysql, def);
+	if(!cres && (m_newtargetmysql)->affected_rows == -1)
+	{
+		ShowMySQLError(m_hwnddlg, m_newtargettunnel, &m_newtargetmysql, def.GetString());
+		return wyFalse;
+	}
+	if(cres)
+		m_newtargettunnel->mysql_free_result(cres);
+
+	if(m_seqstate == wyFalse)
+		return wyTrue;
+
+	query.Sprintf("select `next_not_cached_value` from `%s`.`%s`", m_srcdb.GetString(), sequence);
+	cres = SjaExecuteAndGetResult(m_newsrctunnel, &m_newsrcmysql, query);
+	if(!cres)
+	{
+		ShowMySQLError(m_hwnddlg, m_newsrctunnel, &m_newsrcmysql, query.GetString());
+		return wyFalse;
+	}
+	crow = m_newsrctunnel->mysql_fetch_row(cres);
+	if(crow && crow[0])
+		nextval.SetAs(crow[0]);
+	m_newsrctunnel->mysql_free_result(cres);
+
+	if(!nextval.GetLength())
+		return wyTrue;
+
+	query.Sprintf("do setval(`%s`, %s, 0)", sequence, nextval.GetString());
+	cres = SjaExecuteAndGetResult(m_newtargettunnel, &m_newtargetmysql, query);
+	if(!cres && (m_newtargetmysql)->affected_rows == -1)
+	{
+		ShowMySQLError(m_hwnddlg, m_newtargettunnel, &m_newtargetmysql, query.GetString());
+		return wyFalse;
+	}
+	if(cres)
+		m_newtargettunnel->mysql_free_result(cres);
 
 	return wyTrue;
 }
@@ -4117,6 +4660,9 @@ CopyDatabase::EnableDlgWindows(wyBool enable)
 	EnableWindow(GetDlgItem(m_hwnddlg, IDC_CPY_BULKINSERT), state);
 	EnableWindow(GetDlgItem(m_hwnddlg, IDC_CPY_DEFINER), state);
 	EnableWindow(GetDlgItem(m_hwnddlg, IDC_CPY_ASCTRIGGERS), state);
+	// NGSA: the sequence state box only where there is a Sequences folder
+	EnableWindow(GetDlgItem(m_hwnddlg, IDC_CPY_SEQSTATE),
+				 (state && GetObjectsHtreeItem(GetDlgItem(m_hwnddlg, IDC_TREE), TXT_SEQUENCES, wyTrue)) ? TRUE : FALSE);
     if(m_is5xobjects == wyTrue)
         EnableWindow(GetDlgItem(m_hwnddlg, IDC_CHK_DROPOBJECTS), state);
     
@@ -4281,6 +4827,7 @@ CopyDatabase::GetCtrlRects()
         IDC_CPY_BULKINSERT, 0, 0,
 		IDC_CPY_DEFINER, 0, 0,
 		IDC_CPY_ASCTRIGGERS, 0, 0,
+		IDC_CPY_SEQSTATE, 0, 0,
         IDC_SUMMARY, 0, 0,
 		IDC_INVISIBLE, 0, 0,
         IDOK, 0, 0,
@@ -4342,6 +4889,7 @@ CopyDatabase::PositionCtrls()
 				case IDC_CPY_BULKINSERT:
 				case IDC_CPY_DEFINER:
 			    case IDC_CPY_ASCTRIGGERS:
+				case IDC_CPY_SEQSTATE:
 					x = (rect.right - rect.left)/2 + 8 ;
 					break;
 				case IDC_SUMMARY:

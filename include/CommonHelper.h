@@ -994,6 +994,11 @@ void    RotateBitLeft (unsigned char *str);
 
 void    RemoveDefiner(wyString &text, const wyChar* pattern, wyInt32 extra);
 
+/// NGSA: sequence calls in the text of a table or a view: one identifier of a call, and the name of database db
+/// taken out of nextval( / lastval( calls so that the server binds them to the database the object is created in
+void    NgsaSequenceIdent(const wyChar *&p, wyString &ident);
+void    NgsaUnqualifySequences(wyString &stmt, const wyChar *db);
+
 void    RemoveBrackets(wyString &text, const wyChar* pattern);
 
 /// Encryption of password

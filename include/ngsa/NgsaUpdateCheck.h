@@ -1,7 +1,7 @@
 /* Copyright (C) 2026 André Walsh
    This file is part of bonSQL and is distributed under the GNU General Public License, version 3 or later.
 
-   Check for new versions (24/10/2026). bonSQL fetches one small JSON file from the bonSQL website over HTTPS
+   Check for new versions. bonSQL fetches one small JSON file from the bonSQL website over HTTPS
    (BRAND_UPDATE_URL_A) and compares the version in it with its own. The request carries nothing about the
    installation: no version, no identifier, a bare "bonSQL" user agent. The program never downloads or installs
    anything; it only tells the user and can open the download page in the browser.

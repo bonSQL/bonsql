@@ -402,29 +402,29 @@ All Files(*.*)\0*.*\0"
 #define		DEFAULT_READONLY_RESULT						_(L"Read-only result")
 #define		BUYLABEL									"click here"
 #if			IS_FROM_WINDOWS_STORE == 1
-#define		BUYURL										""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
+#define		BUYURL										""	// bonSQL: was a webyog.com address
 #else
-#define		BUYURL										""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
+#define		BUYURL										""	// bonSQL: was a webyog.com address
 #endif
-#define		BUYURL_POWERTOOLS							""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
+#define		BUYURL_POWERTOOLS							""	// bonSQL: was a webyog.com address
 ////#define		BUYURL_NAGBEGIN								"http://www.webyog.com/product/sqlyogpricing/?ref=community.nagbegin"
-#define		BUYURL_TOOLBARRIBBON						""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
-#define		BUYURL_NAGEND								""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
-#define     HOMEURL_ABOUTUS								""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
-#define     BUYURL_STATUSBAR							""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
-#define     HOMEURL_UPGRADECHECK						""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
+#define		BUYURL_TOOLBARRIBBON						""	// bonSQL: was a webyog.com address
+#define		BUYURL_NAGEND								""	// bonSQL: was a webyog.com address
+#define     HOMEURL_ABOUTUS								""	// bonSQL: was a webyog.com address
+#define     BUYURL_STATUSBAR							""	// bonSQL: was a webyog.com address
+#define     HOMEURL_UPGRADECHECK						""	// bonSQL: was a webyog.com address
 ////#define		BUYURL_BUYNAGBEGIN							"http://www.webyog.com/product/sqlyogpricing/?ref=community.buynagbegin"
-#define		BUYURL_BUYNAGEND							""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
-#define		SUPPORTURL									""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
+#define		BUYURL_BUYNAGEND							""	// bonSQL: was a webyog.com address
+#define		SUPPORTURL									""	// bonSQL: was a webyog.com address
 
 #if			IS_FROM_WINDOWS_STORE == 1
-#define     BUYENT										""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
+#define     BUYENT										""	// bonSQL: was a webyog.com address
 #else
-#define     BUYENT										""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
+#define     BUYENT										""	// bonSQL: was a webyog.com address
 #endif
-#define		IMAGEURL									""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
-#define     PRODUCTURL                                  ""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
-#define     COMMUNITYURL                                ""	// bonSQL: was a webyog.com address (docs/ngsa/LINK-AUDIT.md)
+#define		IMAGEURL									""	// bonSQL: was a webyog.com address
+#define     PRODUCTURL                                  ""	// bonSQL: was a webyog.com address
+#define     COMMUNITYURL                                ""	// bonSQL: was a webyog.com address
 
 // prototypes for some magic numbers
 #define		SIZE_64										64

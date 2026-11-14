@@ -4757,7 +4757,7 @@ MDIWindow::LoadQueryTabPlusMenu(LPARAM lparam)
     LocalizeMenu(hmenu);
 	htrackmenu = GetSubMenu(hmenu, 0);
 
-#ifdef COMMUNITY	// bonSQL: Ultimate-only items (docs/ngsa/UPSELLS.md)
+#ifdef COMMUNITY	// bonSQL: Ultimate-only items
     DeleteMenu(htrackmenu, ID_QUERYBUILDER, MF_BYCOMMAND);
     DeleteMenu(htrackmenu, ID_SCHEMADESIGNER, MF_BYCOMMAND);
     DeleteMenu(htrackmenu, ID_DATASEARCH, MF_BYCOMMAND);

@@ -408,6 +408,12 @@ UserManager::InitDialog(HWND hwnd)
                  rectpriv.bottom - rectpriv.top - padding, 
                  SWP_NOZORDER);
 
+    // NGSA: the Roles node has a list of its own in the same place
+    SetWindowPos(GetDlgItem(m_hwnd, IDC_UM_ROLELIST), NULL, rectpriv.left, rectpriv.top + padding,
+                 rectpriv.right - rectpriv.left,
+                 rectpriv.bottom - rectpriv.top - padding,
+                 SWP_NOZORDER);
+
     //set the position of help note
     GetWindowRect(m_hwndnote, &temp);
     MapWindowPoints(NULL, m_hwnd, (LPPOINT)&temp, 2);
@@ -436,6 +442,28 @@ UserManager::InitDialog(HWND hwnd)
     //enable check boxes in list view
     SendMessage(GetDlgItem(m_hwnd, IDC_PRIVLIST), LVM_SETEXTENDEDLISTVIEWSTYLE, 
                 (WPARAM)LVS_EX_CHECKBOXES,(LPARAM)LVS_EX_CHECKBOXES);
+
+    // NGSA: the list of the Roles node: the role (ticked = granted) and whether it is a default role
+    {
+        HWND        hwndroles = GetDlgItem(m_hwnd, IDC_UM_ROLELIST);
+        LVCOLUMN    lvc;
+        RECT        rcroles;
+        wyInt32     cxdefault;
+
+        SendMessage(hwndroles, LVM_SETEXTENDEDLISTVIEWSTYLE,
+                    (WPARAM)(LVS_EX_CHECKBOXES | LVS_EX_FULLROWSELECT), (LPARAM)(LVS_EX_CHECKBOXES | LVS_EX_FULLROWSELECT));
+        GetClientRect(hwndroles, &rcroles);
+        cxdefault = (rcroles.right * 2) / 5;
+        ZeroMemory(&lvc, sizeof(lvc));
+        lvc.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
+        lvc.pszText = _(L"Role");
+        lvc.cx = rcroles.right - cxdefault - GetSystemMetrics(SM_CXVSCROLL);
+        ListView_InsertColumn(hwndroles, 0, &lvc);
+        lvc.pszText = _(L"Default at login");
+        lvc.cx = cxdefault;
+        lvc.iSubItem = 1;
+        ListView_InsertColumn(hwndroles, 1, &lvc);
+    }
 
     //limit the text in various edit controls
     SendMessage(GetDlgItem(m_hwnd, IDC_USERNAME), EM_LIMITTEXT, (WPARAM)32, 0);
@@ -613,6 +641,8 @@ UserManager::GetCtrlRects()
         IDC_HELPZERO, 0, 0,
         IDC_SELECTALLCHECK, 0, 0,
         IDC_PRIVLIST, 0, 1,
+        IDC_UM_ROLELIST, 0, 1,
+        IDC_UM_ROLEDEFAULT, 0, 0,
         IDC_GRIP, 0, 0,
         IDC_SAVE_CHANGES, 0, 0,
         IDC_CANCEL_CHANGES, 0, 0,
@@ -689,6 +719,7 @@ UserManager::PositionCtrls()
             case IDC_CANCEL_CHANGES:
             case IDCANCEL:
             case IDC_GRIP:
+            case IDC_UM_ROLEDEFAULT:
 			
                 y = rect.bottom - bottompadding - height;
                 break;
@@ -1097,6 +1128,10 @@ UserManager::OnWMCommand(WPARAM wparam, LPARAM lparam)
 					SetDirtyFlag();
 			}
 			break;
+        case IDC_UM_ROLEDEFAULT:    // NGSA: default role on/off for the selected row
+            if(HIWORD(wparam) == BN_CLICKED)
+                OnRoleDefaultToggle();
+            break;
         case IDC_CANCEL_CHANGES:
             OnCancelChanges();
             break;
@@ -1378,7 +1413,8 @@ UserManager::OnSelectAllCheck()
 {
     BOOL    checkstate;
     wyInt32 i, itemcount;
-    HWND    hwndlistview  = GetDlgItem(m_hwnd, IDC_PRIVLIST);
+    HWND    hwndroles = GetDlgItem(m_hwnd, IDC_UM_ROLELIST);
+    HWND    hwndlistview  = IsWindowVisible(hwndroles) ? hwndroles : GetDlgItem(m_hwnd, IDC_PRIVLIST);
     
     //get the check state
     if(SendMessage(GetDlgItem(m_hwnd, IDC_SELECTALLCHECK), BM_GETCHECK, 0, 0) == BST_CHECKED)
@@ -1402,6 +1438,9 @@ UserManager::OnSelectAllCheck()
 
     //reset the flags
     m_isselectallcheck = wyFalse;
+
+    if(hwndlistview == hwndroles)
+        SyncRoleDefaults();
 
     //set the dirty flag
     SetDirtyFlag();
@@ -1595,6 +1634,7 @@ wyBool
 UserManager::PopulateUserInfo()
 {
     LoadGrantedRoles();     // NGSA (M3)
+    LoadDefaultRoles();
     TVITEM      tvi = {0};
     HWND        hwndobtree = GetDlgItem(m_hwnd, IDC_OBTREE);
     wyString    user;
@@ -2101,9 +2141,16 @@ void
 UserManager::OnListViewItemChanged(LPARAM lparam)
 {
     LPNMLISTVIEW    lpnmlist = (LPNMLISTVIEW)lparam;
-    HWND            hwndlistview  = GetDlgItem(m_hwnd, IDC_PRIVLIST);
+    HWND            hwndlistview  = lpnmlist->hdr.hwndFrom;     // the privilege list or the roles list
     BOOL            checkstate = FALSE, lastcheckstate;
     wyInt32         i, j, itemcount;
+
+    // NGSA: the default role button follows the selected row of the roles list
+    if(lpnmlist->hdr.idFrom == IDC_UM_ROLELIST && (lpnmlist->uChanged & LVIF_STATE) &&
+       ((lpnmlist->uNewState ^ lpnmlist->uOldState) & LVIS_SELECTED))
+    {
+        UpdateRoleDefaultButton();
+    }
 
     //if it is because the user clicked on slect all check, then we dont want to process it
     if(m_isselectallcheck == wyTrue)
@@ -2175,6 +2222,11 @@ UserManager::OnListViewItemChanged(LPARAM lparam)
     //send the message to check/uncheck the select all check
     SendMessage(GetDlgItem(m_hwnd, IDC_SELECTALLCHECK), BM_SETCHECK, (checkstate == TRUE) ? BST_CHECKED : BST_UNCHECKED, 0);
     
+    if(lpnmlist->hdr.idFrom == IDC_UM_ROLELIST && m_isautomatedchange == wyFalse)
+    {
+        SyncRoleDefaults();
+    }
+
     //if it is not an automated change like while loading the existing privileges, set the lastchecked index and dirty flag
     if(m_isautomatedchange == wyFalse)
     {
@@ -2301,6 +2353,11 @@ UserManager::OnTreeViewSelChanged(LPARAM lparam)
 
     //update the object info to uniqly identify the object in the server
     SetSelectedObjectInfo();
+
+    // NGSA: everything was enabled just above; the Role box and what follows it (password edits,
+    // plugin combo) go back to their own rule
+    EnableWindow(GetDlgItem(m_hwnd, IDC_UM_ISROLE), (m_isnewuser == wyTrue && m_hmdi->m_ngsacaps.roles == wyTrue) ? TRUE : FALSE);
+    ApplyRoleControls();
     
     //update the 
     if(tvi.iImage != m_umimageindex)
@@ -2499,6 +2556,15 @@ UserManager::ShowHideControls(wyInt32 imageindex)
                    (imageindex == m_umimageindex) ? SW_HIDE : SW_SHOW);
     }
 	
+    // NGSA: the Roles node shows its own list and the default role button
+    if(imageindex == m_umimageindex + 3)
+    {
+        ShowWindow(GetDlgItem(m_hwnd, IDC_PRIVLIST), SW_HIDE);
+    }
+
+    ShowWindow(GetDlgItem(m_hwnd, IDC_UM_ROLELIST), (imageindex == m_umimageindex + 3) ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(m_hwnd, IDC_UM_ROLEDEFAULT), (imageindex == m_umimageindex + 3) ? SW_SHOW : SW_HIDE);
+
     ShowWindow(m_hwndnote, SW_HIDE);
 	// reset plugin selection visibility depending on the DBversion number.
 
@@ -3224,6 +3290,15 @@ UserManager::ApplyRoleControls()
     EnableWindow(GetDlgItem(m_hwnd, IDC_PASSWORD), isrole ? FALSE : TRUE);
     EnableWindow(GetDlgItem(m_hwnd, IDC_PASSWORD_CONFIRM), isrole ? FALSE : TRUE);
     EnableWindow(GetDlgItem(m_hwnd, IDC_AUTHPLUGIN), (isrole || pluginvis == wyFalse) ? FALSE : TRUE);
+
+    // an existing role cannot be renamed: MariaDB has RENAME USER for accounts only, MySQL refuses it
+    // for a role that is granted (error 3532)
+    {
+        BOOL fixedname = (m_isnewuser == wyFalse && m_isrole == wyTrue) ? TRUE : FALSE;
+
+        EnableWindow(GetDlgItem(m_hwnd, IDC_USERNAME), fixedname ? FALSE : TRUE);
+        EnableWindow(GetDlgItem(m_hwnd, IDC_HOSTNAME), fixedname ? FALSE : TRUE);
+    }
 }
 
 //function sets the texts of various controls
@@ -4447,6 +4522,7 @@ UserManager::UpdateListView(wyInt32 imageindex)
     HWND hwndcheck = GetDlgItem(m_hwnd, IDC_SELECTALLCHECK);
 
     ListView_DeleteAllItems(hwndlistview);
+    ListView_DeleteAllItems(GetDlgItem(m_hwnd, IDC_UM_ROLELIST));
 
     //reset this so that we can have shift click functionality works fine
     m_lastcheckedindex = -1;
@@ -5017,7 +5093,7 @@ void
 UserManager::PopulateRoles()
 {
     LVITEM      lvi;
-    HWND        hwndlistview = GetDlgItem(m_hwnd, IDC_PRIVLIST);
+    HWND        hwndlistview = GetDlgItem(m_hwnd, IDC_UM_ROLELIST);
     wyString    query, key, text;
     MYSQL_RES*  myres;
     MYSQL_ROW   row;
@@ -5035,7 +5111,8 @@ UserManager::PopulateRoles()
     if(myres == NULL)
         return;
 
-    lvi.mask = LVIF_TEXT;
+    // the list sorts its rows itself, so each row carries the position of its key in m_roleitems
+    lvi.mask = LVIF_TEXT | LVIF_PARAM;
     lvi.iSubItem = 0;
 
     while((row = m_hmdi->m_tunnel->mysql_fetch_row(myres)))
@@ -5052,6 +5129,7 @@ UserManager::PopulateRoles()
             continue;       // a role cannot be granted to itself
 
         text.SetAs(key);
+        lvi.lParam = i;
         lvi.iItem = i++;
         lvi.pszText = text.GetAsWideChar();
         lvi.cchTextMax = text.GetLength();
@@ -5066,58 +5144,273 @@ UserManager::PopulateRoles()
 void
 UserManager::FillRoles()
 {
-    HWND        hwndlistview = GetDlgItem(m_hwnd, IDC_PRIVLIST);
+    HWND        hwndlistview = GetDlgItem(m_hwnd, IDC_UM_ROLELIST);
     wyInt32     i, count = ListView_GetItemCount(hwndlistview);
-    wyWChar     buffer[SIZE_256];
-    wyString    key;
+    wyString    key, probe;
+    BOOL        held;
 
+    // the key comes from the row itself, not from its text: the text is UTF-16 and a name with
+    // characters outside ASCII did not come back as the UTF-8 key it was loaded with
     for(i = 0; i < count; ++i)
     {
-        buffer[0] = 0;
-        ListView_GetItemText(hwndlistview, i, 0, buffer, SIZE_256 - 1);
-        key.Sprintf("|%S|", buffer);
-        ListView_SetCheckState(hwndlistview, i, m_rolesgranted.Find(key.GetString(), 0) != -1 ? TRUE : FALSE);
+        held = FALSE;
+
+        if(RoleKeyOfRow(hwndlistview, i, key) == wyTrue)
+        {
+            probe.Sprintf("|%s|", key.GetString());
+            held = (m_rolesgranted.Find(probe.GetString(), 0) != -1) ? TRUE : FALSE;
+        }
+
+        ListView_SetCheckState(hwndlistview, i, held);
     }
+
+    ShowRoleDefaults();
 }
 
-// the list -> working copy (called when leaving the Roles node and before saving)
+// the key (name, or name@host on MySQL) of a row of the Roles list, from m_roleitems
+wyBool
+UserManager::RoleKeyOfRow(HWND hwndlistview, wyInt32 item, wyString& key)
+{
+    LVITEM      lvi;
+    wyInt32     start, end, n;
+
+    ZeroMemory(&lvi, sizeof(lvi));
+    lvi.mask = LVIF_PARAM;
+    lvi.iItem = item;
+
+    if(!ListView_GetItem(hwndlistview, &lvi))
+        return wyFalse;
+
+    for(start = 1, n = 0; (end = m_roleitems.Find("|", start)) != -1; start = end + 1, ++n)
+    {
+        if(n == (wyInt32)lvi.lParam)
+        {
+            key.SetAs(m_roleitems.Substr(start, end - start));
+            return wyTrue;
+        }
+    }
+
+    return wyFalse;
+}
+
+// the list -> working copy (called when leaving the Roles node and before saving). Only the roles
+// the list shows are added or taken out: the account may hold roles the list does not offer (on
+// MySQL any account can be granted as a role), and those must stay granted.
 void
 UserManager::UpdateRolesWorking()
 {
-    HWND        hwndlistview = GetDlgItem(m_hwnd, IDC_PRIVLIST);
+    HWND        hwndlistview = GetDlgItem(m_hwnd, IDC_UM_ROLELIST);
     wyInt32     i, count = ListView_GetItemCount(hwndlistview);
-    wyWChar     buffer[SIZE_256];
+    wyString    key, probe;
+    wyBool      held;
 
     if(count == 0 || !IsWindowVisible(hwndlistview))
         return;
 
-    m_rolesgranted.SetAs("|");
-
     for(i = 0; i < count; ++i)
     {
-        if(!ListView_GetCheckState(hwndlistview, i))
+        if(RoleKeyOfRow(hwndlistview, i, key) == wyFalse)
             continue;
 
-        buffer[0] = 0;
-        ListView_GetItemText(hwndlistview, i, 0, buffer, SIZE_256 - 1);
-        m_rolesgranted.AddSprintf("%S|", buffer);
+        probe.Sprintf("|%s|", key.GetString());
+        held = (m_rolesgranted.Find(probe.GetString(), 0) != -1) ? wyTrue : wyFalse;
+
+        if(ListView_GetCheckState(hwndlistview, i))
+        {
+            if(held == wyFalse)
+                m_rolesgranted.AddSprintf("%s|", key.GetString());
+        }
+        else if(held == wyTrue)
+        {
+            m_rolesgranted.FindAndReplace(probe.GetString(), "|");
+        }
     }
 }
 
-// GRANT role TO account / REVOKE role FROM account for the difference between loaded and working copy.
-// MySQL: granted roles are inactive until they are default roles, so SET DEFAULT ROLE ALL follows a
-// grant. MariaDB: a single default role; it is set when the account has none yet.
+// the default roles of the selection -> m_roledefaultsorig / m_roledefaults. MySQL keeps any number
+// of them in mysql.default_roles; MariaDB keeps one name in mysql.user
+void
+UserManager::LoadDefaultRoles()
+{
+    wyString    query, tempuser, temphost;
+    MYSQL_RES*  myres;
+    MYSQL_ROW   row;
+
+    m_roledefaultsorig.SetAs("|");
+    m_roledefaults.SetAs("|");
+
+    if(m_hmdi->m_ngsacaps.roles == wyFalse)
+        return;
+
+    EscapeMySQLString(m_username.GetString(), tempuser);
+    EscapeMySQLString(m_host.GetString(), temphost);
+
+    if(m_hmdi->m_ngsacaps.engine == NGSA_ENGINE_MARIADB)
+        query.Sprintf("SELECT `default_role`, '' FROM `mysql`.`user` WHERE `User` = '%s' AND `Host` = '%s'", tempuser.GetString(), temphost.GetString());
+    else
+        query.Sprintf("SELECT `DEFAULT_ROLE_USER`, `DEFAULT_ROLE_HOST` FROM `mysql`.`default_roles` WHERE `USER` = '%s' AND `HOST` = '%s'", tempuser.GetString(), temphost.GetString());
+
+    myres = ExecuteAndGetResult(m_hmdi, m_hmdi->m_tunnel, &m_hmdi->m_mysql, query, wyFalse);
+
+    if(myres == NULL)
+        return;
+
+    while((row = m_hmdi->m_tunnel->mysql_fetch_row(myres)))
+    {
+        if(!row[0] || !row[0][0])
+            continue;
+
+        if(m_hmdi->m_ngsacaps.engine == NGSA_ENGINE_MARIADB)
+            m_roledefaultsorig.AddSprintf("%s|", row[0]);
+        else
+            m_roledefaultsorig.AddSprintf("%s@%s|", row[0], row[1] ? row[1] : "%");
+    }
+
+    m_hmdi->m_tunnel->mysql_free_result(myres);
+    m_roledefaults.SetAs(m_roledefaultsorig);
+}
+
+// the second column of the Roles list and the button, from the working copy
+void
+UserManager::ShowRoleDefaults()
+{
+    HWND        hwndlistview = GetDlgItem(m_hwnd, IDC_UM_ROLELIST);
+    wyInt32     i, count = ListView_GetItemCount(hwndlistview);
+    wyString    key, probe;
+    wyWChar*    text;
+
+    for(i = 0; i < count; ++i)
+    {
+        text = L"";
+
+        if(RoleKeyOfRow(hwndlistview, i, key) == wyTrue)
+        {
+            probe.Sprintf("|%s|", key.GetString());
+
+            if(m_roledefaults.Find(probe.GetString(), 0) != -1)
+                text = ListView_GetCheckState(hwndlistview, i) ? _(L"Yes") : _(L"Yes (not granted)");
+        }
+
+        ListView_SetItemText(hwndlistview, i, 1, text);
+    }
+
+    UpdateRoleDefaultButton();
+}
+
+// a role that is no longer ticked cannot stay a default role. One case is left alone: a default the
+// server already held for a role that was not granted when the account was loaded (MariaDB keeps the
+// name after a revoke); nobody asked to change that
+void
+UserManager::SyncRoleDefaults()
+{
+    HWND        hwndlistview = GetDlgItem(m_hwnd, IDC_UM_ROLELIST);
+    wyInt32     i, count = ListView_GetItemCount(hwndlistview);
+    wyString    key, probe;
+
+    for(i = 0; i < count; ++i)
+    {
+        if(ListView_GetCheckState(hwndlistview, i) || RoleKeyOfRow(hwndlistview, i, key) == wyFalse)
+            continue;
+
+        probe.Sprintf("|%s|", key.GetString());
+
+        if(m_roledefaults.Find(probe.GetString(), 0) == -1)
+            continue;
+
+        if(m_roledefaultsorig.Find(probe.GetString(), 0) != -1 && m_rolesgrantedorig.Find(probe.GetString(), 0) == -1)
+            continue;
+
+        m_roledefaults.FindAndReplace(probe.GetString(), "|");
+    }
+
+    ShowRoleDefaults();
+}
+
+// the button works on the selected row, and only when that role is ticked. A role account has no
+// default roles of its own here
+void
+UserManager::UpdateRoleDefaultButton()
+{
+    HWND        hwndlistview = GetDlgItem(m_hwnd, IDC_UM_ROLELIST);
+    wyInt32     item = ListView_GetNextItem(hwndlistview, -1, LVNI_SELECTED);
+    BOOL        enable = (m_isrole == wyFalse && item != -1 && ListView_GetCheckState(hwndlistview, item)) ? TRUE : FALSE;
+
+    EnableWindow(GetDlgItem(m_hwnd, IDC_UM_ROLEDEFAULT), enable);
+}
+
+// default role on/off for the selected row. MariaDB has one default role, so a new one replaces it
+void
+UserManager::OnRoleDefaultToggle()
+{
+    HWND        hwndlistview = GetDlgItem(m_hwnd, IDC_UM_ROLELIST);
+    wyInt32     item = ListView_GetNextItem(hwndlistview, -1, LVNI_SELECTED);
+    wyString    key, probe;
+
+    if(m_isrole == wyTrue || item == -1 || !ListView_GetCheckState(hwndlistview, item) ||
+       RoleKeyOfRow(hwndlistview, item, key) == wyFalse)
+    {
+        return;
+    }
+
+    probe.Sprintf("|%s|", key.GetString());
+
+    if(m_roledefaults.Find(probe.GetString(), 0) != -1)
+    {
+        m_roledefaults.FindAndReplace(probe.GetString(), "|");
+    }
+    else
+    {
+        if(m_hmdi->m_ngsacaps.engine == NGSA_ENGINE_MARIADB)
+            m_roledefaults.SetAs("|");
+
+        m_roledefaults.AddSprintf("%s|", key.GetString());
+    }
+
+    ShowRoleDefaults();
+    SetDirtyFlag(wyTrue);
+}
+
+// wyTrue when two |key| lists hold the same keys, in any order
+static wyBool
+SameRoleKeys(wyString& a, wyString& b)
+{
+    wyInt32     start, end, counta = 0, countb = 0;
+    wyString    key, probe;
+
+    for(start = 1; (end = a.Find("|", start)) != -1; start = end + 1, ++counta)
+    {
+        key.SetAs(a.Substr(start, end - start));
+        probe.Sprintf("|%s|", key.GetString());
+
+        if(b.Find(probe.GetString(), 0) == -1)
+            return wyFalse;
+    }
+
+    for(start = 1; (end = b.Find("|", start)) != -1; start = end + 1)
+        ++countb;
+
+    return counta == countb ? wyTrue : wyFalse;
+}
+
+// GRANT role TO account / REVOKE role FROM account for the difference between loaded and working copy,
+// then the default roles, and those only when they were changed here. Granting a role does not make
+// it a default role and leaves the other default roles as they are. SET DEFAULT ROLE replaces the
+// whole list on MySQL, so the complete working list is sent.
 wyBool
 UserManager::ProcessRoleChanges()
 {
-    wyString    query, account, role, key, probe;
+    wyString    query, account, role, key, probe, expected, list;
     wyInt32     start, end;
-    wyBool      granted = wyFalse, changed = wyFalse;
+    wyBool      changed = wyFalse;
+    wyBool      ismariadb = (m_hmdi->m_ngsacaps.engine == NGSA_ENGINE_MARIADB) ? wyTrue : wyFalse;
 
     if(m_hmdi->m_ngsacaps.roles == wyFalse)
         return wyTrue;
 
     AccountLiteral(account);
+
+    // the default roles the server holds once the revokes below are done
+    expected.SetAs(m_roledefaultsorig);
 
     // revokes: in the original, not in the working copy
     for(start = 1; (end = m_rolesgrantedorig.Find("|", start)) != -1; start = end + 1)
@@ -5135,6 +5428,10 @@ UserManager::ProcessRoleChanges()
             return wyFalse;
 
         changed = wyTrue;
+
+        // MySQL drops a revoked role from the default roles itself; MariaDB keeps the name
+        if(ismariadb == wyFalse)
+            expected.FindAndReplace(probe.GetString(), "|");
     }
 
     // grants: in the working copy, not in the original
@@ -5152,45 +5449,37 @@ UserManager::ProcessRoleChanges()
         if(ExecuteUMQuery(query) == wyFalse)
             return wyFalse;
 
-        changed = granted = wyTrue;
-
-        if(m_hmdi->m_ngsacaps.engine == NGSA_ENGINE_MARIADB && m_isrole == wyFalse)
-        {
-            // MariaDB: make it the default role when the account has none
-            wyString    q2, tempuser, temphost;
-            MYSQL_RES*  res;
-            MYSQL_ROW   row;
-
-            EscapeMySQLString(m_username.GetString(), tempuser);
-            EscapeMySQLString(m_host.GetString(), temphost);
-            q2.Sprintf("SELECT `default_role` FROM `mysql`.`user` WHERE `User` = '%s' AND `Host` = '%s'", tempuser.GetString(), temphost.GetString());
-            res = ExecuteAndGetResult(m_hmdi, m_hmdi->m_tunnel, &m_hmdi->m_mysql, q2, wyFalse);
-
-            if(res)
-            {
-                row = m_hmdi->m_tunnel->mysql_fetch_row(res);
-
-                if(row && (!row[0] || !row[0][0]))
-                {
-                    q2.Sprintf("SET DEFAULT ROLE %s FOR %s", role.GetString(), account.GetString());
-                    ExecuteUMQuery(q2);
-                }
-
-                m_hmdi->m_tunnel->mysql_free_result(res);
-            }
-        }
+        changed = wyTrue;
     }
 
-    if(granted && m_hmdi->m_ngsacaps.engine != NGSA_ENGINE_MARIADB && m_isrole == wyFalse)
+    if(changed)
+        m_rolesgrantedorig.SetAs(m_rolesgranted);
+
+    // default roles
+    if(m_isrole == wyFalse && SameRoleKeys(expected, m_roledefaults) == wyFalse)
     {
-        query.Sprintf("SET DEFAULT ROLE ALL TO %s", account.GetString());
+        for(start = 1; (end = m_roledefaults.Find("|", start)) != -1; start = end + 1)
+        {
+            key.SetAs(m_roledefaults.Substr(start, end - start));
+            RoleLiteral(key.GetString(), role);
+
+            if(list.GetLength())
+                list.Add(", ");
+
+            list.Add(role.GetString());
+        }
+
+        if(!list.GetLength())
+            list.SetAs("NONE");
+
+        query.Sprintf("SET DEFAULT ROLE %s %s %s", list.GetString(), ismariadb ? "FOR" : "TO", account.GetString());
 
         if(ExecuteUMQuery(query) == wyFalse)
             return wyFalse;
     }
 
-    if(changed)
-        m_rolesgrantedorig.SetAs(m_rolesgranted);
+    if(m_isrole == wyFalse)
+        m_roledefaultsorig.SetAs(m_roledefaults);
 
     return wyTrue;
 }

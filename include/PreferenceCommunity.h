@@ -46,7 +46,7 @@ public:
 	*/
 	void        EnterprisePrefHandleWmInitDialog(HWND hwnd);
 
-	// bonSQL: the Autocomplete page (docs/ngsa/AUTOCOMPLETE-DESIGN.md); ini keys in [GENERALPREF]
+	// bonSQL: the Autocomplete page; ini keys in [GENERALPREF]
 	void        SetAcPrefDefaultValues(HWND hwnd);
 	void        SetAcPrefDefaultAllTabValues(HWND hwndbase, wyInt32 page);
 	wyBool      SaveAcPreferences(HWND hwndbase, wyInt32 page);

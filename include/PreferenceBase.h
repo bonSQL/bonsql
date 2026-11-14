@@ -30,8 +30,8 @@
 #define			BLOBFONT		 "BlobFont"
 #define			TIMEOUT			 "TimeOut"
 #ifdef COMMUNITY
-// bonSQL: no Power Tools or SQL Formatter pages (Ultimate-only, docs/ngsa/UPSELLS.md); -1 never matches a page.
-// The Autocomplete page (IDD_PREF3 reworked, docs/ngsa/AUTOCOMPLETE-DESIGN.md) comes last so that the other indexes stay.
+// bonSQL: no Power Tools or SQL Formatter pages (Ultimate-only); -1 never matches a page.
+// The Autocomplete page (IDD_PREF3 reworked) comes last so that the other indexes stay.
 #define         GENERALPREF_PAGE    0
 #define         AC_PAGE             3
 #define         FONT_PAGE           1

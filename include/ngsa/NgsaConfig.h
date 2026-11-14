@@ -5,7 +5,7 @@
    of the License, or (at your option) any later version. It is distributed WITHOUT ANY WARRANTY; see
    COPYING. */
 /*
- * bonSQL settings location and the one-time import from SQLyog (docs/ngsa/REBRAND.md, decisions 2 and 3).
+ * bonSQL settings location and the one-time import from SQLyog.
  */
 #ifndef NGSA_CONFIG_H
 #define NGSA_CONFIG_H

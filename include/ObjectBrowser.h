@@ -1618,6 +1618,22 @@ public:
     */
 			wyBool			AddTimestampDefault(const wyChar *newtable);
 
+			/// NGSA: the ticked columns whose default calls a sequence: lines for a message, and the statements that
+			/// put the default back on the new table (CREATE TABLE ... SELECT does not carry it)
+			wyInt32			NgsaSequenceDefaults(wyString &lines);
+
+			/// NGSA: the keys that cannot be copied as they are with the columns that are ticked: one line each for a
+			/// message, saying what becomes of the key
+			wyInt32			NgsaKeyChanges(wyString &lines);
+
+			/// NGSA: true when the source's AUTO_INCREMENT column is copied but no key that is copied starts with
+			/// it; the server would refuse AUTO_INCREMENT on it. Gives the column's name
+			wyBool			NgsaAutoIncrementLost(wyString &column);
+
+			/// NGSA: column defaults the new table did not get (CREATE TABLE ... SELECT drops a default that is an
+			/// expression) are put back
+			wyBool			NgsaRestoreDefaults(const wyChar *newtable);
+
 
 	/// Function to copy the foreign key relationships.
 	/**

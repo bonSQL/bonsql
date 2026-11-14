@@ -107,6 +107,8 @@ BlobMgmt::Create(HWND hwndParent, PINSERTUPDATEBLOB pib, wyBool edit)
 	m_ngsasyntax	=	-1;	// NGSA (M12)
 	m_ngsacolkey.SetAs(pib->m_ngsacolkey);
 	m_hwndngsasyntax = m_hwndngsasyntaxtext = NULL;
+	m_hwndngsanote = NULL;
+	m_ngsanoteready = wyFalse;
 	donot_close_window = wyTrue;
 
 	//Post 8.01F
@@ -164,6 +166,19 @@ BlobMgmt::DlgProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 			
 			if(lpnmhdr->code == TCN_SELCHANGE)
 				pcib->OnTabSelChange();
+			// NGSA: the editor went from unchanged to changed, or back (typing, undo, Format)
+			else if(lpnmhdr->idFrom == IDC_TEXT && (lpnmhdr->code == SCN_SAVEPOINTLEFT || lpnmhdr->code == SCN_SAVEPOINTREACHED))
+				pcib->NgsaUpdateNote();
+		}
+		break;
+
+	case WM_CTLCOLORSTATIC:
+		// NGSA: the "OK keeps changes" line is red (the dark theme keeps a colour the dialog chose)
+		if(pcib && (HWND)lParam == pcib->m_hwndngsanote && pcib->m_hwndngsanote)
+		{
+			SetTextColor((HDC)wParam, NgsaDark::IsOn() ? RGB(255, 120, 120) : RGB(200, 0, 0));
+			SetBkMode((HDC)wParam, TRANSPARENT);
+			return (INT_PTR)GetSysColorBrush(COLOR_BTNFACE);
 		}
 		break;
 
@@ -211,6 +226,7 @@ BlobMgmt::InitDlgVales()
 	VERIFY(m_hwndngsasyntax = GetDlgItem(m_hwnddlg, IDC_NGSA_SYNTAX));	// NGSA (M12)
 	VERIFY(m_hwndngsasyntaxtext = GetDlgItem(m_hwnddlg, IDC_NGSA_SYNTAXTEXT));
 	VERIFY(m_hwndngsaformat = GetDlgItem(m_hwnddlg, IDC_NGSA_FORMAT));	// NGSA (M14)
+	m_hwndngsanote = GetDlgItem(m_hwnddlg, IDC_NGSA_BLOBNOTE);
 	for(wyInt32 ngsai = 0; ngsai < NGSA_SYNTAX_COUNT; ngsai++)
 		SendMessage(m_hwndngsasyntax, CB_ADDSTRING, 0, (LPARAM)NgsaFieldSyntax::Name(ngsai));
     
@@ -267,10 +283,15 @@ BlobMgmt::InitDlgVales()
         EnableWindow(GetDlgItem(m_hwnddlg, IDC_TEXT), TRUE);
         SendMessage(GetDlgItem(m_hwnddlg, IDC_TEXT), EM_SETREADONLY, TRUE, TRUE);
         SetFocus(GetDlgItem(m_hwnddlg, IDC_TEXT));
+		// NGSA: Format in a viewer that cannot save only changes what is shown; DisableAll had greyed it
+		if(m_ngsasyntax >= 0)
+			NgsaApplySyntax(m_ngsasyntax, wyFalse);
 	}
 
 	m_checkboxstate = SendMessage(GetDlgItem(m_hwnddlg, IDC_SETNULL), BM_GETCHECK, 0, 0);
     SendMessage(m_hwndedit, SCI_EMPTYUNDOBUFFER, 0, 0);
+	m_ngsanoteready = wyTrue;
+	NgsaUpdateNote();
 
 	return wyTrue;
 }
@@ -320,6 +341,7 @@ BlobMgmt::OnDlgProcWmCommand(WPARAM wparam, LPARAM lparam)
 
 	case IDC_IMPORT:
 		OpenFromFile();
+		NgsaUpdateNote();
 		break;
 
 	case IDC_SETNULL:
@@ -330,6 +352,10 @@ BlobMgmt::OnDlgProcWmCommand(WPARAM wparam, LPARAM lparam)
 				DisableAll(wyTrue);
 			else 
 				DisableAll(wyFalse);
+			// NGSA: DisableAll switches Format with the text box; it is only for a syntax that can be formatted
+			if(m_ngsasyntax >= 0)
+				NgsaApplySyntax(m_ngsasyntax, wyFalse);
+			NgsaUpdateNote();
 		}
 	break;	
 	case IDC_NGSA_SYNTAX:	// NGSA (M12)
@@ -339,12 +365,16 @@ BlobMgmt::OnDlgProcWmCommand(WPARAM wparam, LPARAM lparam)
 
 	case IDC_NGSA_FORMAT:	// NGSA (M14)
 		NgsaFormat();
+		NgsaUpdateNote();
 		break;
 
 	case IDC_COMBO:
 		{
 			if((HIWORD(wparam))== CBN_SELENDOK)
+			{
 				OnComboChange();
+				NgsaUpdateNote();
+			}
 			break;
 		}
 	}
@@ -751,6 +781,7 @@ BlobMgmt::ShowBinary()
 	ShowWindow(m_hwndcombo, FALSE);
 	ShowWindow(m_hwndngsasyntax, FALSE);	// NGSA (M12)
 	ShowWindow(m_hwndngsasyntaxtext, FALSE);
+	ShowWindow(m_hwndngsaformat, FALSE);	// NGSA: Format belongs to the text, like the Syntax list
 	ShowWindow(m_hwndimage, TRUE);
 	return wyTrue;
 }
@@ -761,6 +792,7 @@ BlobMgmt::ShowText()
 	ShowWindow(m_hwndedit, TRUE);
 	ShowWindow(m_hwndngsasyntax, TRUE);	// NGSA (M12)
 	ShowWindow(m_hwndngsasyntaxtext, TRUE);
+	ShowWindow(m_hwndngsaformat, TRUE);
 	
 	if(m_isblob == wyTrue)
 		ShowWindow(m_hwndcombo, TRUE);
@@ -796,6 +828,46 @@ BlobMgmt::NgsaApplySyntax(wyInt32 syntax, wyBool remember)
 		EnableWindow(m_hwndngsaformat, NgsaFieldSyntax::CanFormat(syntax) && IsWindowEnabled(m_hwndedit) ? TRUE : FALSE);
 	if(remember)
 		NgsaFieldSyntax::Save(m_ngsacolkey.GetString(), syntax);
+}
+
+// NGSA: the line beside the OK button says "OK keeps changes" from the moment OK would put something into the
+// grid cell (the row is written to the server when the row is saved, as before): the text
+// was changed (typed, pasted, formatted, imported), Set Null was ticked or unticked, another value was loaded
+// from a file, or the encoding was changed. It goes away when the change is taken back. A viewer that cannot
+// save never shows it.
+void
+BlobMgmt::NgsaUpdateNote()
+{
+	wyBool	changed, modified, loaded;
+	wyInt32	sel;
+	LRESULT	nullnow;
+
+	// not while the dialog is being filled: the first text is put in then, and the Set Null state the
+	// change is measured against is not yet known
+	if(!m_hwndngsanote || !m_hwnddlg || m_ngsanoteready == wyFalse)
+		return;
+
+	// the same tests as ProcessOK, tab by tab: on the Text tab a changed text is kept (also the emptied text
+	// box after binary data was loaded, as it always was); on the Image tab a value loaded from a file, else
+	// a changed text
+	sel = TabCtrl_GetCurSel(m_hwndtab);
+	nullnow = SendMessage(GetDlgItem(m_hwnddlg, IDC_SETNULL), BM_GETCHECK, 0, 0);
+	modified = SendMessage(m_hwndedit, SCI_GETMODIFY, 0, 0) ? wyTrue : wyFalse;
+	loaded = (m_piub && m_olddata != m_piub->m_data) ? wyTrue : wyFalse;
+
+	if(m_edit == wyFalse)
+		changed = wyFalse;
+	else if(nullnow == BST_CHECKED)
+		changed = (m_checkboxstate == BST_CHECKED) ? wyFalse : wyTrue;
+	else if(m_isencodingchanged == wyTrue || (sel == 0 && modified == wyTrue) ||
+			(sel == 1 && (loaded == wyTrue || modified == wyTrue)))
+		changed = wyTrue;
+	else
+		changed = (m_checkboxstate == BST_CHECKED) ? wyTrue : wyFalse;	// was NULL, is not any more
+
+	// by the control's own style: IsWindowVisible also says no while the dialog itself is not yet shown
+	if(((GetWindowLongPtr(m_hwndngsanote, GWL_STYLE) & WS_VISIBLE) ? wyTrue : wyFalse) != changed)
+		ShowWindow(m_hwndngsanote, changed == wyTrue ? SW_SHOW : SW_HIDE);
 }
 
 // NGSA (M14): pretty-print the viewer text; a read-only viewer is formatted for display only
@@ -1049,6 +1121,7 @@ BlobMgmt::OnTabSelChange()
 		ShowBinary();
 		break;
 	}
+	NgsaUpdateNote();	// NGSA: what OK keeps depends on the tab
 	return wyTrue;
 }
 
@@ -1211,7 +1284,9 @@ BlobMgmt::ProcessOK()
 	sel = TabCtrl_GetCurSel(m_hwndtab);
 
 	// then we see whether edit box has been modified
-	if(sel == 0 && SendMessage(m_hwndedit, SCI_GETMODIFY, 0, 0) && m_isencodingchanged == wyFalse)
+	// NGSA: also with the Image tab in front, when no value was loaded from a file there: text typed on the
+	// Text tab used to be dropped without a word when OK was pressed on the Image tab
+	if((sel == 0 || (sel == 1 && m_olddata == m_piub->m_data)) && SendMessage(m_hwndedit, SCI_GETMODIFY, 0, 0) && m_isencodingchanged == wyFalse)
 	{
 		bufsize = SendMessage(m_hwndedit, SCI_GETTEXTLENGTH, 0, 0);
 
@@ -1479,6 +1554,17 @@ BlobMgmt::Resize(LPARAM lParam)
 	GetClientRect(hwndsize, &rctopt);
 	MoveWindow(hwndsize, rcttmp.right +  WIDTHBETBUTTON ,  dlght - WIDTHBETBUTTON - rcttmp.bottom, 
 		rctopt.right, rctopt.bottom, FALSE);
+
+	// NGSA: the "OK keeps changes" line: its text is set to the right, so it stands beside the OK button
+	if(m_hwndngsanote)
+	{
+		RECT rctok;
+
+		GetWindowRect(hwndok, &rctok);
+		MapWindowPoints(NULL, m_hwnddlg, (LPPOINT)&rctok, 2);
+		MoveWindow(m_hwndngsanote, rcttmp.right + rctopt.right + WIDTHBETBUTTON * 2, dlght - WIDTHBETBUTTON - rcttmp.bottom,
+			max(0, rctok.left - (rcttmp.right + rctopt.right + WIDTHBETBUTTON * 2) - WIDTHBETBUTTON), rcttmp.bottom, FALSE);
+	}
     
 	InvalidateRect(m_hwnddlg, NULL, TRUE);
 

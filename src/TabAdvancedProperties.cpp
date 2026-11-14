@@ -626,7 +626,7 @@ TabAdvancedProperties::FetchInitValues()
         m_origrowformat.SetAs("");
 
     // NGSA (M8b): system versioning is TABLE_TYPE = 'SYSTEM VERSIONED' in information_schema.TABLES
-    // (SHOW TABLE STATUS shows nothing for it; measured on 11.8, 10/10/2026)
+    // (SHOW TABLE STATUS shows nothing for it; measured on 11.8)
     m_origversioning.SetAs("0");
     if(m_ngsaversioningcol)
     {

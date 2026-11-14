@@ -61,7 +61,7 @@ PreferencesCommunity::RestoreAllDefaults()
 	return;
 }
 
-// bonSQL: the Autocomplete page (the IDD_PREF3 template, docs/ngsa/AUTOCOMPLETE-DESIGN.md): the three ticks from the ini
+// bonSQL: the Autocomplete page (the IDD_PREF3 template): the three ticks from the ini
 void
 PreferencesCommunity::EnterprisePrefHandleWmInitDialog(HWND hwnd)
 {

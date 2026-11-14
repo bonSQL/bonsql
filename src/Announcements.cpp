@@ -17,7 +17,7 @@
 
 */
 
-/* bonSQL, 13/10/2026: the Announcements panel showed HTML that SQLyog downloaded from
+/* bonSQL: the Announcements panel showed HTML that SQLyog downloaded from
    http://www.webyog.com/notifications/ once a day at start-up, drawn by HTMLayout. HTMLayout is gone and the
    feed is Webyog's, so the panel is switched off: the download thread is not started (FrameWindow.cpp) and
    the panel never opens. The class keeps its interface so callers compile unchanged. */

@@ -317,6 +317,9 @@ private:
 	HWND				m_hwndngsasyntax;
 	HWND				m_hwndngsasyntaxtext;
 	HWND				m_hwndngsaformat;	// NGSA (M14)
+	HWND				m_hwndngsanote;		// NGSA: the line that says OK will save a change
+	wyBool				m_ngsanoteready;	// NGSA: the dialog is filled, the line may be worked out
+	void				NgsaUpdateNote();
 	wyInt32				m_ngsasyntax;
 	wyString			m_ngsacolkey;
 

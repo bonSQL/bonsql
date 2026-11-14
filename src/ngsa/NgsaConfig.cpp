@@ -5,7 +5,7 @@
    of the License, or (at your option) any later version. It is distributed WITHOUT ANY WARRANTY; see
    COPYING. */
 /*
- * bonSQL settings location and the one-time import from SQLyog (docs/ngsa/REBRAND.md, decisions 2 and 3).
+ * bonSQL settings location and the one-time import from SQLyog.
  *
  * bonSQL keeps its settings in %APPDATA%\bonSQL (or the -dir folder) under its own names. On the first
  * start, if that folder has no bonsql.ini and SQLyog's folder has a sqlyog.ini, the user is asked whether

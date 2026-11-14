@@ -61,8 +61,8 @@ namespace NgsaDark
        scroll bar, progress bar, Scintilla and custom grid created under them is subclassed: dark window
        theme (with uxtheme's dark app mode, ordinals 133/135), list/tree colours and check-box images, and
        what no dark theme covers is painted here (tab strips, list headers, labels, group boxes, check
-       boxes, the message-box button band, the combo drop-down list). The whole story, with the traps,
-       is docs/ngsa/DARK-THEME.md. Install once, before the main window is created. */
+       boxes, the message-box button band, the combo drop-down list).
+       Install once, before the main window is created. */
     void        InstallHook();
     /* the next dialog created is treated as ours (one shot): before FindText/ReplaceText (comdlg32's template) */
     void        AcceptDialogs(wyBool accept);

@@ -695,13 +695,21 @@ class UserManager
 		void                    LoadGrantedRoles();
 		void                    PopulateRoles();
 		void                    FillRoles();
+		wyBool                  RoleKeyOfRow(HWND hwndlistview, wyInt32 item, wyString& key);
 		void                    UpdateRolesWorking();
 		wyBool                  ProcessRoleChanges();
+		void                    LoadDefaultRoles();
+		void                    ShowRoleDefaults();                                   // second column and the button, from the working copy
+		void                    SyncRoleDefaults();                                   // a role that is no longer ticked is no default either
+		void                    UpdateRoleDefaultButton();
+		void                    OnRoleDefaultToggle();
 		wyBool                  m_isrole;               // the selected account is a role
 		wyString                m_rolekeys;             // |user@host| of every role account on the server
 		wyString                m_rolesgrantedorig;     // |key| roles granted to the selection when loaded
 		wyString                m_rolesgranted;         // working copy edited through the Roles node
 		wyString                m_roleitems;            // |key| of the Roles list in display order
+		wyString                m_roledefaultsorig;     // |key| default roles of the selection when loaded
+		wyString                m_roledefaults;         // working copy edited through the Roles node
 
     private:
 

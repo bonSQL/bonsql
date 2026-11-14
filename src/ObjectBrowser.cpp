@@ -52,7 +52,7 @@
 //#include "htmlrender.h"
 #endif
 
-// bonSQL: no Ultimate-only menu items in Community (docs/ngsa/UPSELLS.md)
+// bonSQL: no Ultimate-only menu items in Community
 #ifdef COMMUNITY
 #define NGSA_ULTIMATE_MENU 0
 #else

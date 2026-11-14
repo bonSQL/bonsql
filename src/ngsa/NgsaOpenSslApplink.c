@@ -2,7 +2,7 @@
  * NGSA build: OpenSSL's applink.c compiled into the executable. OpenSSL DLLs on Windows need the
  * OPENSSL_Applink table from the host exe for FILE*-based I/O (MariaDB Connector/C 3.4 uses it
  * when loading client certificates); without it OpenSSL aborts the process with
- * "OPENSSL_Uplink: no OPENSSL_Applink" (seen 09/10/2026 on an SSL client-cert connection).
+ * "OPENSSL_Uplink: no OPENSSL_Applink" (seen on an SSL client-cert connection).
  * Verbatim copy of include/openssl/applink.c from OpenSSL 3.6.5 (vcpkg), Apache-2.0, see
  * third_party/openssl/LICENSE.
  */

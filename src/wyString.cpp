@@ -224,6 +224,8 @@ wyString::SetAs(const wyWChar* toset, wyInt32 length)
 }
 
 
+// len is the room to reserve, not a limit: the whole of toset is copied, and len must be its length or more
+// (see the declaration). SetAsDirect() takes a part of a text.
 wyUInt32
 wyString::SetAs(const wyChar* toset, wyUInt32 len)
 {

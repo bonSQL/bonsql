@@ -60,8 +60,8 @@ NgsaCapsCompute::FromVersion(wyUInt32 version, const wyChar* serverinfo, NgsaCap
 
     /* server operations */
     c.processKillCommand  = maria ? wyTrue : (ge(v, 80300) ? wyFalse : wyTrue);
-    /* FLUSH options measured on 09/10/2026 against MariaDB 10.11/11.8 and MySQL 8.0.46/8.4.11/9.7.2
-       (docs/ngsa/MARIADB-PLAN.md M10): MySQL 8.0 dropped QUERY CACHE, DES_KEY_FILE and SSL,
+    /* FLUSH options measured against MariaDB 10.11/11.8 and MySQL 8.0.46/8.4.11/9.7.2:
+       MySQL 8.0 dropped QUERY CACHE, DES_KEY_FILE and SSL,
        MySQL 8.4 also dropped HOSTS; MariaDB keeps them all and has no OPTIMIZER_COSTS. */
     c.flushQueryCache     = maria ? wyTrue : (ge(v, 80000) ? wyFalse : wyTrue);
     c.flushDesKeyFile     = maria ? wyTrue : (ge(v, 80000) ? wyFalse : wyTrue);

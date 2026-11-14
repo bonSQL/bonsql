@@ -121,6 +121,7 @@ MySQLDump::MySQLDump()
 	m_allfunctions = wyFalse;
 	m_allEvents  = wyFalse;
 	m_allsequences = wyFalse;	// NGSA
+	m_seqstate = wyTrue;		// NGSA: as mariadb-dump, unless the option is off
 	m_alltables = wyFalse;
     m_filemodetimestamp = wyFalse; 
     m_utf8charset = wyFalse;
@@ -491,9 +492,10 @@ MySQLDump::SetDropObjects(wyBool val)
 void
 MySQLDump::SetAllObjects(wyBool val)
 {
+	// NGSA: the sequences count as well: with their folder unticked the dump is not "all objects"
 	if(m_alltables == wyTrue && m_allviews == wyTrue && 
 		m_allprocedures == wyTrue && m_allfunctions == wyTrue &&
-		m_alltriggers == wyTrue && m_allEvents == wyTrue )
+		m_alltriggers == wyTrue && m_allEvents == wyTrue && m_allsequences == wyTrue)
 		val = wyTrue;
 	m_allobjects = val;
 
@@ -561,6 +563,12 @@ void
 MySQLDump::SetAllSequences(wyBool val)	// NGSA
 {
 	m_allsequences = val;
+}
+
+void
+MySQLDump::SetSeqState(wyBool val)	// NGSA
+{
+	m_seqstate = val;
 }
 
 void
@@ -2586,7 +2594,7 @@ MySQLDump::FreeMemory()
 }
 
 // NGSA: sequences go before tables (a column DEFAULT may use NEXTVAL); the current position is restored with
-// DO SETVAL(seq, next_not_cached_value, 0) exactly as mariadb-dump writes it (measured 09/10/2026 on 11.8)
+// DO SETVAL(seq, next_not_cached_value, 0) exactly as mariadb-dump writes it (measured on 11.8)
 wyBool
 MySQLDump::DumpSequences(wyString * buffer, const wyChar *db)
 {
@@ -2711,7 +2719,7 @@ MySQLDump::DumpSequence(wyString * buffer, const wyChar * db, const wyChar * seq
 	if(m_dropobjects == wyTrue)
 		buffer->AddSprintf("%sDROP SEQUENCE IF EXISTS `%s`;%s", m_strnewline.GetString(), sequence, m_strnewline.GetString());
 	buffer->AddSprintf("%s%s;%s", m_strnewline.GetString(), strseq.GetString(), m_strnewline.GetString());
-	if(nextval.GetLength())
+	if(m_seqstate == wyTrue && nextval.GetLength())
 		buffer->AddSprintf("DO SETVAL(`%s`, %s, 0);%s", sequence, nextval.GetString(), m_strnewline.GetString());
 
 	if(m_individualtablefiles == wyTrue)
@@ -3008,7 +3016,15 @@ MySQLDump::DumpTableStructure(wyString * buffer, const wyChar *db, const wyChar 
 
 	row = sja_mysql_fetch_row(m_tunnel, res);
 	
-	buffer->AddSprintf("%s%s;%s", m_strnewline.GetString(), row[1], m_strnewline.GetString());
+	// NGSA: the server writes every object of the dump without its database, except the sequences a column
+	// default calls; without the name they bind to the database the dump is restored into, like the rest
+	{
+		wyString strtable;
+
+		strtable.SetAs(row[1]);
+		NgsaUnqualifySequences(strtable, db);
+		buffer->AddSprintf("%s%s;%s", m_strnewline.GetString(), strtable.GetString(), m_strnewline.GetString());
+	}
 	
 	sja_mysql_free_result(m_tunnel, res);
 	
@@ -3567,6 +3583,7 @@ MySQLDump::DumpView(wyString * buffer, const wyChar *db, const wyChar *view, wyI
 	if(m_isremdefiner)
 		RemoveDefiner(strview, pattern.GetString(), 12);
 	//StripDatabase(strview, dbname.GetString());
+	NgsaUnqualifySequences(strview, dbname.GetString());	// NGSA: as for the tables
 
 	buffer->AddSprintf("%s/*!50001 %s */;%s", m_strnewline.GetString(), strview.GetString(), m_strnewline.GetString());   
 	

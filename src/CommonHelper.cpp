@@ -4470,6 +4470,114 @@ EncodePassword_Absolute(wyString &text)
 }
 
 //wyInt32 extra : part of the pattern that should not be erased but only used in pattern for matching
+// NGSA: one identifier of a sequence call as the server writes it: `quoted` (a backtick inside is doubled)
+// or bare. p moves past it.
+void
+NgsaSequenceIdent(const wyChar *&p, wyString &ident)
+{
+	wyChar	one[2] = {0, 0};
+
+	ident.SetAs("");
+
+	if(*p == '`')
+	{
+		for(++p; *p; ++p)
+		{
+			if(*p == '`')
+			{
+				if(p[1] != '`')
+				{
+					++p;
+					break;
+				}
+				++p;
+			}
+			one[0] = *p;
+			ident.Add(one);
+		}
+	}
+	else
+	{
+		for(; *p && *p != '.' && *p != ')' && *p != ',' && *p != ' '; ++p)
+		{
+			one[0] = *p;
+			ident.Add(one);
+		}
+	}
+}
+
+// NGSA: a statement that creates a table or a view names the database of every sequence it calls, also
+// when it was written without one: nextval(`db`.`seq`), lastval(`db`.`seq`). Created as it stands in a
+// database of another name, the copy would go on using the sequence of the database it came from. The name of
+// database db is taken out of those calls, so the server puts in the database the object is created in.
+// Sequences of any other database, and text in quotes, are left as they are.
+void
+NgsaUnqualifySequences(wyString &stmt, const wyChar *db)
+{
+	const wyChar	*p = stmt.GetString(), *start = p, *q, *identstart;
+	wyString		out, ident, piece;
+	wyBool			changed = wyFalse;
+	wyChar			quote, before = ' ';
+
+	out.SetAs("");
+
+	while(p && *p)
+	{
+		if(*p == '\'' || *p == '"' || *p == '`')
+		{
+			quote = *p;
+			for(++p; *p; ++p)
+			{
+				if(*p == '\\' && quote != '`' && p[1])
+				{
+					++p;
+					continue;
+				}
+				if(*p == quote)
+				{
+					if(p[1] != quote)
+						break;
+					++p;
+				}
+			}
+			if(*p)
+				++p;
+			before = quote;
+			continue;
+		}
+
+		if(!isalnum((unsigned char)before) && before != '_' &&
+		   (_strnicmp(p, "nextval(", 8) == 0 || _strnicmp(p, "lastval(", 8) == 0))
+		{
+			p += 8;
+			q = p;
+			while(*q == ' ')
+				++q;
+			identstart = q;
+			NgsaSequenceIdent(q, ident);
+			if(*q == '.' && ident.Compare(db) == 0)
+			{
+				piece.SetAsDirect(start, (wyUInt32)(identstart - start));
+				out.Add(piece.GetString());
+				start = q + 1;
+				p = q + 1;
+				changed = wyTrue;
+			}
+			before = '(';
+			continue;
+		}
+
+		before = *p;
+		++p;
+	}
+
+	if(changed == wyTrue)
+	{
+		out.Add(start);
+		stmt.SetAs(out.GetString());
+	}
+}
+
 void
 RemoveDefiner(wyString &text, const wyChar* pattern, wyInt32 extra)
 {

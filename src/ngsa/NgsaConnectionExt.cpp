@@ -325,7 +325,7 @@ NgsaConn::SaveToIni(HWND hdlg, const wyChar* conn, const wyChar* dir)
 void
 NgsaConn::ApplyTlsOptions(ConnectionInfo* ci, Tunnel* tunnel, MYSQL* mysql)
 {
-    /* MariaDB Connector/C 3.4 (verified in its source, plugins/auth/my_auth.c, 09/10/2026):
+    /* MariaDB Connector/C 3.4 (verified in its source, plugins/auth/my_auth.c):
        server-certificate verification is ON by default and switches TLS on, so a bare
        mysql_init() handle fails against a server without TLS ("SSL is required, but the
        server does not support it") or with a self-signed certificate (error 2026). Turning
@@ -350,7 +350,7 @@ NgsaConn::ApplyTlsOptions(ConnectionInfo* ci, Tunnel* tunnel, MYSQL* mysql)
     {
         /* upstream helper: mysql_ssl_set with CA / client cert / cipher as given */
         SetSslAuthentication(mysql, ci);
-        /* Decision (docs/ngsa/SSH-SSL-FEASIBILITY.md): when SSL is ticked the connection
+        /* Decision: when SSL is ticked the connection
            must be encrypted; never fall back to plain. */
         mysql_options(mysql, MYSQL_OPT_SSL_ENFORCE, &on);
     }
@@ -388,7 +388,7 @@ NgsaConn::PrepareConnection(ConnectionInfo* ci, Tunnel* tunnel, MYSQL* mysql, wy
 void
 NgsaConn::ReplayInitCommands(wyString& initcommand, Tunnel* tunnel, MYSQL* mysql)
 {
-    /* Upstream #2226 (reproduced 09/10/2026 on MySQL 8.4 and MariaDB 11.8): Connector/C's
+    /* Upstream #2226 (reproduced on MySQL 8.4 and MariaDB 11.8): Connector/C's
        auto-reconnect (mariadb_reconnect) re-runs the MYSQL_INIT_COMMAND list and THEN calls
        mysql_set_character_set(), i.e. sends SET NAMES <charset>, which resets collation_connection
        to the charset default. An init command such as

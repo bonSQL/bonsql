@@ -9,7 +9,6 @@
  *
  * All new behaviour lives here and in src/ngsa/*.cpp. Upstream files only carry
  * one-line hooks marked "// NGSA:" and guarded by NGSA_SSH_SSL.
- * See docs/ngsa/SSH-SSL-FEASIBILITY.md for the design and merge notes.
  */
 #ifndef NGSA_CONNECTION_EXT_H
 #define NGSA_CONNECTION_EXT_H

@@ -6,10 +6,9 @@
    COPYING. */
 /*
  * NGSA build: engine/version-dependent server operations as data tables
- * (docs/ngsa/FEATURE-BASELINE.md 7, docs/ngsa/MARIADB-PLAN.md M10).
  *
  * The Flush dialog (IDD_FLUSH) reads this table instead of a fixed checkbox list: an option is
- * offered only when NgsaCaps says the connected server has it. Measured on 09/10/2026 against
+ * offered only when NgsaCaps says the connected server has it. Measured against
  * MariaDB 10.11 / 11.8 and MySQL 8.0.46 / 8.4.11 / 9.7.2.
  */
 #ifndef NGSA_SERVER_OPS_H

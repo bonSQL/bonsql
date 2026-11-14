@@ -2569,7 +2569,7 @@ FrameWindow::OnWmCommand(WPARAM wParam)
         return 1;
 
 	// bonSQL: these four act on the active connection window; with no connection open (all disconnected, e.g.
-	// after Ctrl+F4) F6/F4 crashed on a null window (found by the help-page screenshot run, 14/10/2026)
+	// after Ctrl+F4) F6/F4 crashed on a null window
 	if(!pcquerywnd)
 	{
 		wyInt32 id = LOWORD(wParam);
@@ -9904,7 +9904,7 @@ void
 FrameWindow::HandleCommunityRibbon()
 {
 #if 0	// bonSQL: the ad-rotation thread is not started; its window was never created, its ad strings are gone,
-		// and it read a stack COMTYHDR after HandleCommunityHeader returned (docs/ngsa/UPSELLS.md)
+		// and it read a stack COMTYHDR after HandleCommunityHeader returned
 	m_commribbon = new CommunityRibbon();
 
 	m_commribbon->HandleCommunityHeader();

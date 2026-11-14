@@ -6,7 +6,7 @@
    COPYING. */
 /*
  * NGSA build: SSH port-forward tunnel for MySQL connections using a stock,
- * unmodified PuTTY plink.exe. See docs/ngsa/SSH-SSL-FEASIBILITY.md section 3a for
+ * unmodified PuTTY plink.exe. See the design notes for
  * why upstream's patched plink is not used and how each of its behaviours is
  * reproduced here (readiness by polling the local port, errors from stderr,
  * host keys via -hostkey, password via -pwfile).

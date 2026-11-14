@@ -5,10 +5,10 @@
    of the License, or (at your option) any later version. It is distributed WITHOUT ANY WARRANTY; see
    COPYING. */
 /*
- * Autocomplete core (docs/ngsa/AUTOCOMPLETE-DESIGN.md): the catalog cache, the statement scanner, the list
+ * Autocomplete core: the catalog cache, the statement scanner, the list
  * and calltip builders. No Win32, no Scintilla, no MySQL in here: the server is behind the Source
- * interface and the editor glue lives in NgsaAutoComplete.cpp, so this file is also compiled into the
- * console check tools/ngsa/ac-test.
+ * interface and the editor glue lives in NgsaAutoComplete.cpp, so this file is also compiled into a
+ * console check.
  *
  * Decisions (A1-A7): in-memory catalog per connection window, filled lazily with single bounded statements
  * on the window's own connection, invalidated by own DDL, Refresh and age; never a file on disk.

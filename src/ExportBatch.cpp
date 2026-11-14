@@ -822,6 +822,7 @@ ExportBatch::HandleDlgPersistance(HWND hwnd)
 	m_p->Add(hwnd, IDC_SINGLE_TRANSACTION, "SingleTransaction", "0", CHECKBOX);
 	m_p->Add(hwnd, IDC_CHK_VERSION, "Version", "1", CHECKBOX);
 	m_p->Add(hwnd, IDC_CHK_HEXBLOB, "Hexblob", "0", CHECKBOX);
+	m_p->Add(hwnd, IDC_CHK_SEQSTATE, "SeqState", "1", CHECKBOX);	// NGSA
 	return;
 }
 
@@ -1416,6 +1417,10 @@ ExportBatch::SetInitExportValues(MySQLDump * dump)
 	VERIFY(hwndtree = GetDlgItem(m_hwnd, IDC_EXPORTTREE));
 
 	hrootitem	= TreeView_GetRoot(hwndtree);
+
+	// NGSA: a tree without a Sequences folder (a server without sequences) leaves no sequence out; with the
+	// folder, its tick decides below
+	dump->SetAllSequences(wyTrue);
 	
 	for(; hrootitem; hrootitem = TreeView_GetNextSibling(hwndtree, hrootitem)) 
 	{	
@@ -1650,6 +1655,9 @@ ExportBatch::SetOtherValues(MySQLDump *dump)
 		dump->SetHexBlob(wyTrue);
 	else
 		dump->SetHexBlob(wyFalse);
+
+	// NGSA: sequence positions
+	dump->SetSeqState((BST_CHECKED == SendMessage(GetDlgItem(m_hwnd, IDC_CHK_SEQSTATE), BM_GETCHECK, 0, 0)) ? wyTrue : wyFalse);
 	
 	if(BST_CHECKED == SendMessage(GetDlgItem(m_hwnd, IDC_ONEROW), BM_GETCHECK, 0, 0))
 		dump->SetOneRowPerLine(wyTrue);
@@ -1690,7 +1698,7 @@ ExportBatch::EnableDlgWindows(bool state)
 					 IDC_CHK_USEDBNAME, IDC_CHK_DROPTABLE, IDC_CHK_CREATEDB,
 					 IDC_CHK_LOCKFORREAD, IDC_CHK_FLUSHLOGS, IDC_CHK_LOCKAROUNDINSERT,
 					 IDC_SETUNIQUE, IDC_BULKINSERT,IDC_ONEROW,IDC_SINGLE_TRANSACTION, IDCANCEL, IDC_CHK_DROPPROCEDURES, IDC_CHK_DROPVIEWS,
-					 IDC_CHK_DROPFUNCTIONS, IDC_CHK_DROPTRIGGERS, IDC_CHK_DEFINER, IDC_CHK_VERSION, IDC_CHK_HEXBLOB,IDC_TIMESTAMP_PREFIX, IDC_FILE_TABLE
+					 IDC_CHK_DROPFUNCTIONS, IDC_CHK_DROPTRIGGERS, IDC_CHK_DEFINER, IDC_CHK_VERSION, IDC_CHK_HEXBLOB,IDC_TIMESTAMP_PREFIX, IDC_FILE_TABLE, IDC_CHK_SEQSTATE
 	};
 
 	wyInt32 i, count;
@@ -2051,6 +2059,7 @@ ExportBatch::GetCtrlRects()
 		IDC_ONEROW, 0, 0,
 		IDC_CHK_DROPOBJECT, 0, 0,
 		IDC_CHK_DEFINER, 0, 0,
+		IDC_CHK_SEQSTATE, 0, 0,
 		IDC_CHK_VERSION, 0, 0,
 		IDC_CHK_HEXBLOB, 0, 0,
 		IDC_GROUP4, 0, 0,

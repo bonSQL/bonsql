@@ -1242,7 +1242,8 @@ NgsaIsPlainNumber(const wyChar* s)
 
 // NGSA (B11): first unique index usable as a row identity. SHOW KEYS lists one row per column in
 // Seq_in_index order, keys grouped; a key is usable when Non_unique = 0, it is not PRIMARY, every
-// column is NOT NULL, present in the result set, from this table and not virtual.
+// column is NOT NULL, present in the result set, from this table and not virtual, and no part of the
+// key is an expression (MySQL 8.0.13 functional key part: Column_name is NULL for it).
 wyInt32
 DataView::NgsaUniqueKeyColumns(wyInt32* keycols, wyInt32 maxcols)
 {
@@ -1264,7 +1265,7 @@ DataView::NgsaUniqueKeyColumns(wyInt32* keycols, wyInt32 maxcols)
     m_wnd->m_tunnel->mysql_data_seek(m_data->m_keyres, 0);
     while((row = m_wnd->m_tunnel->mysql_fetch_row(m_data->m_keyres)))
     {
-        if(!row[keyname] || !row[colname])
+        if(!row[keyname])
             continue;
         key.SetAs(row[keyname]);
         if(key.Compare(current) != 0)
@@ -1277,6 +1278,11 @@ DataView::NgsaUniqueKeyColumns(wyInt32* keycols, wyInt32 maxcols)
         }
         if(!usable)
             continue;
+        if(!row[colname])
+        {
+            usable = wyFalse;           // a key part that is an expression has no column: the named columns alone are not unique
+            continue;
+        }
         if(row[nullable] && !stricmp(row[nullable], "YES"))
         {
             usable = wyFalse;           // a NULL in the key cannot identify a row

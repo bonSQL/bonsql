@@ -889,7 +889,7 @@ AddQueryResults(QueryResultList * queryresult, wyString &str, TabMgmt * tab, wyI
             indexResultTab = isTabResultAdded? indexResultTab : count;
             isTabResultAdded = wyTrue;
 			tab->AddRecordTab(count++, elem->param);
-			// bonSQL: no "Analyzer" tab; in Community it was only an Ultimate upsell (docs/ngsa/UPSELLS.md)
+			// bonSQL: no "Analyzer" tab; in Community it was only an Ultimate upsell
 		}
 
 #ifndef COMMUNITY

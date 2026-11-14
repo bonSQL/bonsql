@@ -5,7 +5,7 @@
    of the License, or (at your option) any later version. It is distributed WITHOUT ANY WARRANTY; see
    COPYING. */
 /*
- * Autocomplete core. See include/ngsa/NgsaAcCore.h and docs/ngsa/AUTOCOMPLETE-DESIGN.md.
+ * Autocomplete core. See include/ngsa/NgsaAcCore.h.
  */
 #include "ngsa/NgsaAcCore.h"
 #include <algorithm>

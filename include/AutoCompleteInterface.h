@@ -17,8 +17,8 @@
 */
 
 /* bonSQL: the Ultimate implementation behind this interface was never published; since 2026.11 the
-   handlers drive bonSQL's own autocomplete (include/ngsa/NgsaAutoComplete.h,
-   docs/ngsa/AUTOCOMPLETE-DESIGN.md). The names stay so that the call sites in the editor, the window
+   handlers drive bonSQL's own autocomplete (include/ngsa/NgsaAutoComplete.h).
+   The names stay so that the call sites in the editor, the window
    and the query helpers are untouched. */
 
 #ifndef _AUTO_COMPLETE_INTERFACE_H_

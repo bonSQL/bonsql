@@ -15,8 +15,7 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307, USA
 
-   Changed 13/10/2026 for bonSQL: HTMLayout (closed source) replaced by HtmlView (litehtml); see
-   docs/ngsa/HTMLVIEW.md.
+   Changed for bonSQL: HTMLayout (closed source) replaced by HtmlView (litehtml).
 */
 
 /* Link handling for the HTML views (HtmlView). The HTMLayout event plumbing that lived here (DOM event

@@ -1954,6 +1954,7 @@ CCopyTable::DoCopy()
 	wyInt32		fieldcount, query_for_virtuality_length, isintransaction = 1;;
 	wyBool		relation, isssel, isindex, success, ret;
 	wyString    query, keys, select, query_for_virtuality, constraintstmt;
+	wyString    seqlines, seqmsg;	// NGSA
 	MYSQL_RES	*res;
     wyWChar     newtable[SIZE_512]={0};
     wyChar      *tbuff;
@@ -1979,6 +1980,31 @@ CCopyTable::DoCopy()
 	fieldcount = ListView_GetItemCount(m_hwndlist);
 	SendMessage(GetDlgItem(m_hwnd, IDC_TABLENAME), WM_GETTEXT, SIZE_512-1, (LPARAM)newtable);
     m_newtable.SetAs(newtable);
+
+	// NGSA: nothing is changed without a word. Keys that cannot be copied as they are, because a column of theirs
+	// is not ticked or a part of theirs is an expression, are named with what becomes of them.
+	if(isindex == wyTrue && NgsaKeyChanges(seqlines) > 0)
+	{
+		seqmsg.Sprintf(_("With the columns that are ticked these keys cannot be copied as they are:\n\n%s\n"
+						 "A primary or unique key over fewer columns would be another rule, so it is left out whole. "
+						 "An ordinary key is kept over the columns that are copied.\n\n"
+						 "OK - copy\nCancel - go back to the dialog"), seqlines.GetString());
+		if(yog_message(m_hwnd, seqmsg.GetAsWideChar(), pGlobals->m_appname.GetAsWideChar(), MB_OKCANCEL | MB_ICONWARNING) != IDOK)
+			return wyFalse;
+	}
+
+	// NGSA: a column whose default calls a sequence keeps that default in the copy, and the copy then takes its
+	// values from the same sequence as the original. That is said before anything is made.
+	if(NgsaSequenceDefaults(seqlines) > 0)
+	{
+		seqmsg.Sprintf(_("These columns take their default from a sequence:\n\n%s\n"
+						 "The new table keeps that default, so it takes its values from the same sequence as the "
+						 "original: every value the new table draws is one the original will skip.\n\n"
+						 "OK - copy\nCancel - go back to the dialog"), seqlines.GetString());
+		if(yog_message(m_hwnd, seqmsg.GetAsWideChar(), pGlobals->m_appname.GetAsWideChar(), MB_OKCANCEL | MB_ICONWARNING) != IDOK)
+			return wyFalse;
+	}
+
 	SetCursor(LoadCursor(NULL, IDC_WAIT));
 
 	GetFields(query, newtable);
@@ -2061,6 +2087,13 @@ CCopyTable::DoCopy()
     if(!success)
         return wyFalse;
 
+	// NGSA: the defaults the new table did not get (sequence calls and other expressions)
+	if(NgsaRestoreDefaults(m_newtable.GetString()) == wyFalse)
+	{
+		SetCursor(LoadCursor(NULL, IDC_ARROW));
+		return wyFalse;
+	}
+
 	// add the extra info i.e.  autoincrement value..
 	if(isindex)
     {
@@ -2103,6 +2136,315 @@ CCopyTable::DoCopy()
 	yog_message(m_hwnd, _(L"Copy of table successful"), pGlobals->m_appname.GetAsWideChar(), MB_OK | MB_ICONINFORMATION);
 
 	SetCursor(LoadCursor(NULL, IDC_ARROW));
+	return wyTrue;
+}
+
+// NGSA: the ticked columns whose default calls a sequence (the server writes it as nextval(`db`.`seq`) or
+// lastval(`db`.`seq`); a default that is a text in quotes is not one): one line per column for a message.
+// Returns the number of columns.
+wyInt32
+CCopyTable::NgsaSequenceDefaults(wyString &lines)
+{
+	MYSQL_RES	*myres;
+	MYSQL_ROW	myrow;
+	wyString	query, col, def;
+	wyInt32		count = 0;
+	wyBool		ismysql41 = IsMySQL41(m_tunnel, m_mysql);
+
+	lines.SetAs("");
+
+	if(!m_mysql || NgsaCapsCompute::HasSequences(m_mysql) == wyFalse)
+		return 0;
+
+	query.Sprintf("select `COLUMN_NAME`, `COLUMN_DEFAULT` from `information_schema`.`COLUMNS` "
+				  "where `TABLE_SCHEMA` = '%s' and `TABLE_NAME` = '%s' "
+				  "and (`COLUMN_DEFAULT` like '%%nextval(%%' or `COLUMN_DEFAULT` like '%%lastval(%%') order by `ORDINAL_POSITION`",
+				  m_db.GetString(), m_table.GetString());
+	myres = ExecuteAndGetResult(GetActiveWin(), m_tunnel, m_mysql, query);
+	if(!myres)
+		return 0;
+
+	while((myrow = m_tunnel->mysql_fetch_row(myres)) != NULL)
+	{
+		if(!myrow[0] || !myrow[1] || myrow[1][0] == '\'')
+			continue;
+
+		col.SetAs(myrow[0], ismysql41);
+		if(IsColSelected(col.GetAsWideChar()) == wyFalse)
+			continue;
+
+		def.SetAs(myrow[1], ismysql41);
+		lines.AddSprintf("    %s  (default %s)\n", col.GetString(), def.GetString());
+		count++;
+	}
+
+	m_tunnel->mysql_free_result(myres);
+
+	return count;
+}
+
+// NGSA: the keys of the source that cannot be copied as they are: a column of theirs is not ticked, or a part of
+// theirs is an expression (MySQL 8.0.13: such a part has no column name). One line per key for a message, with
+// what GetKeysPrimeKeyCheck / GetKeysOtherIndex make of it. Returns the number of keys.
+wyInt32
+CCopyTable::NgsaKeyChanges(wyString &lines)
+{
+	MYSQL_RES	*myres;
+	MYSQL_ROW	myrow;
+	wyString	query, key, prev, col, kept;
+	wyInt32		count = 0, ikey, icol, parts = 0, copied = 0;
+	wyBool		unique = wyFalse, primary = wyFalse, more = wyTrue, ismysql41 = IsMySQL41(m_tunnel, m_mysql);
+
+	lines.SetAs("");
+
+	query.Sprintf("show keys from `%s`.`%s`", m_db.GetString(), m_table.GetString());
+	myres = ExecuteAndGetResult(GetActiveWin(), m_tunnel, m_mysql, query);
+	if(!myres)
+		return 0;
+
+	ikey = GetFieldIndex(myres, "key_name", m_tunnel, m_mysql);
+	icol = GetFieldIndex(myres, "column_name", m_tunnel, m_mysql);
+	if(ikey < 0 || icol < 0)
+	{
+		m_tunnel->mysql_free_result(myres);
+		return 0;
+	}
+
+	prev.SetAs("");
+	kept.SetAs("");
+
+	while(more == wyTrue)
+	{
+		myrow = m_tunnel->mysql_fetch_row(myres);
+		if(myrow && myrow[ikey])
+			key.SetAs(myrow[ikey], ismysql41);
+		else
+		{
+			key.SetAs("");
+			more = wyFalse;
+		}
+
+		// the key before is complete
+		if(prev.GetLength() && prev.Compare(key.GetString()) != 0)
+		{
+			if(copied < parts)
+			{
+				if(primary == wyTrue)
+					lines.AddSprintf("    PRIMARY KEY: left out\n");
+				else if(unique == wyTrue)
+					lines.AddSprintf("    %s (unique): left out\n", prev.GetString());
+				else if(copied == 0)
+					lines.AddSprintf("    %s: left out\n", prev.GetString());
+				else
+					lines.AddSprintf("    %s: kept over %s\n", prev.GetString(), kept.GetString());
+				count++;
+			}
+			parts = copied = 0;
+			kept.SetAs("");
+		}
+
+		if(more == wyFalse)
+			break;
+
+		if(prev.Compare(key.GetString()) != 0)
+		{
+			primary = (key.CompareI("primary") == 0) ? wyTrue : wyFalse;
+			unique = (myrow[UNIQUECOL] && strcmp(myrow[UNIQUECOL], "0") == 0) ? wyTrue : wyFalse;
+			prev.SetAs(key.GetString());
+		}
+
+		parts++;
+		if(myrow[icol])
+		{
+			col.SetAs(myrow[icol], ismysql41);
+			if(col.GetLength() && IsColSelected(col.GetAsWideChar()) == wyTrue)
+			{
+				kept.AddSprintf("%s%s", copied ? ", " : "", col.GetString());
+				copied++;
+			}
+		}
+	}
+
+	m_tunnel->mysql_free_result(myres);
+
+	// AUTO_INCREMENT goes with the key that carries it
+	if(NgsaAutoIncrementLost(col) == wyTrue)
+	{
+		lines.AddSprintf("    AUTO_INCREMENT on %s: left out (no copied key starts with that column)\n", col.GetString());
+		count++;
+	}
+
+	return count;
+}
+
+// NGSA: a server takes AUTO_INCREMENT only on a column that leads a key. When the source's AUTO_INCREMENT
+// column is copied but every key that starts with it is left out (or kept without it in front), the copy cannot
+// have AUTO_INCREMENT. Returns wyTrue then, with the column's name; the rules for what becomes of a key are those
+// of NgsaKeyChanges.
+wyBool
+CCopyTable::NgsaAutoIncrementLost(wyString &column)
+{
+	MYSQL_RES	*myres;
+	MYSQL_ROW	myrow;
+	wyString	query, key, prev, col, first;
+	wyInt32		ikey, icol, iextra, parts = 0, copied = 0;
+	wyBool		unique = wyFalse, home = wyFalse, more = wyTrue, ismysql41 = IsMySQL41(m_tunnel, m_mysql);
+
+	column.SetAs("");
+
+	query.Sprintf("show full fields from `%s`.`%s`", m_db.GetString(), m_table.GetString());
+	myres = ExecuteAndGetResult(GetActiveWin(), m_tunnel, m_mysql, query);
+	if(!myres)
+		return wyFalse;
+
+	iextra = GetFieldIndex(myres, "extra", m_tunnel, m_mysql);
+	while(iextra >= 0 && (myrow = m_tunnel->mysql_fetch_row(myres)))
+	{
+		if(myrow[0] && myrow[iextra] && strstr(myrow[iextra], "auto_increment"))
+		{
+			column.SetAs(myrow[0], ismysql41);
+			break;
+		}
+	}
+	m_tunnel->mysql_free_result(myres);
+
+	// no such column, or it is not copied: nothing to lose
+	if(!column.GetLength() || IsColSelected(column.GetAsWideChar()) == wyFalse)
+	{
+		column.SetAs("");
+		return wyFalse;
+	}
+
+	query.Sprintf("show keys from `%s`.`%s`", m_db.GetString(), m_table.GetString());
+	myres = ExecuteAndGetResult(GetActiveWin(), m_tunnel, m_mysql, query);
+	if(!myres)
+		return wyFalse;
+
+	ikey = GetFieldIndex(myres, "key_name", m_tunnel, m_mysql);
+	icol = GetFieldIndex(myres, "column_name", m_tunnel, m_mysql);
+	if(ikey < 0 || icol < 0)
+	{
+		m_tunnel->mysql_free_result(myres);
+		return wyFalse;
+	}
+
+	prev.SetAs("");
+	first.SetAs("");
+
+	while(more == wyTrue)
+	{
+		myrow = m_tunnel->mysql_fetch_row(myres);
+		if(myrow && myrow[ikey])
+			key.SetAs(myrow[ikey], ismysql41);
+		else
+		{
+			key.SetAs("");
+			more = wyFalse;
+		}
+
+		// the key before is complete: a primary or unique key is copied only whole, an ordinary key over the
+		// columns that are copied
+		if(prev.GetLength() && prev.Compare(key.GetString()) != 0)
+		{
+			if(((unique == wyTrue) ? (copied == parts) : (copied > 0)) && first.CompareI(column.GetString()) == 0)
+				home = wyTrue;
+			parts = copied = 0;
+			first.SetAs("");
+		}
+
+		if(more == wyFalse)
+			break;
+
+		if(prev.Compare(key.GetString()) != 0)
+		{
+			unique = (myrow[UNIQUECOL] && strcmp(myrow[UNIQUECOL], "0") == 0) ? wyTrue : wyFalse;
+			prev.SetAs(key.GetString());
+		}
+
+		parts++;
+		if(myrow[icol])
+		{
+			col.SetAs(myrow[icol], ismysql41);
+			if(col.GetLength() && IsColSelected(col.GetAsWideChar()) == wyTrue)
+			{
+				if(copied == 0)
+					first.SetAs(col.GetString());
+				copied++;
+			}
+		}
+	}
+
+	m_tunnel->mysql_free_result(myres);
+
+	return (home == wyTrue) ? wyFalse : wyTrue;
+}
+
+// NGSA: CREATE TABLE ... SELECT carries a column's default when it is a constant and drops it when it is an
+// expression (a sequence call, uuid(), ...). Every default of a ticked column that the new table did not get is
+// put back, so that the copy has the defaults of its source. MariaDB gives the default as it is written; MySQL
+// gives an expression without its parentheses and with its quotes escaped, and marks it DEFAULT_GENERATED.
+wyBool
+CCopyTable::NgsaRestoreDefaults(const wyChar *newtable)
+{
+	MYSQL_RES	*myres, *res;
+	MYSQL_ROW	myrow;
+	wyString	query, col, def, stmts, one;
+	wyInt32		isintransaction = 1;
+	wyBool		ismysql41 = IsMySQL41(m_tunnel, m_mysql), ismaria = IsMariaDB52(m_tunnel, m_mysql);
+	const wyChar *p, *q;
+
+	query.Sprintf("select s.`COLUMN_NAME`, s.`COLUMN_DEFAULT`, s.`EXTRA` from `information_schema`.`COLUMNS` s "
+				  "join `information_schema`.`COLUMNS` n on n.`TABLE_SCHEMA` = s.`TABLE_SCHEMA` and n.`COLUMN_NAME` = s.`COLUMN_NAME` "
+				  "where s.`TABLE_SCHEMA` = '%s' and s.`TABLE_NAME` = '%s' and n.`TABLE_NAME` = '%s' "
+				  "and s.`COLUMN_DEFAULT` is not null and not (s.`COLUMN_DEFAULT` <=> n.`COLUMN_DEFAULT`) "
+				  "order by s.`ORDINAL_POSITION`", m_db.GetString(), m_table.GetString(), newtable);
+	myres = ExecuteAndGetResult(GetActiveWin(), m_tunnel, m_mysql, query);
+	if(!myres)
+		return wyTrue;		// a server without information_schema: nothing to compare with
+
+	stmts.SetAs("");
+
+	while((myrow = m_tunnel->mysql_fetch_row(myres)) != NULL)
+	{
+		if(!myrow[0] || !myrow[1])
+			continue;
+
+		col.SetAs(myrow[0], ismysql41);
+		def.SetAs(myrow[1], ismysql41);
+
+		if(ismaria == wyTrue)
+			stmts.AddSprintf("alter table `%s`.`%s` alter column `%s` set default %s\n",
+							 m_db.GetString(), newtable, col.GetString(), def.GetString());
+		else if(myrow[2] && strstr(myrow[2], "DEFAULT_GENERATED"))
+		{
+			def.FindAndReplace("\\'", "'");
+			stmts.AddSprintf("alter table `%s`.`%s` alter column `%s` set default (%s)\n",
+							 m_db.GetString(), newtable, col.GetString(), def.GetString());
+		}
+	}
+
+	m_tunnel->mysql_free_result(myres);
+
+	for(p = stmts.GetString(); p && *p; p = q + 1)
+	{
+		q = strchr(p, '\n');
+		if(!q)
+			break;
+
+		one.SetAsDirect(p, (wyUInt32)(q - p));
+		isintransaction = 1;
+		res = ExecuteAndGetResult(GetActiveWin(), m_tunnel, m_mysql, one, wyTrue, wyFalse, wyTrue, false, false, wyFalse, 0, wyFalse, &isintransaction);
+		if(isintransaction == 1)
+			return wyFalse;
+		if(!res && m_tunnel->mysql_affected_rows(*m_mysql) == -1)
+		{
+			ShowMySQLError(m_hwnd, m_tunnel, m_mysql, one.GetString());
+			return wyFalse;
+		}
+		if(res)
+			m_tunnel->mysql_free_result(res);
+	}
+
 	return wyTrue;
 }
 
@@ -2409,12 +2751,14 @@ CCopyTable::GetKeysOtherIndex(MYSQL_ROW *myrow, MYSQL_RES *myres, wyString &inde
        SELECT did not carry and the server refused the whole CREATE TABLE). */
     wyString onekey;
     wyInt32  cols;
+    wyBool   isunique, partial;	// NGSA: a unique key with a part left out is left out whole
 
     while(*myrow)
 	{
 		comment.SetAs("");
 		onekey.Clear();
 		cols = 0;
+		isunique = partial = wyFalse;
 
 		tempindex.SetAs((*myrow)[GetFieldIndex(myres, "key_name", m_tunnel, m_mysql)], (GetActiveWin())->m_ismysql41);
 
@@ -2430,6 +2774,7 @@ CCopyTable::GetKeysOtherIndex(MYSQL_ROW *myrow, MYSQL_RES *myres, wyString &inde
 		else
 		{
 			myrowstr1.SetAs((*myrow)[UNIQUECOL], ismysql41);
+			isunique = (stricmp(myrowstr1.GetString(), "0") == 0) ? wyTrue : wyFalse;
             onekey.AddSprintf("%s `%s`(",((stricmp(myrowstr1.GetString(), "0")==0)?("UNIQUE"): (!myrowstr.CompareI("SPATIAL") ? "SPATIAL KEY" : "KEY")), tempindex.GetString());
 		}
 
@@ -2441,9 +2786,15 @@ CCopyTable::GetKeysOtherIndex(MYSQL_ROW *myrow, MYSQL_RES *myres, wyString &inde
 
 		while(1)
 		{
-			myrowstr.SetAs((*myrow)[GetFieldIndex(myres, "column_name", m_tunnel, m_mysql)], ismysql41);
+			// NGSA: a part that is an expression (MySQL 8.0.13) has no column name: it is not copied
+			if((*myrow)[GetFieldIndex(myres, "column_name", m_tunnel, m_mysql)])
+				myrowstr.SetAs((*myrow)[GetFieldIndex(myres, "column_name", m_tunnel, m_mysql)], ismysql41);
+			else
+				myrowstr.SetAs("");
 
-			if(IsColSelected(myrowstr.GetAsWideChar()) == wyTrue)
+			if(!myrowstr.GetLength() || IsColSelected(myrowstr.GetAsWideChar()) == wyFalse)
+				partial = wyTrue;
+			else
 			{
 				onekey.AddSprintf(" `%s` ", myrowstr.GetString());
 
@@ -2465,7 +2816,10 @@ CCopyTable::GetKeysOtherIndex(MYSQL_ROW *myrow, MYSQL_RES *myres, wyString &inde
 				break;
 		}
 
-		if(cols > 0)
+		/* NGSA: a UNIQUE key over only some of its parts would be another, stricter rule: rows the source allows
+		   are refused (the copy fails with "Duplicate entry"), or the new table refuses later what the old one took.
+		   Like the primary key it is left out whole. An ordinary key is kept over the parts that are copied. */
+		if(cols > 0 && !(isunique == wyTrue && partial == wyTrue))
 		{
 			onekey.Strip(1);
 			onekey.Add(")");
@@ -2513,6 +2867,13 @@ CCopyTable::AddExtraInfo(const wyChar *newtable)
 		if(strstr(myrow[extraval], "auto_increment"))
 		{
 			myrowstr.SetAs(myrow[0], ismysql41);
+			// NGSA: only when that column is copied. With it unticked the ALTER named a column the new table
+			// does not have and failed ("Unknown column"), after the table had been made
+			if(IsColSelected(myrowstr.GetAsWideChar()) == wyFalse)
+				break;
+			// ... and only when a copied key starts with it; the user was told before the copy that it is left out
+			if(NgsaAutoIncrementLost(myrowstr1) == wyTrue)
+				break;
 			myrowstr1.SetAs(myrow[1], ismysql41);
 			// so we reached the auto_increment column.
             if(index != -1)
@@ -6075,7 +6436,7 @@ CShowValue::NgsaRefill()
 
 // NGSA (B2): KILL QUERY <id> stops the statement the selected thread is running and keeps its connection; Kill
 // Process (KILL <id>) drops the connection, after which SQLyog's reconnect runs the statement again (measured
-// 10/10/2026 with two SSH+SSL windows: the killed window re-tunnelled and re-ran SELECT SLEEP(30)).
+// with two SSH+SSL windows: the killed window re-tunnelled and re-ran SELECT SLEEP(30)).
 wyBool
 CShowValue::NgsaKillQuery()
 {

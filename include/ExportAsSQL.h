@@ -526,6 +526,7 @@ private:
 	/// Flag to dump all triggers
 	wyBool			m_allEvents;
 	wyBool			m_allsequences;	// NGSA
+	wyBool			m_seqstate;		// NGSA: DO SETVAL after CREATE SEQUENCE
 	wyBool          m_iscommit;
 
 	/// Enables or disables create views option
@@ -752,6 +753,7 @@ public:
 
 	void			SetAllEvents			(wyBool flag);	
 	void			SetAllSequences			(wyBool flag);	// NGSA
+	void			SetSeqState				(wyBool flag);	// NGSA
 
 
 	/// Sets flag for creation of views

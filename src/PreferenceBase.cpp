@@ -166,7 +166,7 @@ PreferenceBase::Create(wyInt32 startpage)
 
     ahpsp[pagecount++] =          CreatePropertySheetPage(&psp);
 
-#ifdef COMMUNITY	// bonSQL: the Autocomplete page (AC_PAGE = 3, docs/ngsa/AUTOCOMPLETE-DESIGN.md)
+#ifdef COMMUNITY	// bonSQL: the Autocomplete page (AC_PAGE = 3)
 	psp.dwSize		=	sizeof(psp);
     psp.dwFlags		=	PSP_DEFAULT | PSH_NOAPPLYNOW | PSP_USETITLE;
     psp.hInstance	=	pGlobals->m_hinstance;
@@ -1631,7 +1631,7 @@ PreferenceBase::InitOthersPrefValues()
 
 	if(pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_NORMAL && pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_ULTIMATE && pGlobals->m_pcmainwin->m_connection->m_enttype != ENT_TRIAL)
 	{
-		// bonSQL: Ultimate-only options; hidden rather than labelled "(Ultimate only)" (docs/ngsa/UPSELLS.md)
+		// bonSQL: Ultimate-only options; hidden rather than labelled "(Ultimate only)"
 		ShowWindow(GetDlgItem(m_hwnd, IDC_TRANSACTION), SW_HIDE);
 		ShowWindow(GetDlgItem(m_hwnd, IDC_PROMPTTRANSACTION), SW_HIDE);
 		ShowWindow(GetDlgItem(m_hwnd, IDC_PROMPTCLOSETRANSACTION), SW_HIDE);

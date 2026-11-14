@@ -63,7 +63,7 @@ static wyBool TypeVector(const NgsaCaps& c) { return c.vectorType; }
 
 struct NgsaDesignerType { const wyChar* name; wyBool (*available)(const NgsaCaps&); };
 
-/* Order is what the designer's dropdown shows. Measured 09/10/2026: MariaDB 11.8 accepts
+/* Order is what the designer's dropdown shows. Measured: MariaDB 11.8 accepts
    vector(n), uuid, inet6, inet4 and the json alias; MySQL 9.7 accepts vector(n) and json. */
 static const NgsaDesignerType s_designertypes[] =
 {

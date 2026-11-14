@@ -5,7 +5,7 @@
    of the License, or (at your option) any later version. It is distributed WITHOUT ANY WARRANTY; see
    COPYING. */
 /*
- * Autocomplete glue. See include/ngsa/NgsaAutoComplete.h and docs/ngsa/AUTOCOMPLETE-DESIGN.md.
+ * Autocomplete glue. See include/ngsa/NgsaAutoComplete.h.
  */
 #include "ngsa/NgsaAutoComplete.h"
 #include "MDIWindow.h"

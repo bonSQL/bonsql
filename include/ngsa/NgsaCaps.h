@@ -5,7 +5,7 @@
    of the License, or (at your option) any later version. It is distributed WITHOUT ANY WARRANTY; see
    COPYING. */
 /*
- * NGSA build: per-connection server capabilities (docs/ngsa/FEATURE-BASELINE.md §7.3 rule 1).
+ * NGSA build: per-connection server capabilities.
  *
  * Computed once after connecting from the server's version string. New engine-dependent code
  * reads these flags instead of adding to the IsMySQLxxx()/IsMariaDBxxx() functions in
@@ -72,7 +72,7 @@ struct NgsaCaps
     wyBool  flushSsl;               /* FLUSH SSL: MariaDB 10.4.0 only */
     wyBool  showBinlogStatus;       /* MariaDB 10.5.2 renamed SHOW MASTER STATUS */
     wyBool  fkOmittedRuleIsRestrict; /* SHOW CREATE TABLE omits the default FK rule: RESTRICT on MariaDB
-                                       (prints NO ACTION), NO ACTION on MySQL 8+ (prints RESTRICT); measured 09/10/2026 */
+                                       (prints NO ACTION), NO ACTION on MySQL 8+ (prints RESTRICT) */
 };
 
 namespace NgsaCapsCompute

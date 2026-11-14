@@ -89,6 +89,7 @@ public:
 
     @param initbuf:     IN Data that the string needs to be initialized with.
     @param initsize:    IN Initial buffer length so that we don't have to do strlen in the function to get the length.
+                        The whole of initbuf is copied: initsize must be its length or more, see SetAs(toset, len).
     */
 	wyString(const wyChar* initbuf, wyUInt32 initsize);
 	
@@ -134,22 +135,27 @@ public:
 	wyUInt32 SetAs(const wyWChar* toset);
 	wyUInt32 SetAs(const wyWChar* toset, wyInt32 length);
 
-    /// Sets a specific length of data to the string passed as parameter
+    /// Sets the string to the whole of the text passed as parameter
     /**
-    Copys buffer to the data. Similar to strncpy()
+    Copies ALL of toset, up to its terminating zero. This is not strncpy(): len does not limit the copy.
+    len is the room to reserve, so that the function need not measure the text first, and it must be the
+    length of toset or more. A len shorter than the text makes the copy run past the buffer. Every caller
+    passes the full length; some pass one more (a byte count that includes the terminating zero), which is
+    why the function cannot take len as the number of characters to copy.
+    To take only the first len characters of a text use SetAsDirect().
 
-    @param toset:     IN String that needs to be set.
-    @param len:     IN Number of characters to set.
+    @param toset:     IN Zero-terminated string that needs to be set.
+    @param len:     IN Room to reserve: the length of toset, or more.
     @sa wyString::SetAs(const wyChar* toset)
     @sa wyString::SetAs(wyString&)
-    @sa wyString::SetAs(wyString&, const wyUInt32 len)
-    @returns Length of the buffer.
+    @sa wyString::SetAsDirect(const wyChar* toset, const wyUInt32 len)
+    @returns Length of the string.
     */
 	wyUInt32	 SetAs(const wyChar* toset, const wyUInt32 len);
 
-	/// Sets a specific length of data to the string passed as parameter
+	/// Sets the string to the first len characters of the text passed as parameter
     /**
-    Copys buffer to the data. Similar to strncpy()
+    Copies exactly len characters of toset. This is the one to use for a part of a longer text.
 
     @param toset:     IN String that needs to be set.
     @param len:     IN Number of characters to set.

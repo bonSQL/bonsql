@@ -29,7 +29,7 @@
 #include "MySQLVersionHelper.h"
 #include "CCustomComboBox.h"
 #ifdef NGSA_SSH_SSL
-#include "ngsa/NgsaConnectionExt.h"   // NGSA: SSH/SSL tab support (docs/ngsa/SSH-SSL-FEASIBILITY.md)
+#include "ngsa/NgsaConnectionExt.h"   // NGSA: SSH/SSL tab support
 #define NGSA_CONNECT_HOST(ci)    NgsaConn::EffectiveHost(ci)      // NGSA: loopback end of the SSH tunnel when active
 #define NGSA_CONNECT_PORT(ci)    NgsaConn::EffectivePort(ci)
 #else
@@ -106,7 +106,7 @@ ConnectionCommunity::OnAboutWmCommand(HWND hwnd, WPARAM wparam)
 void 
 ConnectionCommunity::OnStatusBarWmCommand(HWND hwnd, WPARAM wparam)
 {
-    // bonSQL: the status bar link opened Webyog's pricing page; nothing to open now (docs/ngsa/UPSELLS.md)
+    // bonSQL: the status bar link opened Webyog's pricing page; nothing to open now
     
     return;
 }

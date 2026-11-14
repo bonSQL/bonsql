@@ -1216,7 +1216,7 @@ TableTabInterface::GetComboboxValue(HWND hcombobox, wyString& value)
 }
 
 // NGSA (M8): MariaDB refuses ALTER TABLE on a system-versioned table unless the session allows history
-// changes (error 4119, measured 09/10/2026 on 11.8). KEEP keeps the history rows; SET STATEMENT scopes it
+// changes (error 4119, measured on 11.8). KEEP keeps the history rows; SET STATEMENT scopes it
 // to this one statement, so the user's session setting is untouched.
 const wyChar*
 TableTabInterface::NgsaAlterPrefix()

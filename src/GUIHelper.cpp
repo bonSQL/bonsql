@@ -1009,7 +1009,7 @@ SetExplainMenuItems(HMENU hmenu, HWND hwnd)
         lpmii.dwTypeData = queryExplain.GetAsWideChar();
         SetMenuItemInfo(hmenu, ID_EXPLAIN_EXTENDED, FALSE, &lpmii);
         
-        // bonSQL: MariaDB explains INSERT/UPDATE/DELETE/REPLACE too (checked on 10.11 and 11.8, 15/10/2026); IsMySQL563 excludes it
+        // bonSQL: MariaDB explains INSERT/UPDATE/DELETE/REPLACE too (checked on 10.11 and 11.8); IsMySQL563 excludes it
         if(IsQuerySELECT(query.GetString()) ||
             ((IsMySQL563(wnd->m_tunnel, &wnd->m_mysql) || IsMariaDB(wnd->m_tunnel, &wnd->m_mysql)) && IsQueryDeleteInsertReplaceUpdate(query.GetString())))
         {
@@ -1891,7 +1891,7 @@ WriteConnDetails(HWND hdlg)
 	
 	dirstr.SetAs(directory);
 
-	// bonSQL (05/11/2026, found by the test system's debug heap on every connect): the selection, count and text
+	// bonSQL: the selection, count and text
 	// length must be asked of the real combo (hwndCombo); the CCustomComboBox wrapper (hcb) does not forward CB_*
 	// messages, DefWindowProc answered 0, and CB_GETLBTEXT then wrote the whole name into a 4-byte buffer.
 	index = SendMessage(hwndCombo, CB_GETCURSEL, 0, 0);
@@ -1936,7 +1936,7 @@ ShowHelp(wyChar *helpid)
 	/*helplink.Sprintf("%s::/%s", pGlobals->m_helpfile, helpid);
 	HtmlHelp(::GetDesktopWindow(), helplink.GetAsWideChar(), HH_DISPLAY_TOPIC, NULL);*/
 	// bonSQL: help is "help:<topic>", resolved against BRAND_HELP_BASE_A (ngsa/NgsaBrand.h); the topics are the
-	// pages the website needs (docs/ngsa/LINK-AUDIT.md). Until the pages exist, say so instead of opening anything.
+	// pages the website needs. Until the pages exist, say so instead of opening anything.
 	if(!strncmp(helpid, "help:", 5))
 	{
 		if(!*BRAND_HELP_BASE_A)

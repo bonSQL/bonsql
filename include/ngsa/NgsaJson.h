@@ -32,7 +32,7 @@ namespace NgsaJson
     wyBool  IsJsonValidCheck(const wyChar* check, const wyChar* column);
 
     /* M1 part two: SHOW FULL COLUMNS equivalent from the catalogue with Type = 'json' for such columns
-       (same column names and values as SHOW FULL COLUMNS; measured on 11.8 and 10.11, 10/10/2026) */
+       (same column names and values as SHOW FULL COLUMNS; measured on 11.8 and 10.11) */
     void    ColumnInfoQuery(wyString& query, const wyChar* db, const wyChar* table);
 }
 

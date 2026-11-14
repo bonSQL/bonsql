@@ -1,10 +1,10 @@
 // Modified for bonSQL by André Walsh, 2024-2026; the changes are in the repository history.
 // Originally part of SQLyog Community, copyright (C) Webyog Inc., GNU GPL.
-// NGSA: calendar versioning since 09/10/2026, year.month.release (2026.10.4 = fourth release of October 2026).
+// NGSA: calendar versioning, year.month.release (2026.10.4 = fourth release of October 2026).
 // Each deploy bumps UPDATE_VERSION_INT (or the month) and gets a git tag v<year>.<month>.<release>.
 #define MAJOR_VERSION_INT		2026
 #define MINOR_VERSION_INT		11
-#define UPDATE_VERSION_INT		1
+#define UPDATE_VERSION_INT		2
 #define RELEASE_VERSION_INT		0
 #define EXTRAINFO				""
 

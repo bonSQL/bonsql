@@ -36,7 +36,7 @@
 #include "CCustomComboBox.h"
 #include "wyTheme.h"
 #ifdef NGSA_SSH_SSL
-#include "ngsa/NgsaConnectionExt.h"   // NGSA: SSH/SSL tab support (docs/ngsa/SSH-SSL-FEASIBILITY.md)
+#include "ngsa/NgsaConnectionExt.h"   // NGSA: SSH/SSL tab support
 #endif
 
 #include <iomanip>

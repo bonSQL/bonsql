@@ -1669,9 +1669,10 @@ TabFields::GetNewAndModifiedColumns(wyString &columnsstr)
 				}
             }
 
-            // NGSA (#2367): a generated (virtual/stored) column is dropped and re-added, which put it
-            // at the end of the table; keep its place with an explicit position
-            if(!reorderstr.GetLength() && IsDropAndRecreateRequired(cwrapobj, wyFalse))
+            // NGSA (#2367): an edited generated (virtual/stored) column is dropped and re-added, which put
+            // it at the end of the table; keep its place with an explicit position. An untouched one
+            // (old and new values are the same object) must stay out of the statement
+            if(!reorderstr.GetLength() && cwrapobj->m_oldval != cwrapobj->m_newval && IsDropAndRecreateRequired(cwrapobj, wyFalse))
             {
                 if(prevcwrap && prevcwrap->m_newval)
                     reorderstr.Sprintf(" after %s%s%s", m_backtick, prevcwrap->m_newval->m_name.GetString(), m_backtick);
@@ -5639,7 +5640,7 @@ TabFields::SelectColumn(wyString &colname)
 }
 
 // NGSA (M8b): MariaDB accepts COMPRESSED on text, blob, varchar and varbinary columns only (INT gives 1064,
-// measured on 11.8, 10/10/2026)
+// measured on 11.8)
 wyBool
 TabFields::NgsaTypeCanBeCompressed(const wyChar* datatype)
 {

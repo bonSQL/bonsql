@@ -1758,7 +1758,7 @@ TabModule::Resize(wyBool issetredraw)
 
 #ifdef COMMUNITY
 	// bonSQL: the ad ribbon window is never created (CreateCommunityTabHeader is commented out), so no band
-	// is kept for it (docs/ngsa/UPSELLS.md)
+	// is kept for it
 	if(m_hwndcommtytitle)
 	{
 	wyInt32 headvpos = 0;

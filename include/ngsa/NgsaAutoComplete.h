@@ -7,7 +7,6 @@
 /*
  * Autocomplete glue: one object per connection window (MDIWindow::m_acinterface owns it). Ties the core
  * (include/ngsa/NgsaAcCore.h) to the Scintilla editor, the window's connection and the preferences.
- * Design: docs/ngsa/AUTOCOMPLETE-DESIGN.md.
  */
 #ifndef NGSA_AUTOCOMPLETE_H
 #define NGSA_AUTOCOMPLETE_H

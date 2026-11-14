@@ -639,6 +639,11 @@
 #define IDC_NGSA_UPD_AUTO               1737
 #define IDC_NGSA_UPD_DOWNLOAD           1738
 #define IDC_NGSA_UPD_SKIP               1739
+#define IDC_UM_ROLELIST                 1740	// NGSA: User Manager, the list of the Roles node
+#define IDC_UM_ROLEDEFAULT              1741	// NGSA: User Manager, default role on/off
+#define IDC_CPY_SEQSTATE                1742	// NGSA: Copy Database, sequence positions come along
+#define IDC_CHK_SEQSTATE                1743	// NGSA: SQL export, sequence positions are written
+#define IDC_NGSA_BLOBNOTE               1744	// NGSA: cell editor, the line that says OK will save a change
 #define IDC_UPGRDCHK                    1211
 #define IDC_EMPTYDBSELECTALL            1211
 #define IDC_HIDECOLUMNS                 1211
@@ -1714,7 +1719,7 @@
 #define _APS_NO_MFC                     1
 #define _APS_NEXT_RESOURCE_VALUE        1021
 #define _APS_NEXT_COMMAND_VALUE         41837
-#define _APS_NEXT_CONTROL_VALUE         1740
+#define _APS_NEXT_CONTROL_VALUE         1745
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

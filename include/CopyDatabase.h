@@ -270,6 +270,9 @@ public:
     wyBool          m_selalltables;
 
 	wyBool          m_isremdefiner;
+
+	/// NGSA: the position of a copied sequence comes along (DO SETVAL)
+	wyBool          m_seqstate;
 	//flag to tell whether copy triggers with tables
 	wyBool           m_iscopytrigger;
 	/// List to store the dialogbox component values
@@ -684,7 +687,12 @@ private:
 	wyBool      ExportEvent(const wyChar *db, const wyChar *event);
 
 	/// NGSA: MariaDB sequences of the source database, created in the target (before the tables)
-	wyBool      ExportSequences();
+	wyBool      ExportSequences(HWND hwndtree, HTREEITEM hrootitem);
+	wyBool      ExportSequence(const wyChar *sequence);
+	/// NGSA: what is ticked in a folder of the tree; the warning for tables whose default calls a sequence that is left out
+	void        TickedNames(HWND hwndtree, HTREEITEM hfolder, wyString &names, wyBool &all);
+	wyBool      CheckSequenceDefaults(HWND hwndtree);
+	wyBool      SequenceOnTarget(const wyChar *db, const wyChar *sequence);
 
     /// Checks for the target db whether it is on 5x server or not
     /** if it is in 5x server we will enable all the options otherwise we will disable some
@@ -748,6 +756,7 @@ private:
 	@return wyTrue on succcess else return wyFalse
 	*/
 	wyBool		HandleTreeviewOnComboChange(wyBool issinglesrcdb = wyFalse, wyBool cbselchange = wyFalse);
+	wyBool		HandleTreeview5XOnComboChange(wyBool issinglesrcdb, wyBool cbselchange);
 
 	///Selectes the treeview parent nodes by default
 	/**
