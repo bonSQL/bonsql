@@ -1968,7 +1968,7 @@ UserManager::ShowAllObjects(wyBool show)
 HTREEITEM
 UserManager::InitTreeViewNodes(HWND hwndtv)
 {
-    TVINSERTSTRUCT  insertstruct;
+    TVINSERTSTRUCT  insertstruct = {0};
     HTREEITEM       huser, hglobalpriv, hobjpriv;
     wyString        curruser;
 
@@ -1979,7 +1979,10 @@ UserManager::InitTreeViewNodes(HWND hwndtv)
     insertstruct.hInsertAfter = TVI_SORT;
     insertstruct.item.mask = TVIF_TEXT | TVIF_IMAGE | TVIF_SELECTEDIMAGE | TVIF_STATE;
     insertstruct.hParent = NULL;
+    // NGSA: the state only counts with its mask. Without the mask the nodes were "expanded once" or not by what
+    // the stack happened to hold, and a node not so marked is filled on demand by the object browser's code
     insertstruct.item.state = TVIS_EXPANDEDONCE;
+    insertstruct.item.stateMask = TVIS_EXPANDEDONCE;
 
     //insert the user node
     insertstruct.item.iImage = m_umimageindex;
@@ -2119,6 +2122,15 @@ UserManager::OnTreeViewItemExpanding(LPARAM lparam)
     {
         TreeView_SelectItem(GetDlgItem(m_hwnd, IDC_PRIVOBTREE), pnmtv->itemNew.hItem);
         return wyTrue;
+    }
+
+    // NGSA: the dialog's own nodes (the account, Global Privileges, Object Level Privileges, Roles) are filled by
+    // the dialog and never on demand. Their picture numbers are this dialog's own and can equal an object
+    // browser folder's number, so they are not handed to the generic module; it would only have selected them.
+    if(pnmtv->itemNew.iImage >= m_umimageindex)
+    {
+        TreeView_SelectItem(hwndtv, pnmtv->itemNew.hItem);
+        return wyFalse;
     }
 
     //fill the structure and call the generic module to pupulate the nodes on demand
@@ -4780,7 +4792,7 @@ UserManager::InsertPrivilegedObjectHelper(HTREEITEM hobjectpriv, wyInt32 context
     wyString        objectname;
     HTREEITEM       hitem, hparent, htemp;
     HWND            hwndtv = GetDlgItem(m_hwnd, IDC_PRIVOBTREE);
-    TVINSERTSTRUCT  insertstruct;
+    TVINSERTSTRUCT  insertstruct = {0};
     wyInt32         imageindex;
 
     switch(context)
@@ -4833,6 +4845,7 @@ UserManager::InsertPrivilegedObjectHelper(HTREEITEM hobjectpriv, wyInt32 context
     insertstruct.item.mask = TVIF_TEXT | TVIF_IMAGE | TVIF_SELECTEDIMAGE |TVIF_STATE;
     insertstruct.hParent = hparent;
     insertstruct.item.state = TVIS_EXPANDEDONCE;
+    insertstruct.item.stateMask = TVIS_EXPANDEDONCE;    // NGSA: the state only counts with its mask
     insertstruct.item.iImage = imageindex;
     insertstruct.item.iSelectedImage = imageindex;
     insertstruct.item.pszText = objectname.GetAsWideChar();

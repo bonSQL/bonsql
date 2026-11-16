@@ -4,7 +4,7 @@
 // Each deploy bumps UPDATE_VERSION_INT (or the month) and gets a git tag v<year>.<month>.<release>.
 #define MAJOR_VERSION_INT		2026
 #define MINOR_VERSION_INT		11
-#define UPDATE_VERSION_INT		2
+#define UPDATE_VERSION_INT		3
 #define RELEASE_VERSION_INT		0
 #define EXTRAINFO				""
 
